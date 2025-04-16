@@ -1,4 +1,4 @@
-import { google, photoslibrary_v1 } from 'googleapis';
+import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
 import config from '../utils/config';
@@ -103,12 +103,54 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
   return oauth2Client;
 }
 
-// Get Photos Library API client
-export function getPhotosClient(oauth2Client: OAuth2Client): photoslibrary_v1.Photoslibrary {
-  return google.photoslibrary({
-    version: 'v1',
-    auth: oauth2Client,
-  });
+// Fix the function to create the photoslibrary client
+function createPhotosLibraryClient(auth: OAuth2Client) {
+  // Dynamically access the photosLibrary API
+  return {
+    albums: {
+      list: async (params: any) => {
+        // Make a direct API call since the type system doesn't recognize the client
+        const url = `https://photoslibrary.googleapis.com/v1/albums`;
+        const headers = {
+          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
+        };
+        const response = await axios.get(url, { params, headers });
+        return response.data;
+      },
+      get: async (params: any) => {
+        const url = `https://photoslibrary.googleapis.com/v1/albums/${params.albumId}`;
+        const headers = {
+          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
+        };
+        const response = await axios.get(url, { headers });
+        return response.data;
+      }
+    },
+    mediaItems: {
+      search: async (params: any) => {
+        const url = `https://photoslibrary.googleapis.com/v1/mediaItems:search`;
+        const headers = {
+          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
+        };
+        const response = await axios.post(url, params.requestBody, { headers });
+        return response.data;
+      },
+      get: async (params: any) => {
+        const url = `https://photoslibrary.googleapis.com/v1/mediaItems/${params.mediaItemId}`;
+        const headers = {
+          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
+        };
+        const response = await axios.get(url, { headers });
+        return response.data;
+      }
+    }
+  };
+}
+
+// Replace the direct photoslibrary call with the function
+export function getPhotoClient(auth: OAuth2Client) {
+  // Use our custom function to create the client
+  return createPhotosLibraryClient(auth);
 }
 
 // List all albums
@@ -118,7 +160,7 @@ export async function listAlbums(
   pageToken?: string
 ): Promise<{ albums: Album[]; nextPageToken?: string }> {
   try {
-    const photosClient = getPhotosClient(oauth2Client);
+    const photosClient = getPhotoClient(oauth2Client);
     const response = await photosClient.albums.list({
       pageSize,
       pageToken,
@@ -137,7 +179,7 @@ export async function listAlbums(
 // Get a specific album
 export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Promise<Album> {
   try {
-    const photosClient = getPhotosClient(oauth2Client);
+    const photosClient = getPhotoClient(oauth2Client);
     const response = await photosClient.albums.get({
       albumId,
     });
@@ -160,7 +202,7 @@ export async function searchPhotos(
   includeLocation: boolean = false
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
-    const photosClient = getPhotosClient(oauth2Client);
+    const photosClient = getPhotoClient(oauth2Client);
     const response = await photosClient.mediaItems.search({
       requestBody: {
         albumId: params.albumId,
@@ -237,7 +279,7 @@ export async function getPhoto(
   includeLocation: boolean = true
 ): Promise<PhotoItem> {
   try {
-    const photosClient = getPhotosClient(oauth2Client);
+    const photosClient = getPhotoClient(oauth2Client);
     const response = await photosClient.mediaItems.get({
       mediaItemId: photoId,
     });
