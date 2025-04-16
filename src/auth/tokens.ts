@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import config from '../utils/config';
-import logger from '../utils/logger';
+import config from '../utils/config.js';
+import logger from '../utils/logger.js';
 
 export interface TokenData {
   access_token: string;

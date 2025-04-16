@@ -1,10 +1,10 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
-import config from '../utils/config';
-import logger from '../utils/logger';
-import { TokenData } from '../auth/tokens';
-import { getPhotoLocation, LocationData } from '../utils/location';
+import config from '../utils/config.js';
+import logger from '../utils/logger.js';
+import { TokenData } from '../auth/tokens.js';
+import { getPhotoLocation, LocationData } from '../utils/location.js';
 
 // Photo item structure returned by the API
 export interface PhotoItem {
@@ -354,7 +354,7 @@ export async function searchPhotosByText(
     const yearMonthRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/g;
     const dateRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])\b/g;
     
-    const dates = [];
+    const dates: Array<{year: number; month?: number; day?: number}> = [];
     
     // Check for full dates
     const fullDateMatches = [...query.matchAll(dateRegex)];
@@ -396,7 +396,7 @@ export async function searchPhotosByText(
     }
     
     // Parse query for media types
-    const mediaTypes = [];
+    const mediaTypes: string[] = [];
     if (query.toLowerCase().includes('photo') || query.toLowerCase().includes('image')) {
       mediaTypes.push('PHOTO');
     }
@@ -409,7 +409,7 @@ export async function searchPhotosByText(
     }
     
     // Parse query for features
-    const features = [];
+    const features: string[] = [];
     if (query.toLowerCase().includes('favorite')) {
       features.push('FAVORITES');
     }

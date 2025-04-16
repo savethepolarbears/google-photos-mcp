@@ -1,9 +1,9 @@
 import express from 'express';
 import { randomBytes } from 'crypto';
-import { createOAuthClient } from '../api/photos';
-import { saveTokens } from './tokens';
-import config from '../utils/config';
-import logger from '../utils/logger';
+import { createOAuthClient } from '../api/photos.js';
+import { saveTokens } from './tokens.js';
+import config from '../utils/config.js';
+import logger from '../utils/logger.js';
 
 // Set up authentication routes
 export function setupAuthRoutes(app: express.Express): void {

@@ -1,8 +1,9 @@
-import { McpServer } from '@modelcontextprotocol/sdk';
+// Import using require
+const sdk = require('@modelcontextprotocol/sdk');
 import { z } from 'zod';
-import { setupOAuthClient, listAlbums, getAlbum, listAlbumPhotos } from '../api/photos';
-import { getTokens } from '../auth/tokens';
-import logger from '../utils/logger';
+import { setupOAuthClient, listAlbums, getAlbum, listAlbumPhotos } from '../api/photos.js';
+import { getTokens } from '../auth/tokens.js';
+import logger from '../utils/logger.js';
 
 // Define the default user ID to use when no specific ID is provided
 const DEFAULT_USER_ID = 'default_user';
@@ -10,7 +11,7 @@ const DEFAULT_USER_ID = 'default_user';
 /**
  * Register album-related tools with the MCP server
  */
-export function registerAlbumTools(server: McpServer): void {
+export function registerAlbumTools(server: any): void {
   // List all albums
   server.tool(
     'list_albums',

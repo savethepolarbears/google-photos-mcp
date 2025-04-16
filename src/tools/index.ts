@@ -1,8 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk';
-import { registerSearchTools } from './search';
-import { registerAlbumTools } from './albums';
-import { registerPhotoTools } from './photos';
-import { registerLocationTools } from './location';
+import { registerSearchTools } from './search.js';
+import { registerAlbumTools } from './albums.js';
+import { registerPhotoTools } from './photos.js';
+import { registerLocationTools } from './location.js';
 
 /**
  * Register all tools with the MCP server

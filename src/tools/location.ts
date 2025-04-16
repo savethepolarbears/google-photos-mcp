@@ -1,9 +1,9 @@
 import { McpServer } from '@modelcontextprotocol/sdk';
 import { z } from 'zod';
-import { setupOAuthClient, searchPhotosByText } from '../api/photos';
-import { getTokens } from '../auth/tokens';
-import { searchLocationByName } from '../utils/location';
-import logger from '../utils/logger';
+import { setupOAuthClient, searchPhotosByText } from '../api/photos.js';
+import { getTokens } from '../auth/tokens.js';
+import { searchLocationByName } from '../utils/location.js';
+import logger from '../utils/logger.js';
 
 // Define the default user ID to use when no specific ID is provided
 const DEFAULT_USER_ID = 'default_user';
