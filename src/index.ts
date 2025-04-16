@@ -11,7 +11,8 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
-import getRawBody from 'raw-body';
+// Import the auth routes
+import { setupAuthRoutes } from './auth/routes.js';
 
 // Load environment variables
 dotenv.config();
@@ -136,6 +137,53 @@ async function main() {
     // Middleware
     app.use(cors());
     app.use(express.json());
+    
+    // Set up authentication routes
+    setupAuthRoutes(app);
+    
+    // Add root route for the home page
+    app.get('/', (req, res) => {
+      res.send(`
+        <html>
+          <head>
+            <title>Google Photos MCP Server</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+              .container { background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+              h1 { color: #2c3e50; }
+              .btn { 
+                display: inline-block; 
+                background-color: #4285F4; 
+                color: white; 
+                text-decoration: none; 
+                padding: 10px 20px; 
+                border-radius: 4px; 
+                font-weight: bold;
+                margin-top: 10px;
+              }
+              .btn:hover { background-color: #357ae8; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>Google Photos MCP Server</h1>
+              <p>Welcome to the Google Photos MCP Server. This service allows AI assistants like Claude to access and work with your Google Photos library.</p>
+              <p>To get started, you need to authenticate with Google Photos:</p>
+              <a href="/auth" class="btn">Authenticate with Google Photos</a>
+            </div>
+            <div class="container">
+              <h2>Usage</h2>
+              <p>After authentication, you can use this server with:</p>
+              <ul>
+                <li><strong>Claude Desktop:</strong> Configure as a custom MCP server</li>
+                <li><strong>Cursor IDE:</strong> Add as an MCP server in the MCP panel</li>
+              </ul>
+              <p>The MCP endpoint is available at: <code>http://localhost:3000/mcp</code></p>
+            </div>
+          </body>
+        </html>
+      `);
+    });
     
     // Set up SSE endpoint
     app.get('/mcp', async (req, res) => {
