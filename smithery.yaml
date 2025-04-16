@@ -1,0 +1,47 @@
+name: google-photos-mcp
+displayName: Google Photos
+description: Access and search your Google Photos library through the Model Context Protocol
+repository: https://github.com/savethepolarbears/google-photos-mcp
+keywords:
+  - google photos
+  - images
+  - albums
+  - photos
+  - search
+  - media
+version: 0.1.0
+category: Photos & Media
+transport: both
+installation:
+  command:
+    claude:
+      command: node
+      args:
+        - dist/index.js
+        - --stdio
+    cursor:
+      command: node
+      args:
+        - dist/index.js
+  url:
+    default: http://localhost:3000/mcp
+envVars:
+  - name: GOOGLE_CLIENT_ID
+    description: Google Cloud OAuth client ID
+    required: true
+  - name: GOOGLE_CLIENT_SECRET
+    description: Google Cloud OAuth client secret
+    required: true
+  - name: GOOGLE_REDIRECT_URI
+    description: OAuth redirect URI (typically http://localhost:3000/auth/callback)
+    required: true
+    default: http://localhost:3000/auth/callback
+  - name: PORT
+    description: Port to run the server on
+    required: false
+    default: "3000"
+auth:
+  type: oauth
+  provider: google
+  scopes:
+    - https://www.googleapis.com/auth/photoslibrary.readonly 
