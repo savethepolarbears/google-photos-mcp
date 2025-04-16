@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Photos MCP Server</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1, h2, h3 {
+            color: #1a73e8;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .header h1 {
+            margin-bottom: 10px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        
+        .status.running {
+            background-color: #e6f4ea;
+            color: #137333;
+        }
+        
+        .card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .cta {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .button {
+            display: inline-block;
+            background-color: #1a73e8;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        
+        .button:hover {
+            background-color: #1557b0;
+        }
+        
+        code {
+            background-color: #f1f3f4;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            font-size: 0.9em;
+        }
+        
+        .endpoints {
+            margin: 20px 0;
+        }
+        
+        .endpoint {
+            margin-bottom: 10px;
+        }
+        
+        .tool-list {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .tool-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .tool-list li:last-child {
+            border-bottom: none;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Google Photos MCP Server</h1>
+        <p>Model Context Protocol (MCP) server for Google Photos integration</p>
+        <div class="status running">Server Running</div>
+    </div>
+    
+    <div class="card">
+        <h2>Server Endpoints</h2>
+        <div class="endpoints">
+            <div class="endpoint">
+                <strong>MCP Endpoint:</strong> <code>/mcp</code> - Use this in Claude Desktop or Cursor IDE
+            </div>
+            <div class="endpoint">
+                <strong>Authentication:</strong> <code>/auth</code> - Authenticate with Google Photos
+            </div>
+            <div class="endpoint">
+                <strong>Health Check:</strong> <code>/health</code> - Server health status
+            </div>
+        </div>
+    </div>
+    
+    <div class="cta">
+        <a href="/auth" class="button">Authenticate with Google Photos</a>
+    </div>
+    
+    <div class="card">
+        <h2>Available Tools</h2>
+        <ul class="tool-list">
+            <li><strong>search_photos</strong> - Search photos by text query</li>
+            <li><strong>search_photos_by_location</strong> - Search photos by location</li>
+            <li><strong>get_photo</strong> - Get a specific photo by ID</li>
+            <li><strong>get_photo_url</strong> - Get the URL of a specific photo</li>
+            <li><strong>list_albums</strong> - List all albums</li>
+            <li><strong>get_album</strong> - Get a specific album by ID</li>
+            <li><strong>list_album_photos</strong> - List photos in an album</li>
+        </ul>
+    </div>
+    
+    <div class="card">
+        <h2>Setup Instructions</h2>
+        <h3>Claude Desktop</h3>
+        <ol>
+            <li>Start the server in STDIO mode: <code>npm run stdio</code></li>
+            <li>In Claude Desktop, go to Settings > MCP Servers</li>
+            <li>Add a new server and select "Local Command"</li>
+            <li>Enter the command: <code>node /Users/klkro/claude-mcps/google-photos/dist/index.js --stdio</code></li>
+            <li>Name it "Google Photos"</li>
+        </ol>
+        
+        <h3>Cursor IDE</h3>
+        <ol>
+            <li>Start the server in HTTP mode: <code>npm start</code></li>
+            <li>In Cursor IDE, configure the MCP server</li>
+            <li>Add the server URL: <code>http://localhost:3000/mcp</code></li>
+            <li>Name it "Google Photos"</li>
+        </ol>
+    </div>
+    
+    <div class="card">
+        <h2>Example Queries</h2>
+        <p>Here are some example queries you can ask Claude once the MCP server is set up:</p>
+        <ul class="tool-list">
+            <li>"Show me photos from my trip to Paris"</li>
+            <li>"Find all my photos of my dog"</li>
+            <li>"Show me photos from last summer"</li>
+            <li>"Find photos taken at Yellowstone National Park"</li>
+            <li>"Get photos from my 'Family' album"</li>
+        </ul>
+    </div>
+    
+    <footer>
+        <p>Google Photos MCP Server &copy; 2025</p>
+    </footer>
+</body>
+</html>
