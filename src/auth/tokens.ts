@@ -42,12 +42,88 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
 
 /**
  * Get tokens for a specific user
+ * If useDefault is true and the specific userId's tokens aren't found,
+ * it will return the first available tokens
  */
-export async function getTokens(userId: string): Promise<TokenData | null> {
+export async function getTokens(userId: string, useDefault: boolean = false): Promise<TokenData | null> {
   try {
     const data = await fs.readFile(config.tokens.path, 'utf-8');
-    const allTokens: Record<string, TokenData> = JSON.parse(data);
-    return allTokens[userId] || null;
+    const allTokens: Record<string, any> = JSON.parse(data);
+    
+    // Helper function to check if an entry contains valid token data
+    const isValidToken = (entry: any): boolean => (
+      entry && 
+      typeof entry === 'object' && 
+      'access_token' in entry && 
+      'refresh_token' in entry &&
+      'expiry_date' in entry
+    );
+    
+    // If we have tokens for this specific user, return them if they're valid
+    if (allTokens[userId] && isValidToken(allTokens[userId])) {
+      return allTokens[userId] as TokenData;
+    }
+    
+    // If useDefault is true, look for any valid tokens
+    if (useDefault) {
+      const validUserIds = Object.keys(allTokens).filter(key => isValidToken(allTokens[key]));
+      
+      if (validUserIds.length > 0) {
+        const firstUserId = validUserIds[0];
+        logger.debug(`Using default tokens from user ${firstUserId}`);
+        return allTokens[firstUserId] as TokenData;
+      }
+    }
+    
+    // No valid tokens found
+    return null;
+  } catch (error) {
+    logger.debug(`No tokens found or error reading tokens: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Get the first available tokens from any user
+ */
+export async function getFirstAvailableTokens(): Promise<TokenData | null> {
+  try {
+    // Check if file exists first
+    try {
+      await fs.access(config.tokens.path);
+    } catch (err) {
+      logger.debug('Tokens file does not exist');
+      return null;
+    }
+    
+    const data = await fs.readFile(config.tokens.path, 'utf-8');
+    
+    // Check if file is empty
+    if (!data || data.trim() === '' || data.trim() === '{}') {
+      logger.debug('Tokens file is empty');
+      return null;
+    }
+    
+    const allTokens: Record<string, any> = JSON.parse(data);
+    
+    // Filter out any non-token entries (like "web" client details)
+    const validUserIds = Object.keys(allTokens).filter(key => 
+      allTokens[key] && 
+      typeof allTokens[key] === 'object' && 
+      'access_token' in allTokens[key] && 
+      'refresh_token' in allTokens[key] &&
+      'expiry_date' in allTokens[key]
+    );
+    
+    // Return the first available valid tokens
+    if (validUserIds.length > 0) {
+      const firstUserId = validUserIds[0];
+      logger.debug(`Using tokens from user ${firstUserId}`);
+      return allTokens[firstUserId] as TokenData;
+    }
+    
+    // No valid tokens found
+    return null;
   } catch (error) {
     logger.debug(`No tokens found or error reading tokens: ${error instanceof Error ? error.message : String(error)}`);
     return null;

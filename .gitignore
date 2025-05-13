@@ -14,6 +14,9 @@ build/
 .env.local
 .env.*.local
 
+# Backup
+*.bak
+
 # Tokens and credentials
 tokens.json
 credentials.json
@@ -31,3 +34,5 @@ logs/
 
 # Testing
 coverage/
+
+**/.claude/settings.local.json

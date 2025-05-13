@@ -8,11 +8,16 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ListPromptsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
 // Import the auth routes
 import { setupAuthRoutes } from './auth/routes.js';
+import { getTokens, getFirstAvailableTokens, TokenData } from './auth/tokens.js';
+import { setupOAuthClient, searchPhotosByText, listAlbums, getPhoto, getPhotoAsBase64, getAlbum } from './api/photos.js';
+import logger from './utils/logger.js';
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +31,8 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
+      prompts: {},
     },
   }
 );
@@ -33,6 +40,14 @@ const server = new Server(
 // Register tools
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    {
+      name: 'auth_status',
+      description: 'Check authentication status with Google Photos',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
     {
       name: 'search_photos',
       description: 'Search for photos based on text queries',
@@ -61,14 +76,166 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['query'],
       },
     },
-    // Add more tools here as needed
+    {
+      name: 'search_photos_by_location',
+      description: 'Search for photos based on location name',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          locationName: {
+            type: 'string',
+            description: 'Location name to search for (e.g., "Paris", "New York", "Tokyo")',
+          },
+          pageSize: {
+            type: 'number',
+            description: 'Number of results to return (default: 25)',
+            default: 25
+          },
+          pageToken: {
+            type: 'string',
+            description: 'Token for pagination',
+          }
+        },
+        required: ['locationName'],
+      },
+    },
+    {
+      name: 'get_photo',
+      description: 'Get details of a specific photo by ID',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          photoId: {
+            type: 'string',
+            description: 'ID of the photo to retrieve',
+          },
+          includeBase64: {
+            type: 'boolean',
+            description: 'Whether to include base64-encoded image data (default: false)',
+            default: false
+          },
+          includeLocation: {
+            type: 'boolean',
+            description: 'Whether to include location data (default: true)',
+            default: true
+          }
+        },
+        required: ['photoId'],
+      },
+    },
+    {
+      name: 'list_albums',
+      description: 'List all photo albums',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          pageSize: {
+            type: 'number',
+            description: 'Number of results to return (default: 20)',
+            default: 20
+          },
+          pageToken: {
+            type: 'string',
+            description: 'Token for pagination',
+          }
+        },
+      },
+    },
+    {
+      name: 'get_album',
+      description: 'Get details of a specific album by ID',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          albumId: {
+            type: 'string',
+            description: 'ID of the album to retrieve',
+          }
+        },
+        required: ['albumId'],
+      },
+    },
+    {
+      name: 'list_album_photos',
+      description: 'List photos in a specific album',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          albumId: {
+            type: 'string',
+            description: 'ID of the album to retrieve photos from',
+          },
+          pageSize: {
+            type: 'number',
+            description: 'Number of results to return (default: 25)',
+            default: 25
+          },
+          pageToken: {
+            type: 'string',
+            description: 'Token for pagination',
+          },
+          includeLocation: {
+            type: 'boolean',
+            description: 'Whether to include location data (default: true)',
+            default: true
+          }
+        },
+        required: ['albumId'],
+      },
+    }
   ],
 }));
 
 // Handle tool execution
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
+    // Debug authentication
+    logger.info(`Handling tool request: ${request.params.name}`);
+    
+    // Try to get tokens - first for the just authenticated user, then any available
+    let tokens: TokenData | null = null;
+    
+    try {
+      // First try most recently authenticated user
+      tokens = await getFirstAvailableTokens();
+      if (tokens) {
+        logger.info('Using available authentication tokens');
+      } else {
+        logger.warn('No valid tokens found in tokens.json');
+      }
+    } catch (error) {
+      logger.error(`Error getting tokens: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    // Special case for STDIO mode to provide authentication instructions
+    if (!tokens && useStdio) {
+      if (request.params.name === 'auth_status') {
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              authenticated: false,
+              message: "Not authenticated. Please run the server in HTTP mode and visit http://localhost:3000/auth to authenticate."
+            })
+          }]
+        };
+      }
+    }
+    
     switch (request.params.name) {
+      case 'auth_status':
+        // Return authentication status
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              authenticated: !!tokens,
+              message: tokens 
+                ? "Authenticated with Google Photos" 
+                : "Not authenticated. Please visit http://localhost:3000/auth to authenticate."
+            })
+          }]
+        };
       case 'search_photos': {
         const args = request.params.arguments as {
           query: string;
@@ -83,15 +250,426 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             'Missing required parameter: query'
           );
         }
-
-        // This is just a placeholder - we'll implement the actual Google Photos API integration later
-        return {
-          content: [
-            { 
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
               type: "text", 
-              text: `Searched for "${args.query}" with pageSize=${args.pageSize || 25}, includeLocation=${args.includeLocation !== false}. This is a placeholder response.` 
-            }
-          ]
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // Search photos
+        const { photos, nextPageToken } = await searchPhotosByText(
+          oauth2Client,
+          args.query,
+          args.pageSize || 25,
+          args.pageToken,
+          args.includeLocation !== false
+        );
+        
+        // Format the result
+        const photoItems = photos.map(photo => {
+          const result: any = {
+            id: photo.id,
+            filename: photo.filename,
+            description: photo.description || '',
+            dateCreated: photo.mediaMetadata?.creationTime || '',
+            url: photo.baseUrl,
+            webUrl: photo.productUrl,
+            width: photo.mediaMetadata?.width || '',
+            height: photo.mediaMetadata?.height || '',
+          };
+          
+          // Include location data if available
+          if (photo.locationData) {
+            result.location = {
+              latitude: photo.locationData.latitude,
+              longitude: photo.locationData.longitude,
+              name: photo.locationData.locationName,
+              address: photo.locationData.formattedAddress,
+              city: photo.locationData.city,
+              country: photo.locationData.countryName,
+              region: photo.locationData.region,
+              approximate: photo.locationData.approximate
+            };
+          }
+          
+          return result;
+        });
+        
+        // Return the results
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              query: args.query,
+              count: photoItems.length,
+              nextPageToken,
+              photos: photoItems,
+            }, null, 2)
+          }]
+        };
+      }
+      
+      case 'search_photos_by_location': {
+        const args = request.params.arguments as {
+          locationName: string;
+          pageSize?: number;
+          pageToken?: string;
+        };
+
+        if (!args.locationName) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            'Missing required parameter: locationName'
+          );
+        }
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // Search photos by constructing a location query
+        const { photos, nextPageToken } = await searchPhotosByText(
+          oauth2Client,
+          `location:${args.locationName}`,
+          args.pageSize || 25,
+          args.pageToken,
+          true // Always include location for location searches
+        );
+        
+        // Format the result
+        const photoItems = photos.map(photo => {
+          const result: any = {
+            id: photo.id,
+            filename: photo.filename,
+            description: photo.description || '',
+            dateCreated: photo.mediaMetadata?.creationTime || '',
+            url: photo.baseUrl,
+            webUrl: photo.productUrl,
+            width: photo.mediaMetadata?.width || '',
+            height: photo.mediaMetadata?.height || '',
+          };
+          
+          // Include location data if available
+          if (photo.locationData) {
+            result.location = {
+              latitude: photo.locationData.latitude,
+              longitude: photo.locationData.longitude,
+              name: photo.locationData.locationName,
+              address: photo.locationData.formattedAddress,
+              city: photo.locationData.city,
+              country: photo.locationData.countryName,
+              region: photo.locationData.region,
+              approximate: photo.locationData.approximate
+            };
+          }
+          
+          return result;
+        });
+        
+        // Return the results
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              locationName: args.locationName,
+              count: photoItems.length,
+              nextPageToken,
+              photos: photoItems,
+            }, null, 2)
+          }]
+        };
+      }
+      
+      case 'list_albums': {
+        const args = request.params.arguments as {
+          pageSize?: number;
+          pageToken?: string;
+        };
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // List albums
+        const { albums, nextPageToken } = await listAlbums(
+          oauth2Client,
+          args.pageSize || 20,
+          args.pageToken
+        );
+        
+        // Format the result
+        const albumItems = albums.map(album => ({
+          id: album.id,
+          title: album.title,
+          url: album.productUrl,
+          itemsCount: album.mediaItemsCount || '0',
+          coverPhotoUrl: album.coverPhotoBaseUrl
+        }));
+        
+        // Return the results
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              count: albumItems.length,
+              nextPageToken,
+              albums: albumItems,
+            }, null, 2)
+          }]
+        };
+      }
+      
+      case 'get_photo': {
+        const args = request.params.arguments as {
+          photoId: string;
+          includeBase64: boolean;
+          includeLocation: boolean;
+        };
+
+        if (!args.photoId) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            'Missing required parameter: photoId'
+          );
+        }
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // Get photo details
+        const photo = await getPhoto(
+          oauth2Client,
+          args.photoId,
+          args.includeLocation
+        );
+        
+        // Get base64 image if requested
+        let base64Image: string | undefined;
+        if (args.includeBase64 && photo.baseUrl) {
+          base64Image = await getPhotoAsBase64(photo.baseUrl);
+        }
+        
+        // Format the result
+        const result: any = {
+          id: photo.id,
+          filename: photo.filename,
+          description: photo.description || '',
+          dateCreated: photo.mediaMetadata?.creationTime || '',
+          url: photo.baseUrl,
+          webUrl: photo.productUrl,
+          width: photo.mediaMetadata?.width || '',
+          height: photo.mediaMetadata?.height || '',
+        };
+        
+        // Include location data if available
+        if (photo.locationData) {
+          result.location = {
+            latitude: photo.locationData.latitude,
+            longitude: photo.locationData.longitude,
+            name: photo.locationData.locationName,
+            address: photo.locationData.formattedAddress,
+            city: photo.locationData.city,
+            country: photo.locationData.countryName,
+            region: photo.locationData.region,
+            approximate: photo.locationData.approximate
+          };
+        }
+        
+        // Include base64-encoded image data if requested
+        if (args.includeBase64 && base64Image) {
+          result.base64Image = base64Image;
+        }
+        
+        // Return the result
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify(result, null, 2)
+          }]
+        };
+      }
+      
+      case 'get_album': {
+        const args = request.params.arguments as {
+          albumId: string;
+        };
+
+        if (!args.albumId) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            'Missing required parameter: albumId'
+          );
+        }
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // Get album details
+        const album = await getAlbum(
+          oauth2Client,
+          args.albumId
+        );
+        
+        // Format the result
+        const result: any = {
+          id: album.id,
+          title: album.title,
+          url: album.productUrl,
+          itemsCount: album.mediaItemsCount || '0',
+          coverPhotoUrl: album.coverPhotoBaseUrl
+        };
+        
+        // Return the result
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify(result, null, 2)
+          }]
+        };
+      }
+      
+      case 'list_album_photos': {
+        const args = request.params.arguments as {
+          albumId: string;
+          pageSize?: number;
+          pageToken?: string;
+          includeLocation: boolean;
+        };
+
+        if (!args.albumId) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            'Missing required parameter: albumId'
+          );
+        }
+        
+        // If still no tokens found, prompt for authentication
+        if (!tokens) {
+          return {
+            content: [{ 
+              type: "text", 
+              text: JSON.stringify({
+                error: "Authentication required",
+                message: "Not authenticated with Google Photos. Please authenticate first by visiting http://localhost:3000/auth"
+              })
+            }]
+          };
+        }
+
+        // Set up OAuth client
+        const oauth2Client = setupOAuthClient(tokens);
+        
+        // List album photos
+        const { photos, nextPageToken } = await searchPhotosByText(
+          oauth2Client,
+          args.albumId,
+          args.pageSize || 25,
+          args.pageToken,
+          args.includeLocation
+        );
+        
+        // Format the result
+        const photoItems = photos.map(photo => {
+          const result: any = {
+            id: photo.id,
+            filename: photo.filename,
+            description: photo.description || '',
+            dateCreated: photo.mediaMetadata?.creationTime || '',
+            url: photo.baseUrl,
+            webUrl: photo.productUrl,
+            width: photo.mediaMetadata?.width || '',
+            height: photo.mediaMetadata?.height || '',
+          };
+          
+          // Include location data if available
+          if (photo.locationData) {
+            result.location = {
+              latitude: photo.locationData.latitude,
+              longitude: photo.locationData.longitude,
+              name: photo.locationData.locationName,
+              address: photo.locationData.formattedAddress,
+              city: photo.locationData.city,
+              country: photo.locationData.countryName,
+              region: photo.locationData.region,
+              approximate: photo.locationData.approximate
+            };
+          }
+          
+          return result;
+        });
+        
+        // Return the results
+        return {
+          content: [{ 
+            type: "text", 
+            text: JSON.stringify({
+              albumId: args.albumId,
+              count: photoItems.length,
+              nextPageToken,
+              photos: photoItems,
+            }, null, 2)
+          }]
         };
       }
       
@@ -102,7 +680,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
     }
   } catch (error: unknown) {
-    console.error('[Error]:', error);
+    logger.error('[Error]:', error);
     if (error instanceof McpError) {
       throw error;
     }
@@ -122,11 +700,40 @@ const useStdio = process.argv.includes('--stdio');
 // Store active SSE transports
 const sseTransports = new Map<string, SSEServerTransport>();
 
+// Support resources/list and prompts/list methods which are expected by Claude for Desktop
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: []
+}));
+
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: []
+}));
+
 // Run the server
 async function main() {
   if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)
     console.error('Starting in STDIO mode');
+    
+    // Check token existence
+    try {
+      const tokens = await getFirstAvailableTokens();
+      if (!tokens) {
+        console.error('=================================================================');
+        console.error('WARNING: No authentication tokens found.');
+        console.error('To authenticate:');
+        console.error('1. Start the server in HTTP mode: npm start');
+        console.error('2. Visit http://localhost:3000/auth in your browser');
+        console.error('3. Follow the Google OAuth authentication flow');
+        console.error('4. After authenticating, restart the server in STDIO mode');
+        console.error('=================================================================');
+      } else {
+        console.error('Found valid authentication tokens.');
+      }
+    } catch (error) {
+      console.error('Error checking tokens:', error);
+    }
+    
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error('Google Photos MCP server running on stdio');
