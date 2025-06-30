@@ -58,6 +58,17 @@ A Model Context Protocol (MCP) server for Google Photos integration, allowing Cl
    - Click "Authenticate with Google Photos"
    - Follow the Google OAuth flow to grant access to your photos
 
+### Important Authentication Notes
+
+⚠️ **Authentication must be done in HTTP mode first!** 
+
+Before using this MCP server with Claude Desktop or other STDIO-based clients:
+1. First run the server in HTTP mode: `npm start`
+2. Complete the authentication at `http://localhost:3000/auth`
+3. Only after successful authentication, stop the server and switch to STDIO mode for Claude Desktop
+
+The authentication tokens are stored locally and will persist between server restarts.
+
 ## Testing with MCP Inspector
 
 The MCP Inspector is an interactive developer tool for testing and debugging MCP servers. It allows you to verify your server's functionality before integrating it with clients like Claude or Cursor.
@@ -83,12 +94,14 @@ This step is highly recommended before integrating with Claude Desktop or other 
 
 To use this MCP server with Claude Desktop:
 
-1. Start the server in STDIO mode:
+1. **Ensure you have authenticated first** (see Authentication Notes above)
+
+2. Start the server in STDIO mode:
    ```bash
    npm run stdio
    ```
 
-2. In Claude Desktop, add the MCP server:
+3. In Claude Desktop, add the MCP server:
    - Go to Settings > MCP Servers
    - Select "Edit Config"
    - Add the following configuration:
@@ -109,8 +122,8 @@ To use this MCP server with Claude Desktop:
    }
    ```
 
-3. Save the configuration and restart Claude Desktop
-4. You can now ask Claude to search and fetch photos from your Google Photos account
+4. Save the configuration and restart Claude Desktop
+5. You can now ask Claude to search and fetch photos from your Google Photos account
 
 ## Usage with Cursor IDE
 

@@ -44,8 +44,10 @@ const requiredEnvVars = [
   'GOOGLE_CLIENT_SECRET',
 ];
 
+// Only warn about missing env vars in non-STDIO mode
+const useStdio = process.argv.includes('--stdio');
 requiredEnvVars.forEach(envVar => {
-  if (!process.env[envVar]) {
+  if (!process.env[envVar] && !useStdio) {
     console.warn(`Warning: Required environment variable ${envVar} is not set.`);
   }
 });

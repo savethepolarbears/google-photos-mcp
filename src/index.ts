@@ -713,30 +713,30 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => ({
 async function main() {
   if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)
-    console.error('Starting in STDIO mode');
+    logger.info('Starting in STDIO mode');
     
     // Check token existence
     try {
       const tokens = await getFirstAvailableTokens();
       if (!tokens) {
-        console.error('=================================================================');
-        console.error('WARNING: No authentication tokens found.');
-        console.error('To authenticate:');
-        console.error('1. Start the server in HTTP mode: npm start');
-        console.error('2. Visit http://localhost:3000/auth in your browser');
-        console.error('3. Follow the Google OAuth authentication flow');
-        console.error('4. After authenticating, restart the server in STDIO mode');
-        console.error('=================================================================');
+        logger.warn('=================================================================');
+        logger.warn('WARNING: No authentication tokens found.');
+        logger.warn('To authenticate:');
+        logger.warn('1. Start the server in HTTP mode: npm start');
+        logger.warn('2. Visit http://localhost:3000/auth in your browser');
+        logger.warn('3. Follow the Google OAuth authentication flow');
+        logger.warn('4. After authenticating, restart the server in STDIO mode');
+        logger.warn('=================================================================');
       } else {
-        console.error('Found valid authentication tokens.');
+        logger.info('Found valid authentication tokens.');
       }
     } catch (error) {
-      console.error('Error checking tokens:', error);
+      logger.error('Error checking tokens:', error);
     }
     
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('Google Photos MCP server running on stdio');
+    logger.info('Google Photos MCP server running on stdio');
   } else {
     // Run as HTTP server (for web integration / Cursor IDE)
     const app = express();
@@ -848,24 +848,26 @@ async function main() {
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
       console.log(`MCP endpoint available at: http://localhost:${port}/mcp`);
+      console.log(`Visit http://localhost:${port} for the home page`);
+      console.log(`Visit http://localhost:${port}/auth to authenticate with Google Photos`);
     });
   }
 }
 
 // Handle errors
 process.on('uncaughtException', (error) => {
-  console.error(`Uncaught exception: ${error.message}`);
-  console.error(error.stack || '');
+  logger.error(`Uncaught exception: ${error.message}`);
+  logger.error(error.stack || '');
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error(`Unhandled rejection: ${reason}`);
+  logger.error(`Unhandled rejection: ${reason}`);
   process.exit(1);
 });
 
 // Run the server
 main().catch((error) => {
-  console.error(`Failed to start server: ${error.message}`);
+  logger.error(`Failed to start server: ${error.message}`);
   process.exit(1);
 });

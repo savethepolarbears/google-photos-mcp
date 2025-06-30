@@ -36,3 +36,4 @@ logs/
 coverage/
 
 **/.claude/settings.local.json
+.mcp.json
