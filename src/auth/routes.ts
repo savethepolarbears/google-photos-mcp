@@ -4,6 +4,7 @@ import { createOAuthClient } from '../api/photos.js';
 import { saveTokens } from './tokens.js';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
+import { parseIdToken, resolveUserIdentity } from '../utils/googleUser.js';
 
 // Set up authentication routes
 export function setupAuthRoutes(app: express.Express): void {
@@ -77,19 +78,23 @@ export function setupAuthRoutes(app: express.Express): void {
         return res.status(500).send('Failed to get required tokens');
       }
       
-      // Use email as user ID if available, or a timestamp-based ID
-      const userId = tokens.id_token ? 
-        Buffer.from(tokens.id_token.split('.')[1], 'base64').toString() :
-        `user_${Date.now()}`;
-      
+      const identity = resolveUserIdentity(parseIdToken(tokens.id_token));
+
+      if (!identity.userId) {
+        logger.warn('Could not resolve user identity from ID token, generating fallback ID');
+      }
+
       // Save the tokens
-      await saveTokens(userId, {
+      await saveTokens(identity.userId, {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token,
         expiry_date: tokens.expiry_date || 0,
+        userEmail: identity.email,
+        userId: identity.userId,
+        retrievedAt: Date.now(),
       });
-      
-      logger.info(`Authentication successful for user ID: ${userId}`);
+
+      logger.info(`Authentication successful for user ID: ${identity.userId}${identity.email ? ` (${identity.email})` : ''}`);
       
       // Success page
       res.send(`

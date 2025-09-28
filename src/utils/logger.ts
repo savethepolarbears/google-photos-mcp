@@ -32,7 +32,7 @@ const logger = winston.createLogger({
 
 // Add a stream for using with express-winston
 logger.stream = {
-  // @ts-ignore
+  // @ts-expect-error - express-winston expects a stream-compatible interface
   write: (message: string) => {
     logger.info(message.trim());
   },

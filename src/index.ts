@@ -15,8 +15,17 @@ import {
 import dotenv from 'dotenv';
 // Import the auth routes
 import { setupAuthRoutes } from './auth/routes.js';
-import { getTokens, getFirstAvailableTokens, TokenData } from './auth/tokens.js';
-import { setupOAuthClient, searchPhotosByText, listAlbums, getPhoto, getPhotoAsBase64, getAlbum } from './api/photos.js';
+import { getFirstAvailableTokens, TokenData } from './auth/tokens.js';
+import {
+  setupOAuthClient,
+  searchPhotosByText,
+  searchPhotosByLocation,
+  listAlbums,
+  listAlbumPhotos,
+  getPhoto,
+  getPhotoAsBase64,
+  getAlbum,
+} from './api/photos.js';
 import logger from './utils/logger.js';
 
 // Load environment variables
@@ -199,7 +208,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // First try most recently authenticated user
       tokens = await getFirstAvailableTokens();
       if (tokens) {
-        logger.info('Using available authentication tokens');
+        const tokenOwner = tokens.userEmail || tokens.userId;
+        logger.info(`Using available authentication tokens${tokenOwner ? ` for ${tokenOwner}` : ''}`);
       } else {
         logger.warn('No valid tokens found in tokens.json');
       }
@@ -226,12 +236,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'auth_status':
         // Return authentication status
         return {
-          content: [{ 
-            type: "text", 
+          content: [{
+            type: "text",
             text: JSON.stringify({
               authenticated: !!tokens,
-              message: tokens 
-                ? "Authenticated with Google Photos" 
+              userEmail: tokens?.userEmail,
+              userId: tokens?.userId,
+              message: tokens
+                ? "Authenticated with Google Photos"
                 : "Not authenticated. Please visit http://localhost:3000/auth to authenticate."
             })
           }]
@@ -350,13 +362,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Set up OAuth client
         const oauth2Client = setupOAuthClient(tokens);
         
-        // Search photos by constructing a location query
-        const { photos, nextPageToken } = await searchPhotosByText(
+        // Search photos using dedicated location helper
+        const { photos, nextPageToken } = await searchPhotosByLocation(
           oauth2Client,
-          `location:${args.locationName}`,
+          args.locationName,
           args.pageSize || 25,
-          args.pageToken,
-          true // Always include location for location searches
+          args.pageToken
         );
         
         // Format the result
@@ -594,7 +605,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           albumId: string;
           pageSize?: number;
           pageToken?: string;
-          includeLocation: boolean;
+          includeLocation?: boolean;
         };
 
         if (!args.albumId) {
@@ -620,13 +631,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         // Set up OAuth client
         const oauth2Client = setupOAuthClient(tokens);
         
-        // List album photos
-        const { photos, nextPageToken } = await searchPhotosByText(
+        // List album photos using Google Photos album search
+        const { photos, nextPageToken } = await listAlbumPhotos(
           oauth2Client,
           args.albumId,
           args.pageSize || 25,
           args.pageToken,
-          args.includeLocation
+          args.includeLocation !== false
         );
         
         // Format the result
