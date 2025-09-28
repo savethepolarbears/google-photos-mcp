@@ -1,12 +1,54 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { TokenData } from '../auth/tokens.js';
 import { getPhotoLocation, LocationData } from '../utils/location.js';
 
-// Photo item structure returned by the API
+const photosApi = axios.create({
+  baseURL: 'https://photoslibrary.googleapis.com/v1',
+  timeout: 15000,
+});
+
+function toError(error: unknown, context: string): Error {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError<{ error?: { message?: string } }>;
+    const status = axiosError.response?.status;
+    const message =
+      axiosError.response?.data?.error?.message ||
+      axiosError.response?.statusText ||
+      axiosError.message;
+    return new Error(`Google Photos API ${context} failed${status ? ` (${status})` : ''}: ${message}`);
+  }
+
+  if (error instanceof Error) {
+    return error;
+  }
+
+  return new Error(String(error));
+}
+
+async function getAuthorizedHeaders(auth: OAuth2Client): Promise<Record<string, string>> {
+  try {
+    return await auth.getRequestHeaders();
+  } catch (error) {
+    throw toError(error, 'authorization');
+  }
+}
+
+interface AlbumsListResponse {
+  albums?: Album[];
+  nextPageToken?: string;
+}
+
+interface MediaItemsSearchResponse {
+  mediaItems?: PhotoItem[];
+  nextPageToken?: string;
+}
+
+interface MediaItemResponse extends PhotoItem {}
+
 export interface PhotoItem {
   id: string;
   baseUrl: string;
@@ -32,7 +74,6 @@ export interface PhotoItem {
       status?: string;
     };
   };
-  // Location information if available
   locationData?: LocationData;
 }
 
@@ -46,7 +87,6 @@ export interface Album {
 }
 
 export interface SearchFilter {
-  contentCategory?: string;
   dateFilter?: {
     dates?: Array<{
       year: number;
@@ -66,8 +106,12 @@ export interface SearchFilter {
       };
     }>;
   };
+  contentFilter?: {
+    includedContentCategories?: string[];
+    excludedContentCategories?: string[];
+  };
   mediaTypeFilter?: {
-    mediaTypes: string[];
+    mediaTypes: Array<'ALL_MEDIA' | 'VIDEO' | 'PHOTO'>;
   };
   featureFilter?: {
     includedFeatures: string[];
@@ -83,16 +127,14 @@ export interface SearchParams {
   filters?: SearchFilter;
 }
 
-// Create OAuth client helper function
 export function createOAuthClient(): OAuth2Client {
   return new google.auth.OAuth2(
     config.google.clientId,
     config.google.clientSecret,
-    config.google.redirectUri
+    config.google.redirectUri,
   );
 }
 
-// Set up OAuth client with tokens
 export function setupOAuthClient(tokens: TokenData): OAuth2Client {
   const oauth2Client = createOAuthClient();
   oauth2Client.setCredentials({
@@ -103,61 +145,273 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
   return oauth2Client;
 }
 
-// Fix the function to create the photoslibrary client
 function createPhotosLibraryClient(auth: OAuth2Client) {
-  // Dynamically access the photosLibrary API
   return {
     albums: {
-      list: async (params: any) => {
-        // Make a direct API call since the type system doesn't recognize the client
-        const url = `https://photoslibrary.googleapis.com/v1/albums`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
-        const response = await axios.get(url, { params, headers });
-        return response.data;
+      list: async (params: { pageSize?: number; pageToken?: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.get<AlbumsListResponse>('/albums', {
+            params,
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.list');
+        }
       },
-      get: async (params: any) => {
-        const url = `https://photoslibrary.googleapis.com/v1/albums/${params.albumId}`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
-        const response = await axios.get(url, { headers });
-        return response.data;
-      }
+      get: async (params: { albumId: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.get<Album>(`/albums/${params.albumId}`, {
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.get');
+        }
+      },
     },
     mediaItems: {
-      search: async (params: any) => {
-        const url = `https://photoslibrary.googleapis.com/v1/mediaItems:search`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
+      search: async (params: {
+        requestBody: {
+          albumId?: string;
+          pageSize?: number;
+          pageToken?: string;
+          filters?: SearchFilter;
         };
-        const response = await axios.post(url, params.requestBody, { headers });
-        return response.data;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<MediaItemsSearchResponse>(
+            '/mediaItems:search',
+            params.requestBody,
+            { headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.search');
+        }
       },
-      get: async (params: any) => {
-        const url = `https://photoslibrary.googleapis.com/v1/mediaItems/${params.mediaItemId}`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
-        const response = await axios.get(url, { headers });
-        return response.data;
-      }
-    }
+      get: async (params: { mediaItemId: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.get<MediaItemResponse>(`/mediaItems/${params.mediaItemId}`, {
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.get');
+        }
+      },
+    },
   };
 }
 
-// Replace the direct photoslibrary call with the function
 export function getPhotoClient(auth: OAuth2Client) {
-  // Use our custom function to create the client
   return createPhotosLibraryClient(auth);
 }
 
-// List all albums
+function buildSearchTokens(query: string): string[] {
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .flatMap((token) => token.split(':'))
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+}
+
+function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  const haystack = [
+    photo.filename,
+    photo.description,
+    photo.mediaMetadata?.creationTime,
+    photo.locationData?.locationName,
+    photo.locationData?.formattedAddress,
+    photo.locationData?.city,
+    photo.locationData?.countryName,
+    photo.locationData?.region,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+
+  if (haystack.length === 0) {
+    return false;
+  }
+
+  return tokens.every((token) => haystack.some((value) => value.includes(token)));
+}
+
+function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean {
+  if (!locationQuery) {
+    return true;
+  }
+
+  const location = photo.locationData;
+  if (!location) {
+    return false;
+  }
+
+  const normalized = locationQuery.toLowerCase();
+  const fields = [
+    location.locationName,
+    location.formattedAddress,
+    location.city,
+    location.countryName,
+    location.region,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.toLowerCase());
+
+  return fields.some((value) => value.includes(normalized));
+}
+
+async function enrichPhotosWithLocation(photos: PhotoItem[], includeLocation: boolean, performGeocoding: boolean): Promise<PhotoItem[]> {
+  if (!includeLocation || photos.length === 0) {
+    return photos;
+  }
+
+  const batchSize = 5;
+  for (let i = 0; i < photos.length; i += batchSize) {
+    const batch = photos.slice(i, i + batchSize);
+    await Promise.all(
+      batch.map(async (photo) => {
+        try {
+          const locationData = await getPhotoLocation(photo, performGeocoding);
+          if (locationData) {
+            photo.locationData = locationData;
+          }
+        } catch (error) {
+          logger.debug(
+            `Could not enrich location for photo ${photo.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }),
+    );
+  }
+
+  return photos;
+}
+
+function buildFiltersFromQuery(query: string): SearchFilter {
+  const filters: SearchFilter = {};
+  const categoriesMap: Record<string, string> = {
+    landscapes: 'LANDSCAPES',
+    selfie: 'SELFIES',
+    selfies: 'SELFIES',
+    portrait: 'PORTRAITS',
+    portraits: 'PORTRAITS',
+    animal: 'ANIMALS',
+    animals: 'ANIMALS',
+    pet: 'PETS',
+    pets: 'PETS',
+    flower: 'FLOWERS',
+    flowers: 'FLOWERS',
+    food: 'FOOD',
+    travel: 'TRAVEL',
+    city: 'CITYSCAPES',
+    cityscape: 'CITYSCAPES',
+    landmark: 'LANDMARKS',
+    document: 'DOCUMENTS',
+    documents: 'DOCUMENTS',
+    screenshot: 'SCREENSHOTS',
+    screenshots: 'SCREENSHOTS',
+    utility: 'UTILITY',
+  };
+
+  const includedCategories = new Set<string>();
+  const lowerQuery = query.toLowerCase();
+  Object.entries(categoriesMap).forEach(([term, category]) => {
+    if (lowerQuery.includes(term)) {
+      includedCategories.add(category);
+    }
+  });
+
+  if (includedCategories.size > 0) {
+    filters.contentFilter = {
+      includedContentCategories: Array.from(includedCategories),
+    };
+  }
+
+  const yearRegex = /\b(20\d{2})\b/g;
+  const yearMonthRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/g;
+  const dateRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])\b/g;
+
+  const dates: Array<{ year: number; month?: number; day?: number }> = [];
+  const fullDateMatches = [...query.matchAll(dateRegex)];
+  if (fullDateMatches.length > 0) {
+    for (const match of fullDateMatches) {
+      dates.push({
+        year: parseInt(match[1], 10),
+        month: parseInt(match[2], 10),
+        day: parseInt(match[3], 10),
+      });
+    }
+  } else {
+    const yearMonthMatches = [...query.matchAll(yearMonthRegex)];
+    if (yearMonthMatches.length > 0) {
+      for (const match of yearMonthMatches) {
+        dates.push({
+          year: parseInt(match[1], 10),
+          month: parseInt(match[2], 10),
+        });
+      }
+    } else {
+      const yearMatches = [...query.matchAll(yearRegex)];
+      if (yearMatches.length > 0) {
+        for (const match of yearMatches) {
+          dates.push({
+            year: parseInt(match[1], 10),
+          });
+        }
+      }
+    }
+  }
+
+  if (dates.length > 0) {
+    filters.dateFilter = { dates };
+  }
+
+  const mediaTypes = new Set<'ALL_MEDIA' | 'VIDEO' | 'PHOTO'>();
+  if (lowerQuery.includes('video')) {
+    mediaTypes.add('VIDEO');
+  }
+  if (lowerQuery.includes('photo') || lowerQuery.includes('image')) {
+    mediaTypes.add('PHOTO');
+  }
+
+  if (mediaTypes.size > 0) {
+    filters.mediaTypeFilter = { mediaTypes: Array.from(mediaTypes) };
+  }
+
+  const includedFeatures: string[] = [];
+  if (lowerQuery.includes('favorite')) {
+    includedFeatures.push('FAVORITES');
+  }
+  if (includedFeatures.length > 0) {
+    filters.featureFilter = { includedFeatures };
+  }
+
+  if (
+    !filters.contentFilter &&
+    !filters.dateFilter &&
+    !filters.mediaTypeFilter &&
+    !filters.featureFilter
+  ) {
+    filters.mediaTypeFilter = { mediaTypes: ['ALL_MEDIA'] };
+  }
+
+  return filters;
+}
+
 export async function listAlbums(
   oauth2Client: OAuth2Client,
   pageSize = 50,
-  pageToken?: string
+  pageToken?: string,
 ): Promise<{ albums: Album[]; nextPageToken?: string }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
@@ -167,16 +421,16 @@ export async function listAlbums(
     });
 
     return {
-      albums: response.data.albums || [],
+      albums: response.data.albums ?? [],
       nextPageToken: response.data.nextPageToken,
     };
   } catch (error) {
-    logger.error(`Failed to list albums: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'list albums').message;
+    logger.error(`Failed to list albums: ${message}`);
     throw new Error('Failed to list albums');
   }
 }
 
-// Get a specific album
 export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Promise<Album> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
@@ -190,93 +444,70 @@ export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Pro
 
     return response.data as Album;
   } catch (error) {
-    logger.error(`Failed to get album: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'get album').message;
+    logger.error(`Failed to get album: ${message}`);
     throw new Error('Failed to get album');
   }
 }
 
-// Search for photos with filters
 export async function searchPhotos(
   oauth2Client: OAuth2Client,
   params: SearchParams,
-  includeLocation: boolean = false
+  includeLocation: boolean = false,
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
     const response = await photosClient.mediaItems.search({
       requestBody: {
         albumId: params.albumId,
-        pageSize: params.pageSize || 25,
+        pageSize: params.pageSize ?? 25,
         pageToken: params.pageToken,
         filters: params.filters,
       },
     });
 
-    const photos = response.data.mediaItems || [];
-    
-    // If location data is requested, attempt to get location for each photo
-    if (includeLocation && photos.length > 0) {
-      // Process in batches to avoid making too many requests at once
-      const batchSize = 5;
-      for (let i = 0; i < photos.length; i += batchSize) {
-        const batch = photos.slice(i, i + batchSize);
-        
-        // Process each photo in the batch in parallel
-        await Promise.all(
-          batch.map(async (photo) => {
-            try {
-              const locationData = await getPhotoLocation(photo, false);
-              if (locationData) {
-                (photo as PhotoItem).locationData = locationData;
-              }
-            } catch (locError) {
-              // Continue without location data
-              logger.debug(`Could not get location for photo ${photo.id}: ${locError instanceof Error ? locError.message : String(locError)}`);
-            }
-          })
-        );
-      }
-    }
+    const photos = (response.data.mediaItems ?? []) as PhotoItem[];
+    await enrichPhotosWithLocation(photos, includeLocation, false);
 
     return {
-      photos: photos as PhotoItem[],
+      photos,
       nextPageToken: response.data.nextPageToken,
     };
   } catch (error) {
-    logger.error(`Failed to search photos: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'search photos').message;
+    logger.error(`Failed to search photos: ${message}`);
     throw new Error('Failed to search photos');
   }
 }
 
-// List photos in an album
 export async function listAlbumPhotos(
   oauth2Client: OAuth2Client,
   albumId: string,
   pageSize = 25,
   pageToken?: string,
-  includeLocation: boolean = false
+  includeLocation: boolean = false,
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
     return await searchPhotos(
-      oauth2Client, 
+      oauth2Client,
       {
         albumId,
         pageSize,
         pageToken,
       },
-      includeLocation
+      includeLocation,
     );
   } catch (error) {
-    logger.error(`Failed to list album photos: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'list album photos').message;
+    logger.error(`Failed to list album photos: ${message}`);
     throw new Error('Failed to list album photos');
   }
 }
 
-// Get a specific photo by ID
 export async function getPhoto(
-  oauth2Client: OAuth2Client, 
+  oauth2Client: OAuth2Client,
   photoId: string,
-  includeLocation: boolean = true
+  includeLocation: boolean = true,
 ): Promise<PhotoItem> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
@@ -289,154 +520,111 @@ export async function getPhoto(
     }
 
     const photo = response.data as PhotoItem;
-    
-    // Attempt to get location data if requested
+
     if (includeLocation) {
       try {
         const locationData = await getPhotoLocation(photo, true);
         if (locationData) {
           photo.locationData = locationData;
         }
-      } catch (locError) {
-        logger.warn(`Could not get location data for photo ${photoId}: ${locError instanceof Error ? locError.message : String(locError)}`);
-        // Continue without location data
+      } catch (error) {
+        logger.warn(
+          `Could not get location data for photo ${photoId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
     return photo;
   } catch (error) {
-    logger.error(`Failed to get photo: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'get photo').message;
+    logger.error(`Failed to get photo: ${message}`);
     throw new Error('Failed to get photo');
   }
 }
 
-// Get a photo as base64 data
 export async function getPhotoAsBase64(url: string): Promise<string> {
+  if (!url) {
+    throw new Error('Invalid photo URL');
+  }
+
   try {
-    // Append '=d' to get the full-resolution image
     const fullResUrl = `${url}=d`;
-    const response = await axios.get(fullResUrl, { responseType: 'arraybuffer' });
-    const buffer = Buffer.from(response.data, 'binary');
+    const response = await axios.get<ArrayBuffer>(fullResUrl, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data);
     return buffer.toString('base64');
   } catch (error) {
-    logger.error(`Failed to get photo as base64: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'download photo data').message;
+    logger.error(`Failed to get photo as base64: ${message}`);
     throw new Error('Failed to get photo as base64');
   }
 }
 
-// Search photos by text (content category and date filters)
 export async function searchPhotosByText(
   oauth2Client: OAuth2Client,
   query: string,
   pageSize = 25,
   pageToken?: string,
-  includeLocation: boolean = false
+  includeLocation: boolean = false,
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
-    const filters: SearchFilter = {};
-    
-    // Parse query for content categories
-    const contentCategories = [
-      'landscapes', 'selfies', 'portraits', 'animals',
-      'pets', 'flowers', 'food', 'travel', 'cityscapes',
-      'landmarks', 'documents', 'screenshots', 'utility'
-    ];
-    
-    for (const category of contentCategories) {
-      if (query.toLowerCase().includes(category.toLowerCase())) {
-        filters.contentCategory = category.toUpperCase();
-        break;
-      }
-    }
-    
-    // Parse query for dates (simple formats)
-    const yearRegex = /\b(20\d{2})\b/g;
-    const yearMonthRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/g;
-    const dateRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])\b/g;
-    
-    const dates: Array<{year: number; month?: number; day?: number}> = [];
-    
-    // Check for full dates
-    const fullDateMatches = [...query.matchAll(dateRegex)];
-    if (fullDateMatches.length > 0) {
-      for (const match of fullDateMatches) {
-        dates.push({
-          year: parseInt(match[1], 10),
-          month: parseInt(match[2], 10),
-          day: parseInt(match[3], 10),
-        });
-      }
-    } 
-    // Check for year/month
-    else {
-      const yearMonthMatches = [...query.matchAll(yearMonthRegex)];
-      if (yearMonthMatches.length > 0) {
-        for (const match of yearMonthMatches) {
-          dates.push({
-            year: parseInt(match[1], 10),
-            month: parseInt(match[2], 10),
-          });
-        }
-      } 
-      // Check for year only
-      else {
-        const yearMatches = [...query.matchAll(yearRegex)];
-        if (yearMatches.length > 0) {
-          for (const match of yearMatches) {
-            dates.push({
-              year: parseInt(match[1], 10),
-            });
-          }
-        }
-      }
-    }
-    
-    if (dates.length > 0) {
-      filters.dateFilter = { dates };
-    }
-    
-    // Parse query for media types
-    const mediaTypes: string[] = [];
-    if (query.toLowerCase().includes('photo') || query.toLowerCase().includes('image')) {
-      mediaTypes.push('PHOTO');
-    }
-    if (query.toLowerCase().includes('video')) {
-      mediaTypes.push('VIDEO');
-    }
-    
-    if (mediaTypes.length > 0) {
-      filters.mediaTypeFilter = { mediaTypes };
-    }
-    
-    // Parse query for features
-    const features: string[] = [];
-    if (query.toLowerCase().includes('favorite')) {
-      features.push('FAVORITES');
-    }
-    
-    if (features.length > 0) {
-      filters.featureFilter = { includedFeatures: features };
-    }
-    
-    // Check for location-related terms
-    const includeLocationSearch = includeLocation || 
-      query.toLowerCase().includes('location') ||
-      query.toLowerCase().includes('place') || 
-      query.toLowerCase().includes('where') ||
-      query.toLowerCase().includes('near') ||
-      query.toLowerCase().includes('at');
-    
-    return await searchPhotos(
-      oauth2Client, 
+    const trimmedQuery = query.trim();
+    const filters = buildFiltersFromQuery(trimmedQuery);
+
+    const includeLocationSearch =
+      includeLocation ||
+      /\b(location|place|where|near|at)\b/i.test(trimmedQuery);
+
+    const { photos, nextPageToken } = await searchPhotos(
+      oauth2Client,
       {
         pageSize,
         pageToken,
-        filters: Object.keys(filters).length > 0 ? filters : undefined,
+        filters,
       },
-      includeLocationSearch
+      includeLocationSearch,
     );
+
+    const tokens = buildSearchTokens(trimmedQuery);
+    const filteredPhotos = photos.filter((photo) => matchesSearchTokens(photo, tokens));
+
+    return {
+      photos: filteredPhotos,
+      nextPageToken,
+    };
   } catch (error) {
-    logger.error(`Failed to search photos by text: ${error instanceof Error ? error.message : String(error)}`);
+    const message = toError(error, 'search photos by text').message;
+    logger.error(`Failed to search photos by text: ${message}`);
     throw new Error('Failed to search photos by text');
+  }
+}
+
+export async function searchPhotosByLocation(
+  oauth2Client: OAuth2Client,
+  locationName: string,
+  pageSize = 25,
+  pageToken?: string,
+): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
+  const normalizedLocation = locationName.trim().toLowerCase();
+  try {
+    const { photos, nextPageToken } = await searchPhotos(
+      oauth2Client,
+      {
+        pageSize,
+        pageToken,
+        filters: { mediaTypeFilter: { mediaTypes: ['ALL_MEDIA'] } },
+      },
+      true,
+    );
+
+    const filtered = photos.filter((photo) => matchesLocationQuery(photo, normalizedLocation));
+
+    return {
+      photos: filtered,
+      nextPageToken,
+    };
+  } catch (error) {
+    const message = toError(error, 'search photos by location').message;
+    logger.error(`Failed to search photos by location: ${message}`);
+    throw new Error('Failed to search photos by location');
   }
 }
