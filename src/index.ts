@@ -15,8 +15,8 @@ import {
 import dotenv from 'dotenv';
 // Import the auth routes
 import { setupAuthRoutes } from './auth/routes.js';
-import { getTokens, getFirstAvailableTokens, TokenData } from './auth/tokens.js';
-import { setupOAuthClient, searchPhotosByText, listAlbums, getPhoto, getPhotoAsBase64, getAlbum } from './api/photos.js';
+import { getFirstAvailableTokens, TokenData } from './auth/tokens.js';
+import { setupOAuthClient, searchPhotosByText, listAlbums, getPhoto, getPhotoAsBase64, getAlbum, listAlbumPhotos } from './api/photos.js';
 import logger from './utils/logger.js';
 
 // Load environment variables
@@ -594,7 +594,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           albumId: string;
           pageSize?: number;
           pageToken?: string;
-          includeLocation: boolean;
+          includeLocation?: boolean;
         };
 
         if (!args.albumId) {
@@ -621,12 +621,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const oauth2Client = setupOAuthClient(tokens);
         
         // List album photos
-        const { photos, nextPageToken } = await searchPhotosByText(
+        const { photos, nextPageToken } = await listAlbumPhotos(
           oauth2Client,
           args.albumId,
           args.pageSize || 25,
           args.pageToken,
-          args.includeLocation
+          args.includeLocation !== false
         );
         
         // Format the result

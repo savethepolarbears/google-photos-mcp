@@ -30,12 +30,10 @@ const logger = winston.createLogger({
   transports: transports,
 });
 
-// Add a stream for using with express-winston
-logger.stream = {
-  // @ts-ignore
+export default logger;
+
+export const loggerStream = {
   write: (message: string) => {
     logger.info(message.trim());
   },
 };
-
-export default logger;

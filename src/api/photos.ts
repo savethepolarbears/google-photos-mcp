@@ -105,45 +105,53 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
 
 // Fix the function to create the photoslibrary client
 function createPhotosLibraryClient(auth: OAuth2Client) {
+  const getAuthHeaders = async () => {
+    const accessTokenResult = await auth.getAccessToken();
+    const token = typeof accessTokenResult === 'string'
+      ? accessTokenResult
+      : accessTokenResult?.token;
+
+    if (!token) {
+      throw new Error('Unable to retrieve Google Photos access token');
+    }
+
+    return {
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  const wrapResponse = <T>(data: T) => ({ data });
+
   // Dynamically access the photosLibrary API
   return {
     albums: {
       list: async (params: any) => {
-        // Make a direct API call since the type system doesn't recognize the client
-        const url = `https://photoslibrary.googleapis.com/v1/albums`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
+        const url = 'https://photoslibrary.googleapis.com/v1/albums';
+        const headers = await getAuthHeaders();
         const response = await axios.get(url, { params, headers });
-        return response.data;
+        return wrapResponse(response.data);
       },
       get: async (params: any) => {
         const url = `https://photoslibrary.googleapis.com/v1/albums/${params.albumId}`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
+        const headers = await getAuthHeaders();
         const response = await axios.get(url, { headers });
-        return response.data;
-      }
+        return wrapResponse(response.data);
+      },
     },
     mediaItems: {
       search: async (params: any) => {
-        const url = `https://photoslibrary.googleapis.com/v1/mediaItems:search`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
+        const url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search';
+        const headers = await getAuthHeaders();
         const response = await axios.post(url, params.requestBody, { headers });
-        return response.data;
+        return wrapResponse(response.data);
       },
       get: async (params: any) => {
         const url = `https://photoslibrary.googleapis.com/v1/mediaItems/${params.mediaItemId}`;
-        const headers = {
-          Authorization: `Bearer ${(await auth.getAccessToken()).token}`
-        };
+        const headers = await getAuthHeaders();
         const response = await axios.get(url, { headers });
-        return response.data;
-      }
-    }
+        return wrapResponse(response.data);
+      },
+    },
   };
 }
 
