@@ -11,7 +11,12 @@ export const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     redirectUri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/callback',
     scopes: [
+      // Note: As of March 31, 2025, photoslibrary.readonly scope is deprecated
+      // This will only allow access to app-created photos and albums
+      // For full library access, users should use the Google Photos Picker API
       'https://www.googleapis.com/auth/photoslibrary.readonly',
+      // Alternative scope for 2025+ (requires app-created content only)
+      // 'https://www.googleapis.com/auth/photoslibrary.appendonly',
     ],
   },
   

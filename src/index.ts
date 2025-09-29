@@ -724,8 +724,9 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => ({
 async function main() {
   if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)
-    logger.info('Starting in STDIO mode');
-    
+    // In STDIO mode, all logging must go to stderr to avoid breaking the MCP protocol
+    logger.info('Starting Google Photos MCP server in STDIO mode');
+
     // Check token existence
     try {
       const tokens = await getFirstAvailableTokens();
@@ -744,10 +745,10 @@ async function main() {
     } catch (error) {
       logger.error('Error checking tokens:', error);
     }
-    
+
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    logger.info('Google Photos MCP server running on stdio');
+    logger.info('Google Photos MCP server connected via STDIO');
   } else {
     // Run as HTTP server (for web integration / Cursor IDE)
     const app = express();
@@ -786,6 +787,12 @@ async function main() {
             <div class="container">
               <h1>Google Photos MCP Server</h1>
               <p>Welcome to the Google Photos MCP Server. This service allows AI assistants like Claude to access and work with your Google Photos library.</p>
+              <div style="background-color: #fff3cd; border-color: #ffeaa7; color: #856404; padding: 15px; border-radius: 4px; margin: 15px 0;">
+                <strong>⚠️ Important Notice (2025 API Changes):</strong><br>
+                As of March 31, 2025, Google Photos API access is limited to app-created content only.
+                This MCP server may have limited functionality with your existing photos.
+                For full library access, Google recommends using the Photos Picker API.
+              </div>
               <p>To get started, you need to authenticate with Google Photos:</p>
               <a href="/auth" class="btn">Authenticate with Google Photos</a>
             </div>
@@ -819,7 +826,7 @@ async function main() {
         
         await server.connect(transport);
       } catch (error) {
-        console.error('Error setting up SSE:', error);
+        logger.error(`Error setting up SSE: ${error instanceof Error ? error.message : String(error)}`);
         res.status(500).send('Failed to set up SSE connection');
       }
     });
@@ -842,7 +849,7 @@ async function main() {
         // Handle the POST message
         await transport.handlePostMessage(req, res);
       } catch (error) {
-        console.error('Error handling POST:', error);
+        logger.error(`Error handling POST: ${error instanceof Error ? error.message : String(error)}`);
         if (!res.headersSent) {
           res.status(500).send('Internal server error');
         }
@@ -857,10 +864,10 @@ async function main() {
     // Start HTTP server
     const port = process.env.PORT || 3000;
     app.listen(port, () => {
-      console.log(`Server running on port ${port}`);
-      console.log(`MCP endpoint available at: http://localhost:${port}/mcp`);
-      console.log(`Visit http://localhost:${port} for the home page`);
-      console.log(`Visit http://localhost:${port}/auth to authenticate with Google Photos`);
+      logger.info(`HTTP server running on port ${port}`);
+      logger.info(`MCP endpoint available at: http://localhost:${port}/mcp`);
+      logger.info(`Visit http://localhost:${port} for the home page`);
+      logger.info(`Visit http://localhost:${port}/auth to authenticate with Google Photos`);
     });
   }
 }

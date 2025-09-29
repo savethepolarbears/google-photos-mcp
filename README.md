@@ -2,12 +2,18 @@
 
 A Model Context Protocol (MCP) server for Google Photos integration, allowing Claude and other AI assistants to access and work with your Google Photos library.
 
+## ⚠️ Important Notice: 2025 Google Photos API Changes
+
+**As of March 31, 2025, Google Photos API access is limited to app-created content only.** This MCP server may have limited functionality with your existing photos. For full library access, Google now recommends using the Photos Picker API.
+
 ## Features
 
 - Search photos by content, date, location
 - Get location data for photos (approximate, based on descriptions)
 - Fetch specific photos by ID
 - List albums and photo collections
+- Proper STDIO mode support for Claude Desktop (fixed JSON parsing issues)
+- Enhanced error handling and 2025 API compatibility warnings
 - Works with Claude Desktop, Cursor IDE, and other MCP-compatible clients through the MCP standard
 
 ## Prerequisites
@@ -147,6 +153,43 @@ Alternatively, for HTTP mode:
    - Enter the server URL: `http://localhost:3000/mcp`
    - Name it "Google Photos"
    - Click "Save"
+
+## Troubleshooting
+
+### JSON Parsing Errors in STDIO Mode (Issue #2)
+
+**Fixed in latest version!** If you're getting errors like "Unexpected token 'S', 'Server run'..." when using the MCP Inspector:
+
+1. Make sure you're using the latest version of this server
+2. The issue was caused by console output going to stdout instead of stderr in STDIO mode
+3. All logging now properly goes to stderr when using `--stdio` flag
+
+### Authentication Endpoint Not Working (Issue #1)
+
+**Fixed in latest version!** The `/auth` endpoint and HTML page are now properly configured:
+
+1. Start the server in HTTP mode: `npm start`
+2. Visit `http://localhost:3000/auth` in your browser
+3. Follow the Google OAuth flow
+4. After authentication, switch to STDIO mode for Claude Desktop usage
+
+### Limited Photo Access (2025 API Changes)
+
+Due to Google Photos API changes effective March 31, 2025:
+
+1. **Expected behavior**: You may only see limited photos (app-created content)
+2. **This is not a bug**: Google has restricted API access to app-created content only
+3. **Solution**: For full photo library access, Google recommends using the Photos Picker API
+4. **Current workaround**: This server still works but with limited scope
+
+### Permission Denied Errors
+
+If you get 403 PERMISSION_DENIED errors:
+
+1. Check that your Google Cloud project has the Photos Library API enabled
+2. Verify your OAuth credentials are correct in the `.env` file
+3. Make sure you've completed the authentication flow via `/auth`
+4. Note: Due to 2025 API changes, some functionality may be limited
 
 ## Integration with Smithery
 

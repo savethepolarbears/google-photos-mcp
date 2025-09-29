@@ -19,6 +19,16 @@ function toError(error: unknown, context: string): Error {
       axiosError.response?.data?.error?.message ||
       axiosError.response?.statusText ||
       axiosError.message;
+
+    // Check for 2025 API scope deprecation errors
+    if (status === 403 && message?.includes('PERMISSION_DENIED')) {
+      return new Error(
+        `Google Photos API ${context} failed (${status}): ${message}. ` +
+        'NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. ' +
+        'For full photo library access, please use the Google Photos Picker API.'
+      );
+    }
+
     return new Error(`Google Photos API ${context} failed${status ? ` (${status})` : ''}: ${message}`);
   }
 

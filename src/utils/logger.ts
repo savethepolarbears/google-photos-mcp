@@ -18,8 +18,13 @@ const transports: winston.transport[] = [
   new winston.transports.File({ filename: 'combined.log' }),
 ];
 
-// Only add Console transport if not in STDIO mode
-if (!useStdio) {
+// In STDIO mode, send console output to stderr to avoid interfering with MCP protocol
+if (useStdio) {
+  transports.push(new winston.transports.Console({
+    stderrLevels: ['error', 'warn', 'info', 'debug', 'verbose', 'silly']
+  }));
+} else {
+  // In HTTP mode, use normal console output
   transports.push(new winston.transports.Console());
 }
 
