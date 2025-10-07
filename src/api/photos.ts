@@ -222,7 +222,7 @@ export function getPhotoClient(auth: OAuth2Client) {
   return createPhotosLibraryClient(auth);
 }
 
-function buildSearchTokens(query: string): string[] {
+export function buildSearchTokens(query: string): string[] {
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -231,7 +231,7 @@ function buildSearchTokens(query: string): string[] {
     .filter((token) => token.length > 0);
 }
 
-function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
+export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
   if (tokens.length === 0) {
     return true;
   }
@@ -253,7 +253,25 @@ function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
     return false;
   }
 
-  return tokens.every((token) => haystack.some((value) => value.includes(token)));
+  const matchedTokens = tokens.filter((token) =>
+    haystack.some((value) => value.includes(token.toLowerCase())),
+  );
+
+  return matchedTokens.length > 0;
+}
+
+export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): PhotoItem[] {
+  if (tokens.length === 0) {
+    return photos;
+  }
+
+  const filtered = photos.filter((photo) => matchesSearchTokens(photo, tokens));
+
+  if (filtered.length === 0) {
+    return photos;
+  }
+
+  return filtered;
 }
 
 function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean {
@@ -595,7 +613,7 @@ export async function searchPhotosByText(
     );
 
     const tokens = buildSearchTokens(trimmedQuery);
-    const filteredPhotos = photos.filter((photo) => matchesSearchTokens(photo, tokens));
+    const filteredPhotos = filterPhotosByTokens(photos, tokens);
 
     return {
       photos: filteredPhotos,

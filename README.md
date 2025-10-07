@@ -238,6 +238,10 @@ keywords:
   - includeLocation: boolean (optional, default: true)
   ```
 
+  Text queries are applied to filenames, descriptions, timestamps, and available location metadata. Tokens that do not appear in
+  any searchable field are ignored so that stop-words or date fragments do not filter out valid items, and if metadata filteri
+  ng would otherwise remove every item returned by Google Photos the original API response is preserved.
+
 - `search_photos_by_location`: Search for photos based on location
   ```
   Parameters:

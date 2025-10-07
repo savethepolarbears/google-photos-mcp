@@ -10,7 +10,8 @@
     "dev": "node --loader ts-node/esm src/index.ts",
     "stdio": "node dist/index.js --stdio",
     "lint": "eslint . --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "node --loader ts-node/esm test/photos.test.ts"
   },
   "keywords": [
     "mcp",
