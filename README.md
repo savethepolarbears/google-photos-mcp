@@ -16,6 +16,15 @@ A Model Context Protocol (MCP) server for Google Photos integration, allowing Cl
 - Enhanced error handling and 2025 API compatibility warnings
 - Works with Claude Desktop, Cursor IDE, and other MCP-compatible clients through the MCP standard
 
+### Text search behavior
+
+- Search queries are tokenized on whitespace/`:` and compared against photo filenames, descriptions, timestamps, and any cached
+  location metadata.
+- Tokens that do not appear in any searchable fields are ignored so that queries like `vacation 2023` still surface "vacation"
+  matches even when the year is missing from the metadata.
+- When none of the tokens match, the server falls back to the Google Photos API response instead of returning an empty result
+  set, preserving the original ordering for broad or unmatched queries.
+
 ## Prerequisites
 
 - Node.js 18 or newer

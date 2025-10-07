@@ -253,7 +253,32 @@ function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
     return false;
   }
 
-  return tokens.every((token) => haystack.some((value) => value.includes(token)));
+  const matchedTokens = new Set<string>();
+
+  for (const token of tokens) {
+    for (const value of haystack) {
+      if (value.includes(token)) {
+        matchedTokens.add(token);
+        break;
+      }
+    }
+  }
+
+  return matchedTokens.size > 0;
+}
+
+export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): PhotoItem[] {
+  if (tokens.length === 0) {
+    return photos;
+  }
+
+  const filtered = photos.filter((photo) => matchesSearchTokens(photo, tokens));
+
+  if (filtered.length === 0) {
+    return photos;
+  }
+
+  return filtered;
 }
 
 function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean {
@@ -595,7 +620,7 @@ export async function searchPhotosByText(
     );
 
     const tokens = buildSearchTokens(trimmedQuery);
-    const filteredPhotos = photos.filter((photo) => matchesSearchTokens(photo, tokens));
+    const filteredPhotos = filterPhotosByTokens(photos, tokens);
 
     return {
       photos: filteredPhotos,
