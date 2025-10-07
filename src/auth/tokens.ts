@@ -31,8 +31,13 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
       logger.info('Creating new tokens storage file');
     }
     
-    // Update tokens for this user
-    allTokens[userId] = tokens;
+    // Update tokens for this user and ensure we track retrieval time
+    const timestamp = Date.now();
+    const tokensWithTimestamp: TokenData = {
+      ...tokens,
+      retrievedAt: timestamp,
+    };
+    allTokens[userId] = tokensWithTimestamp;
     
     // Write back to file
     await fs.writeFile(config.tokens.path, JSON.stringify(allTokens, null, 2));
@@ -48,33 +53,51 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
  * If useDefault is true and the specific userId's tokens aren't found,
  * it will return the first available tokens
  */
+const isValidToken = (entry: unknown): entry is TokenData => (
+  !!entry &&
+  typeof entry === 'object' &&
+  'access_token' in entry &&
+  'refresh_token' in entry &&
+  'expiry_date' in entry
+);
+
+const getNewestValidToken = (
+  allTokens: Record<string, unknown>,
+): [string, TokenData] | null => {
+  const validEntries = Object.entries(allTokens)
+    .filter(([, entry]) => isValidToken(entry)) as [string, TokenData][];
+
+  if (validEntries.length === 0) {
+    return null;
+  }
+
+  validEntries.sort(([, a], [, b]) => {
+    const aTime = typeof a.retrievedAt === 'number' ? a.retrievedAt : 0;
+    const bTime = typeof b.retrievedAt === 'number' ? b.retrievedAt : 0;
+    return bTime - aTime;
+  });
+
+  return validEntries[0];
+};
+
 export async function getTokens(userId: string, useDefault: boolean = false): Promise<TokenData | null> {
   try {
     const data = await fs.readFile(config.tokens.path, 'utf-8');
-    const allTokens: Record<string, any> = JSON.parse(data);
-    
-    // Helper function to check if an entry contains valid token data
-    const isValidToken = (entry: any): boolean => (
-      entry && 
-      typeof entry === 'object' && 
-      'access_token' in entry && 
-      'refresh_token' in entry &&
-      'expiry_date' in entry
-    );
-    
+    const allTokens: Record<string, unknown> = JSON.parse(data);
+
     // If we have tokens for this specific user, return them if they're valid
     if (allTokens[userId] && isValidToken(allTokens[userId])) {
       return allTokens[userId] as TokenData;
     }
-    
+
     // If useDefault is true, look for any valid tokens
     if (useDefault) {
-      const validUserIds = Object.keys(allTokens).filter(key => isValidToken(allTokens[key]));
-      
-      if (validUserIds.length > 0) {
-        const firstUserId = validUserIds[0];
-        logger.debug(`Using default tokens from user ${firstUserId}`);
-        return allTokens[firstUserId] as TokenData;
+      const newest = getNewestValidToken(allTokens);
+
+      if (newest) {
+        const [selectedUserId, tokens] = newest;
+        logger.debug(`Using default tokens from user ${selectedUserId}`);
+        return tokens;
       }
     }
     
@@ -107,22 +130,14 @@ export async function getFirstAvailableTokens(): Promise<TokenData | null> {
       return null;
     }
     
-    const allTokens: Record<string, any> = JSON.parse(data);
-    
-    // Filter out any non-token entries (like "web" client details)
-    const validUserIds = Object.keys(allTokens).filter(key => 
-      allTokens[key] && 
-      typeof allTokens[key] === 'object' && 
-      'access_token' in allTokens[key] && 
-      'refresh_token' in allTokens[key] &&
-      'expiry_date' in allTokens[key]
-    );
-    
-    // Return the first available valid tokens
-    if (validUserIds.length > 0) {
-      const firstUserId = validUserIds[0];
-      logger.debug(`Using tokens from user ${firstUserId}`);
-      return allTokens[firstUserId] as TokenData;
+    const allTokens: Record<string, unknown> = JSON.parse(data);
+
+    const newest = getNewestValidToken(allTokens);
+
+    if (newest) {
+      const [selectedUserId, tokens] = newest;
+      logger.debug(`Using tokens from user ${selectedUserId}`);
+      return tokens;
     }
     
     // No valid tokens found
