@@ -236,6 +236,14 @@ export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean
     return true;
   }
 
+  const normalizedTokens = tokens
+    .map((token) => token.toLowerCase().trim())
+    .filter((token) => token.length > 0);
+
+  if (normalizedTokens.length === 0) {
+    return true;
+  }
+
   const haystack = [
     photo.filename,
     photo.description,
@@ -253,11 +261,18 @@ export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean
     return false;
   }
 
-  const matchedTokens = tokens.filter((token) =>
-    haystack.some((value) => value.includes(token.toLowerCase())),
-  );
+  const matchedTokens = new Set<string>();
 
-  return matchedTokens.length > 0;
+  for (const token of normalizedTokens) {
+    for (const value of haystack) {
+      if (value.includes(token)) {
+        matchedTokens.add(token);
+        break;
+      }
+    }
+  }
+
+  return matchedTokens.size > 0;
 }
 
 export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): PhotoItem[] {

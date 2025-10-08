@@ -11,7 +11,7 @@
     "stdio": "node dist/index.js --stdio",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "node --loader ts-node/esm test/photos.test.ts"
+    "test": "node --loader ts-node/esm --test src/api/__tests__/photos.test.ts && node --loader ts-node/esm test/photos.test.ts"
   },
   "keywords": [
     "mcp",
