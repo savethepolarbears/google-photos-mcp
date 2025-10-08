@@ -1,0 +1,73 @@
+# DXT packaging ignore file - similar to .gitignore but for DXT packages
+
+# Development files
+src/
+tsconfig.json
+.eslintrc.js
+prettier.config.js
+
+# Testing and development
+test/
+test-mcp/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Build artifacts (keep dist/ for production)
+# dist/  # Don't ignore dist/ - it's needed for the extension
+
+# Logs
+*.log
+logs/
+combined.log
+error.log
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Node modules (should be bundled for DXT)
+# node_modules/  # Include node_modules for self-contained DXT
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git files
+.git/
+.gitignore
+
+# Package management
+*.tgz
+*.tar.gz
+package-lock.json
+
+# Development documentation
+DEVELOPMENT.md
+CONTRIBUTING.md
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Authentication tokens (these should be created by user)
+# tokens.json  # Don't ignore - needed for authentication
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Smithery config
+smithery.yaml

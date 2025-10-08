@@ -1,0 +1,81 @@
+{
+  "dxt_version": "0.1",
+  "name": "google-photos-mcp",
+  "version": "0.1.0",
+  "display_name": "Google Photos MCP",
+  "description": "Access and search your Google Photos library with Claude",
+  "long_description": "This extension allows Claude to search and interact with your Google Photos library. Features include:\n\n- Search photos by content, keywords, dates, and locations\n- Get detailed information about specific photos\n- List and browse photo albums\n- Access location data for photos (when available)\n- Export photo information in various formats\n\nRequires Google Photos authentication via OAuth2 flow.",
+  "author": {
+    "name": "Google Photos MCP"
+  },
+  "license": "MIT",
+  "keywords": [
+    "google-photos",
+    "photos",
+    "search",
+    "albums",
+    "media",
+    "image",
+    "location"
+  ],
+  "icon": "./icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js", "--stdio"]
+    }
+  },
+  "tools": [
+    {
+      "name": "auth_status",
+      "description": "Check authentication status with Google Photos"
+    },
+    {
+      "name": "search_photos",
+      "description": "Search for photos based on text queries"
+    },
+    {
+      "name": "search_photos_by_location",
+      "description": "Search for photos based on location name"
+    },
+    {
+      "name": "get_photo",
+      "description": "Get details of a specific photo by ID"
+    },
+    {
+      "name": "list_albums",
+      "description": "List all photo albums"
+    },
+    {
+      "name": "get_album",
+      "description": "Get details of a specific album by ID"
+    },
+    {
+      "name": "list_album_photos",
+      "description": "List photos in a specific album"
+    }
+  ],
+  "user_config": {
+    "properties": {
+      "include_location": {
+        "type": "boolean",
+        "description": "Include location data in photo searches by default",
+        "default": true
+      },
+      "default_page_size": {
+        "type": "number",
+        "description": "Default number of items to return in paginated requests",
+        "default": 25,
+        "minimum": 1,
+        "maximum": 100
+      }
+    }
+  },
+  "compatibility": {
+    "min_dxt_version": "0.1",
+    "platforms": ["darwin", "linux", "win32"],
+    "node_version": ">=18.0.0"
+  }
+}
