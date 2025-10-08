@@ -222,7 +222,7 @@ export function getPhotoClient(auth: OAuth2Client) {
   return createPhotosLibraryClient(auth);
 }
 
-function buildSearchTokens(query: string): string[] {
+export function buildSearchTokens(query: string): string[] {
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -231,8 +231,16 @@ function buildSearchTokens(query: string): string[] {
     .filter((token) => token.length > 0);
 }
 
-function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
+export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
   if (tokens.length === 0) {
+    return true;
+  }
+
+  const normalizedTokens = tokens
+    .map((token) => token.toLowerCase().trim())
+    .filter((token) => token.length > 0);
+
+  if (normalizedTokens.length === 0) {
     return true;
   }
 
@@ -255,7 +263,7 @@ function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
 
   const matchedTokens = new Set<string>();
 
-  for (const token of tokens) {
+  for (const token of normalizedTokens) {
     for (const value of haystack) {
       if (value.includes(token)) {
         matchedTokens.add(token);
