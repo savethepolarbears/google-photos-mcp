@@ -6,7 +6,12 @@ import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { parseIdToken, resolveUserIdentity } from '../utils/googleUser.js';
 
-// Set up authentication routes
+/**
+ * Sets up the authentication routes for the Express application.
+ * Handles the OAuth 2.0 flow with Google, including redirection and callback handling.
+ *
+ * @param app - The Express application instance.
+ */
 export function setupAuthRoutes(app: express.Express): void {
   // Store state tokens to prevent CSRF attacks
   const authStates = new Map<string, { expires: number }>();

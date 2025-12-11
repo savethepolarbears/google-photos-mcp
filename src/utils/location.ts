@@ -1,20 +1,35 @@
 import axios from 'axios';
 import logger from './logger.js';
 
+/**
+ * Interface representing location data extracted or enriched for a photo.
+ */
 export interface LocationData {
+  /** Latitude coordinate */
   latitude?: number;
+  /** Longitude coordinate */
   longitude?: number;
+  /** Name of the location (e.g., "Eiffel Tower") */
   locationName?: string;
+  /** Full formatted address */
   formattedAddress?: string;
+  /** Country name */
   countryName?: string;
+  /** City or town name */
   city?: string;
+  /** State or region */
   region?: string;
+  /** Indicates if the location is approximate (true) or precise (false) */
   approximate: boolean;
 }
 
 /**
- * Extract any available location data from a photo
- * Note: Google Photos API does not provide precise location data via the API
+ * Extract any available location data from a photo object.
+ * Note: Google Photos API does not provide precise location data via the API directly.
+ * This function attempts to extract location hints from the photo's description.
+ *
+ * @param photo - The photo object from the Google Photos API.
+ * @returns The extracted LocationData or null if no location info found.
  */
 export function extractLocationFromPhoto(photo: any): LocationData | null {
   try {
@@ -63,8 +78,11 @@ export function extractLocationFromPhoto(photo: any): LocationData | null {
 }
 
 /**
- * Search for location information by name using free geocoding API
- * This can be used to supplement location data extraction
+ * Search for location information by name using a free geocoding API (Nominatim).
+ * This can be used to supplement location data extraction or for searching.
+ *
+ * @param locationName - The name of the location to search for (e.g., "Paris").
+ * @returns A Promise resolving to LocationData or null if not found.
  */
 export async function searchLocationByName(locationName: string): Promise<LocationData | null> {
   try {
@@ -102,8 +120,12 @@ export async function searchLocationByName(locationName: string): Promise<Locati
 }
 
 /**
- * Get the approximate location data for a photo by its ID
- * This combines the extraction from photo metadata with optional geocoding lookup
+ * Get the approximate location data for a photo by its ID.
+ * This combines extraction from photo metadata with optional geocoding lookup.
+ *
+ * @param photo - The photo object.
+ * @param performGeocoding - Whether to perform a geocoding lookup if coordinates are missing but a location name is found. Default is false.
+ * @returns A Promise resolving to LocationData or null if no location data is available.
  */
 export async function getPhotoLocation(
   photo: any, 

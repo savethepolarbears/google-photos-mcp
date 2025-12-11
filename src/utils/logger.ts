@@ -1,10 +1,16 @@
 import winston from 'winston';
 import config from './config.js';
 
-// Check if using STDIO mode
+/**
+ * Flag indicating if the application is running in STDIO mode.
+ * This is determined by checking the command line arguments for '--stdio'.
+ */
 const useStdio = process.argv.includes('--stdio');
 
-// Define log format
+/**
+ * Custom log format combining timestamp and message.
+ * Format: `YYYY-MM-DDTHH:mm:ss.sssZ [LEVEL]: message`
+ */
 const logFormat = winston.format.combine(
   winston.format.timestamp(),
   winston.format.printf(({ level, message, timestamp }) => {
@@ -12,7 +18,13 @@ const logFormat = winston.format.combine(
   })
 );
 
-// Create transports array based on mode
+/**
+ * List of Winston transports (outputs) for the logger.
+ * - Always includes file transports for 'error.log' (error level) and 'combined.log' (all levels).
+ * - Includes Console transport:
+ *   - In STDIO mode: writes to stderr to avoid interfering with MCP protocol on stdout.
+ *   - In HTTP mode: writes to stdout as normal.
+ */
 const transports: winston.transport[] = [
   new winston.transports.File({ filename: 'error.log', level: 'error' }),
   new winston.transports.File({ filename: 'combined.log' }),
@@ -28,7 +40,10 @@ if (useStdio) {
   transports.push(new winston.transports.Console());
 }
 
-// Create the logger
+/**
+ * Application logger instance configured with timestamped format and multiple transports.
+ * The log level is determined by the configuration (defaulting to 'info').
+ */
 const logger = winston.createLogger({
   level: config.logger.level,
   format: logFormat,

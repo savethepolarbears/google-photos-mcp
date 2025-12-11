@@ -11,6 +11,14 @@ const photosApi = axios.create({
   timeout: 15000,
 });
 
+/**
+ * Converts an error into a standardized Error object with a descriptive message.
+ * Handles Axios errors and specific Google Photos API issues (like the 2025 scope deprecation).
+ *
+ * @param error - The original error object.
+ * @param context - A string describing what operation failed (e.g., 'search photos').
+ * @returns A standardized Error object.
+ */
 function toError(error: unknown, context: string): Error {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ error?: { message?: string } }>;
@@ -39,6 +47,12 @@ function toError(error: unknown, context: string): Error {
   return new Error(String(error));
 }
 
+/**
+ * Gets the authorized headers for a Google Photos API request.
+ *
+ * @param auth - The authenticated OAuth2 client.
+ * @returns A Promise resolving to the headers object.
+ */
 async function getAuthorizedHeaders(auth: OAuth2Client): Promise<Record<string, string>> {
   try {
     return await auth.getRequestHeaders();
@@ -47,25 +61,38 @@ async function getAuthorizedHeaders(auth: OAuth2Client): Promise<Record<string, 
   }
 }
 
+/** Interface for the response from the albums.list API. */
 interface AlbumsListResponse {
   albums?: Album[];
   nextPageToken?: string;
 }
 
+/** Interface for the response from the mediaItems.search API. */
 interface MediaItemsSearchResponse {
   mediaItems?: PhotoItem[];
   nextPageToken?: string;
 }
 
+/** Interface for the response from the mediaItems.get API. */
 interface MediaItemResponse extends PhotoItem {}
 
+/**
+ * Represents a photo or video item from Google Photos.
+ */
 export interface PhotoItem {
+  /** Unique identifier for the media item. */
   id: string;
+  /** A URL to the media item's bytes. */
   baseUrl: string;
+  /** MIME type of the media item. */
   mimeType: string;
+  /** Filename of the media item. */
   filename: string;
+  /** Description of the media item. */
   description?: string;
+  /** URL to the media item's Google Photos page. */
   productUrl: string;
+  /** Metadata associated with the media item. */
   mediaMetadata?: {
     creationTime: string;
     width: string;
@@ -84,19 +111,33 @@ export interface PhotoItem {
       status?: string;
     };
   };
+  /** Enriched location data (not part of original Google Photos API response). */
   locationData?: LocationData;
 }
 
+/**
+ * Represents a Google Photos album.
+ */
 export interface Album {
+  /** Unique identifier for the album. */
   id: string;
+  /** Title of the album. */
   title: string;
+  /** URL to the album's Google Photos page. */
   productUrl: string;
+  /** Number of media items in the album. */
   mediaItemsCount?: string;
+  /** Base URL for the cover photo. */
   coverPhotoBaseUrl?: string;
+  /** ID of the cover photo media item. */
   coverPhotoMediaItemId?: string;
 }
 
+/**
+ * Filters that can be applied to a search.
+ */
 export interface SearchFilter {
+  /** Filter by dates or ranges. */
   dateFilter?: {
     dates?: Array<{
       year: number;
@@ -116,27 +157,44 @@ export interface SearchFilter {
       };
     }>;
   };
+  /** Filter by content category (e.g., LANDSCAPES). */
   contentFilter?: {
     includedContentCategories?: string[];
     excludedContentCategories?: string[];
   };
+  /** Filter by media type (PHOTO or VIDEO). */
   mediaTypeFilter?: {
     mediaTypes: Array<'ALL_MEDIA' | 'VIDEO' | 'PHOTO'>;
   };
+  /** Filter by features (e.g., FAVORITES). */
   featureFilter?: {
     includedFeatures: string[];
   };
+  /** Whether to include archived media. */
   includeArchivedMedia?: boolean;
+  /** Whether to exclude non-app-created data. */
   excludeNonAppCreatedData?: boolean;
 }
 
+/**
+ * Parameters for searching photos.
+ */
 export interface SearchParams {
+  /** ID of the album to search in. */
   albumId?: string;
+  /** Maximum number of results to return. */
   pageSize?: number;
+  /** Token for the next page of results. */
   pageToken?: string;
+  /** Filters to apply to the search. */
   filters?: SearchFilter;
 }
 
+/**
+ * Creates a new OAuth2 client using the configured credentials.
+ *
+ * @returns A new OAuth2Client instance.
+ */
 export function createOAuthClient(): OAuth2Client {
   return new google.auth.OAuth2(
     config.google.clientId,
@@ -145,6 +203,12 @@ export function createOAuthClient(): OAuth2Client {
   );
 }
 
+/**
+ * Sets up an OAuth2 client with the provided tokens.
+ *
+ * @param tokens - The tokens to use for authentication.
+ * @returns An authenticated OAuth2Client instance.
+ */
 export function setupOAuthClient(tokens: TokenData): OAuth2Client {
   const oauth2Client = createOAuthClient();
   oauth2Client.setCredentials({
@@ -155,6 +219,13 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
   return oauth2Client;
 }
 
+/**
+ * Internal helper to create a wrapper around the Google Photos API using Axios.
+ * This wrapper handles authorization and type safety for specific endpoints.
+ *
+ * @param auth - The authenticated OAuth2 client.
+ * @returns An object with methods to interact with albums and media items.
+ */
 function createPhotosLibraryClient(auth: OAuth2Client) {
   return {
     albums: {
@@ -218,10 +289,23 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
   };
 }
 
+/**
+ * Factory function to get the Photos Library client.
+ *
+ * @param auth - The authenticated OAuth2 client.
+ * @returns The Photos Library client wrapper.
+ */
 export function getPhotoClient(auth: OAuth2Client) {
   return createPhotosLibraryClient(auth);
 }
 
+/**
+ * Splits a search query into tokens for client-side filtering.
+ * Tokens are split by whitespace and colons.
+ *
+ * @param query - The search query string.
+ * @returns An array of string tokens.
+ */
 export function buildSearchTokens(query: string): string[] {
   return query
     .toLowerCase()
@@ -231,6 +315,14 @@ export function buildSearchTokens(query: string): string[] {
     .filter((token) => token.length > 0);
 }
 
+/**
+ * Checks if a photo matches a set of search tokens.
+ * Matches against filename, description, creation time, and location data.
+ *
+ * @param photo - The photo to check.
+ * @param tokens - The search tokens.
+ * @returns True if at least one token matches, false otherwise.
+ */
 export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
   if (tokens.length === 0) {
     return true;
@@ -275,6 +367,13 @@ export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean
   return matchedTokens.size > 0;
 }
 
+/**
+ * Filters a list of photos by search tokens.
+ *
+ * @param photos - The list of photos to filter.
+ * @param tokens - The search tokens.
+ * @returns The filtered list of photos.
+ */
 export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): PhotoItem[] {
   if (tokens.length === 0) {
     return photos;
@@ -289,6 +388,13 @@ export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): Pho
   return filtered;
 }
 
+/**
+ * Checks if a photo matches a specific location query.
+ *
+ * @param photo - The photo to check.
+ * @param locationQuery - The location string to search for.
+ * @returns True if the photo's location data matches the query, false otherwise.
+ */
 function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean {
   if (!locationQuery) {
     return true;
@@ -313,6 +419,15 @@ function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean 
   return fields.some((value) => value.includes(normalized));
 }
 
+/**
+ * Enriches a list of photos with location data.
+ * Can perform optional geocoding if coordinates are missing.
+ *
+ * @param photos - The list of photos to enrich.
+ * @param includeLocation - Whether to include location data.
+ * @param performGeocoding - Whether to perform geocoding for missing coordinates.
+ * @returns A Promise resolving to the enriched list of photos.
+ */
 async function enrichPhotosWithLocation(photos: PhotoItem[], includeLocation: boolean, performGeocoding: boolean): Promise<PhotoItem[]> {
   if (!includeLocation || photos.length === 0) {
     return photos;
@@ -340,6 +455,13 @@ async function enrichPhotosWithLocation(photos: PhotoItem[], includeLocation: bo
   return photos;
 }
 
+/**
+ * Builds a SearchFilter object from a natural language query string.
+ * Detects dates, categories, media types, and features.
+ *
+ * @param query - The search query string.
+ * @returns A SearchFilter object.
+ */
 function buildFiltersFromQuery(query: string): SearchFilter {
   const filters: SearchFilter = {};
   const categoriesMap: Record<string, string> = {
@@ -451,6 +573,15 @@ function buildFiltersFromQuery(query: string): SearchFilter {
   return filters;
 }
 
+/**
+ * Lists all albums from the user's library.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param pageSize - The number of albums to retrieve per page. Default is 50.
+ * @param pageToken - The token for the next page of results.
+ * @returns A Promise resolving to an object containing the list of albums and an optional next page token.
+ * @throws Error if listing albums fails.
+ */
 export async function listAlbums(
   oauth2Client: OAuth2Client,
   pageSize = 50,
@@ -474,6 +605,14 @@ export async function listAlbums(
   }
 }
 
+/**
+ * Gets a specific album by its ID.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param albumId - The ID of the album to retrieve.
+ * @returns A Promise resolving to the Album object.
+ * @throws Error if the album is not found or the request fails.
+ */
 export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Promise<Album> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
@@ -493,6 +632,15 @@ export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Pro
   }
 }
 
+/**
+ * Searches for photos using the Google Photos API search endpoint.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param params - The search parameters (filters, albumId, etc.).
+ * @param includeLocation - Whether to enrich photos with location data. Default is false.
+ * @returns A Promise resolving to a list of photos and an optional next page token.
+ * @throws Error if the search fails.
+ */
 export async function searchPhotos(
   oauth2Client: OAuth2Client,
   params: SearchParams,
@@ -523,6 +671,17 @@ export async function searchPhotos(
   }
 }
 
+/**
+ * Lists photos from a specific album.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param albumId - The ID of the album.
+ * @param pageSize - The number of photos to retrieve per page. Default is 25.
+ * @param pageToken - The token for the next page of results.
+ * @param includeLocation - Whether to include location data. Default is false.
+ * @returns A Promise resolving to a list of photos and an optional next page token.
+ * @throws Error if listing album photos fails.
+ */
 export async function listAlbumPhotos(
   oauth2Client: OAuth2Client,
   albumId: string,
@@ -547,6 +706,15 @@ export async function listAlbumPhotos(
   }
 }
 
+/**
+ * Gets a specific photo by its ID.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param photoId - The ID of the photo to retrieve.
+ * @param includeLocation - Whether to include location data. Default is true.
+ * @returns A Promise resolving to the PhotoItem object.
+ * @throws Error if the photo is not found or request fails.
+ */
 export async function getPhoto(
   oauth2Client: OAuth2Client,
   photoId: string,
@@ -585,6 +753,13 @@ export async function getPhoto(
   }
 }
 
+/**
+ * Downloads a photo and returns it as a Base64 string.
+ *
+ * @param url - The URL of the photo (usually the baseUrl from a PhotoItem).
+ * @returns A Promise resolving to the Base64 encoded string of the image.
+ * @throws Error if the download fails.
+ */
 export async function getPhotoAsBase64(url: string): Promise<string> {
   if (!url) {
     throw new Error('Invalid photo URL');
@@ -602,6 +777,18 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
   }
 }
 
+/**
+ * Searches for photos using a natural language text query.
+ * Combines Google Photos API filters with client-side post-processing.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param query - The search query (e.g., "cats in Paris 2023").
+ * @param pageSize - The number of results to return. Default is 25.
+ * @param pageToken - The token for the next page of results.
+ * @param includeLocation - Whether to include location data. Default is false (unless query implies location).
+ * @returns A Promise resolving to a filtered list of photos and an optional next page token.
+ * @throws Error if the search fails.
+ */
 export async function searchPhotosByText(
   oauth2Client: OAuth2Client,
   query: string,
@@ -641,6 +828,16 @@ export async function searchPhotosByText(
   }
 }
 
+/**
+ * Searches for photos specifically by location name.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param locationName - The location name to search for.
+ * @param pageSize - The number of results to return. Default is 25.
+ * @param pageToken - The token for the next page of results.
+ * @returns A Promise resolving to a list of photos matching the location.
+ * @throws Error if the search fails.
+ */
 export async function searchPhotosByLocation(
   oauth2Client: OAuth2Client,
   locationName: string,

@@ -18,10 +18,19 @@ dotenv.config();
 
 const DXT_TIMEOUT = 30000; // 30 seconds timeout for DXT operations
 
+/**
+ * Server implementation for the Google Photos MCP (Model Context Protocol).
+ * This class handles tool registration, execution, and communication via STDIO.
+ * It is designed to work with clients like Claude Desktop and Cursor IDE.
+ */
 class GooglePhotosDXTServer {
   private server: Server;
   private timeouts = new Map<string, NodeJS.Timeout>();
 
+  /**
+   * Initializes the Google Photos MCP server.
+   * Sets up the MCP server instance and registers tool handlers.
+   */
   constructor() {
     this.server = new Server(
       {
@@ -40,6 +49,14 @@ class GooglePhotosDXTServer {
     this.setupHandlers();
   }
 
+  /**
+   * Sets up request handlers for the MCP server.
+   * Registers:
+   * - ListToolsRequestSchema: Defines available tools.
+   * - CallToolRequestSchema: Handles tool execution requests.
+   * - ListResourcesRequestSchema: (Empty) Required by spec.
+   * - ListPromptsRequestSchema: (Empty) Required by spec.
+   */
   private setupHandlers() {
     // Tool listing
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -251,6 +268,11 @@ class GooglePhotosDXTServer {
     }));
   }
 
+  /**
+   * Clears the timeout associated with a request ID.
+   *
+   * @param requestId - The ID of the request to clear timeout for.
+   */
   private clearTimeout(requestId: string) {
     const timeout = this.timeouts.get(requestId);
     if (timeout) {
@@ -259,6 +281,14 @@ class GooglePhotosDXTServer {
     }
   }
 
+  /**
+   * Executes a specific tool request.
+   * Handles authentication, validation, and dispatches to the appropriate API function.
+   *
+   * @param request - The tool execution request containing tool name and arguments.
+   * @returns A Promise resolving to the tool execution result.
+   * @throws McpError if tool is not found, authentication fails, or execution fails.
+   */
   private async executeTool(request: any) {
     logger.info(`[DXT] Executing tool: ${request.params.name}`);
     
@@ -520,6 +550,15 @@ class GooglePhotosDXTServer {
     }
   }
 
+  /**
+   * Validates arguments against a schema.
+   * Checks types, required fields, and range constraints.
+   *
+   * @param args - The arguments object to validate.
+   * @param schema - The schema defining validation rules.
+   * @returns The validated arguments with defaults applied.
+   * @throws McpError if validation fails.
+   */
   private validateArgs(args: any, schema: Record<string, any>): any {
     const result: any = {};
     
@@ -574,6 +613,12 @@ class GooglePhotosDXTServer {
     return result;
   }
 
+  /**
+   * Formats a raw photo object from the API into a simplified structure.
+   *
+   * @param photo - The raw photo object.
+   * @returns The formatted photo object.
+   */
   private formatPhoto(photo: any): any {
     const result: any = {
       id: photo.id,
@@ -602,6 +647,10 @@ class GooglePhotosDXTServer {
     return result;
   }
 
+  /**
+   * Starts the server.
+   * Connects via StdioServerTransport.
+   */
   async start() {
     try {
       logger.info('[DXT] Starting Google Photos MCP Server in STDIO mode');
