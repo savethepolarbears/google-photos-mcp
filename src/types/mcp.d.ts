@@ -1,3 +1,7 @@
+/**
+ * Type declarations for the @modelcontextprotocol/sdk package.
+ * This file provides type definitions for parts of the SDK that might be missing or need specific typing in this project.
+ */
 declare module '@modelcontextprotocol/sdk' {
   export class McpServer {
     constructor(options: { name: string; version: string });

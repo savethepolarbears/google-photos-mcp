@@ -46,7 +46,10 @@ const server = new Server(
   }
 );
 
-// Register tools
+/**
+ * Register available tools with the MCP server.
+ * Defines the schema for each tool including inputs and descriptions.
+ */
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
     {
@@ -195,7 +198,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-// Handle tool execution
+/**
+ * Handle tool execution requests.
+ * Parses the request, authenticates the user, and invokes the appropriate API function.
+ */
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     // Debug authentication
@@ -720,7 +726,10 @@ server.setRequestHandler(ListPromptsRequestSchema, async () => ({
   prompts: []
 }));
 
-// Run the server
+/**
+ * Main entry point for the application.
+ * Determines the mode (STDIO or HTTP) and starts the server.
+ */
 async function main() {
   if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)

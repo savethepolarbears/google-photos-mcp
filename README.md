@@ -332,6 +332,28 @@ If you encounter issues:
 4. Ensure you've authorized the application with Google Photos
 5. Try restarting the server and client application
 
+## Development
+
+### Building
+
+To build the project, run:
+
+```bash
+npm run build
+```
+
+### Linting
+
+To check for linting errors, run:
+
+```bash
+npm run lint
+```
+
+### Documentation
+
+The codebase is thoroughly documented using JSDoc/TSDoc comments. You can review the source code in `src/` to understand the purpose and usage of functions, classes, and interfaces.
+
 ## License
 
 MIT

@@ -3,17 +3,32 @@ import path from 'path';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 
+/**
+ * Interface representing the stored token data.
+ */
 export interface TokenData {
+  /** OAuth2 access token */
   access_token: string;
+  /** OAuth2 refresh token */
   refresh_token: string;
+  /** Expiration timestamp (in milliseconds) */
   expiry_date: number;
+  /** User's email address (if available) */
   userEmail?: string;
+  /** Unique user identifier */
   userId?: string;
+  /** Timestamp when the token was last retrieved or updated */
   retrievedAt?: number;
 }
 
 /**
- * Save authentication tokens for a user
+ * Save authentication tokens for a user to the file system.
+ * Creates the tokens directory if it doesn't exist.
+ * Updates the existing tokens file or creates a new one.
+ *
+ * @param userId - The unique identifier of the user.
+ * @param tokens - The token data to save.
+ * @throws Error if saving tokens fails.
  */
 export async function saveTokens(userId: string, tokens: TokenData): Promise<void> {
   try {
@@ -49,9 +64,10 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
 }
 
 /**
- * Get tokens for a specific user
- * If useDefault is true and the specific userId's tokens aren't found,
- * it will return the first available tokens
+ * Type guard to check if an object is a valid TokenData object.
+ *
+ * @param entry - The object to check.
+ * @returns True if the object is a valid TokenData, false otherwise.
  */
 const isValidToken = (entry: unknown): entry is TokenData => (
   !!entry &&
@@ -61,6 +77,12 @@ const isValidToken = (entry: unknown): entry is TokenData => (
   'expiry_date' in entry
 );
 
+/**
+ * Helper to find the newest valid token from a record of tokens.
+ *
+ * @param allTokens - Record of all tokens.
+ * @returns A tuple of [userId, TokenData] or null if no valid tokens found.
+ */
 const getNewestValidToken = (
   allTokens: Record<string, unknown>,
 ): [string, TokenData] | null => {
@@ -80,6 +102,13 @@ const getNewestValidToken = (
   return validEntries[0];
 };
 
+/**
+ * Get tokens for a specific user.
+ *
+ * @param userId - The unique identifier of the user.
+ * @param useDefault - If true, returns the most recently used tokens if the specific user's tokens are not found. Default is false.
+ * @returns A Promise resolving to TokenData or null if not found.
+ */
 export async function getTokens(userId: string, useDefault: boolean = false): Promise<TokenData | null> {
   try {
     const data = await fs.readFile(config.tokens.path, 'utf-8');
@@ -110,7 +139,10 @@ export async function getTokens(userId: string, useDefault: boolean = false): Pr
 }
 
 /**
- * Get the first available tokens from any user
+ * Get the first available tokens from any user.
+ * This is useful for single-user scenarios or when any valid credential will do.
+ *
+ * @returns A Promise resolving to TokenData or null if no tokens are found.
  */
 export async function getFirstAvailableTokens(): Promise<TokenData | null> {
   try {
@@ -149,7 +181,10 @@ export async function getFirstAvailableTokens(): Promise<TokenData | null> {
 }
 
 /**
- * Remove tokens for a specific user
+ * Remove tokens for a specific user from the storage.
+ *
+ * @param userId - The unique identifier of the user whose tokens should be removed.
+ * @returns A Promise resolving when the operation is complete.
  */
 export async function removeTokens(userId: string): Promise<void> {
   try {
