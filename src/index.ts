@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import express from 'express';
-import cors from 'cors';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
@@ -763,7 +762,6 @@ async function main() {
     const app = express();
     
     // Middleware
-    app.use(cors());
     app.use(express.json());
     
     // Set up authentication routes
