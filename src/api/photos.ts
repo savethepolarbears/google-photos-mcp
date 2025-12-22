@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import axios, { AxiosError } from 'axios';
+import https from 'https';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { TokenData } from '../auth/tokens.js';
@@ -9,6 +10,8 @@ import { getPhotoLocation, LocationData } from '../utils/location.js';
 const photosApi = axios.create({
   baseURL: 'https://photoslibrary.googleapis.com/v1',
   timeout: 15000,
+  // Optimization: Enable keep-alive to reuse TCP connections for better performance
+  httpsAgent: new https.Agent({ keepAlive: true }),
 });
 
 /**
