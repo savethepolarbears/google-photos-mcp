@@ -86,16 +86,18 @@ export class GooglePhotosMCPCore {
 
   /**
    * Registers MCP request handlers
+   * Protected to allow subclasses to customize handler registration
    */
-  private registerHandlers(): void {
+  protected registerHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, this.handleListTools.bind(this));
     this.server.setRequestHandler(CallToolRequestSchema, this.handleCallTool.bind(this));
   }
 
   /**
    * Returns tool definitions
+   * Protected to allow subclasses to access
    */
-  private async handleListTools() {
+  protected async handleListTools() {
     return {
       tools: [
         {
