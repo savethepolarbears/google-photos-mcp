@@ -10,7 +10,16 @@ Install dependencies once with `npm install`. During authoring, run `npm run dev
 The project targets modern Node.js with ECMAScript modules and strict TypeScript types. Follow Prettier defaults (two-space indentation, single quotes) and run the formatter before sending a PR. ESLint extends `eslint:recommended` and `@typescript-eslint/recommended`; prefer explicit return types and keep `any` usage intentional. Name files and directories with kebab-case, exported classes in PascalCase, and internal utilities in camelCase. Keep environment variables in `.env` files mirroring keys from `.env.example`.
 
 ## Testing Guidelines
-No automated test suite ships yet, so rely on the `test-mcp/` harness and manual validation against Google Photos. When adding tests, colocate them next to the module under test using the `*.spec.ts` suffix and keep assertions focused on JSON responses and error handling. Ensure new features include defensive checks for API quotas and expired tokens before manual QA sign-off.
+The project includes comprehensive test coverage (22 tests, 100% passing):
+- **Unit Tests**: `src/api/__tests__/photos.test.ts` and `test/photos.test.ts` (4 tests) - token matching and search logic
+- **Security Tests**: `test/security.test.ts` (18 tests) - CORS, DNS rebinding, CSRF, JWT verification, file permissions
+
+Run tests with `npm test` (unit tests) or `npm run test:security` (security suite). When adding tests, colocate them in `test/` directory using `*.test.ts` suffix. Keep assertions focused on behavior verification, not implementation details. New API features should include:
+- Input validation tests (Zod schema compliance)
+- Error handling tests (API failures, auth errors)
+- Security tests for sensitive operations
+
+All tests must pass before merge (`npm test && npm run test:security`). TypeScript compilation (`npx tsc --noEmit`) and linting (`npm run lint`) must also be clean.
 
 ## Commit & Pull Request Guidelines
 Follow the existing history by writing concise, imperative commit subjects (for example, `Fix album listing pagination`). Group related changes together and avoid mixing refactors with feature work. Pull requests should outline the intent, list functional changes, mention any new environment variables, and describe manual verification steps. Attach screenshots or sample JSON when the change affects response payloads, and link relevant issues for traceability.

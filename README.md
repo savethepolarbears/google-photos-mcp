@@ -42,13 +42,31 @@ The Google Photos API client now uses persistent HTTPS connections (Keep-Alive) 
 
 ## Features
 
-- Search photos by content, date, location
-- Get location data for photos (approximate, based on descriptions)
-- Fetch specific photos by ID
-- List albums and photo collections
-- Proper STDIO mode support for Claude Desktop (fixed JSON parsing issues)
-- Enhanced error handling and 2025 API compatibility warnings
-- Works with Claude Desktop, Cursor IDE, and other MCP-compatible clients through the MCP standard
+- ✅ Search photos by content, date, location
+- ✅ Get location data for photos (approximate, based on descriptions)
+- ✅ Fetch specific photos by ID
+- ✅ List albums and photo collections
+- ✅ Retrieve photo metadata and base64-encoded images
+- ✅ Proper STDIO mode support for Claude Desktop
+- ✅ Enhanced error handling and 2025 API compatibility warnings
+- ✅ Works with Claude Desktop, Cursor IDE, and other MCP-compatible clients
+
+### API Limitations (Google Photos API)
+
+**What This MCP CAN Do:**
+- ✅ Search and browse photos (read-only access)
+- ✅ Get photo details, metadata, and images
+- ✅ List albums and their contents
+- ✅ Extract location information from descriptions
+
+**What This MCP CANNOT Do:**
+- ❌ Delete photos or albums (API does not support deletion)
+- ❌ Upload new photos (beyond scope of this MCP)
+- ❌ Modify photo metadata or descriptions
+- ❌ Create or manage albums
+- ❌ Access precise GPS/EXIF coordinates (API limitation)
+
+**Why**: The Google Photos Library API provides read-only access. Photo deletion, uploads, and metadata editing must be done through the Google Photos web or mobile app.
 
 ### Text search behavior
 
@@ -82,11 +100,22 @@ The Google Photos API client now uses persistent HTTPS connections (Keep-Alive) 
 ### 2. Installation
 
 1. Clone this repository
-2. Install dependencies:
+   ```bash
+   git clone https://github.com/savethepolarbears/google-photos-mcp.git
+   cd google-photos-mcp
+   ```
+
+2. **Install dependencies** (⚠️ Required before building):
    ```bash
    npm install
    ```
+   **Note**: This installs TypeScript and other build tools. If you get `tsc: command not found` errors, ensure this step completed successfully.
+
 3. Create a `.env` file with your Google Cloud credentials:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your credentials
+   ```
    ```
    GOOGLE_CLIENT_ID=your_client_id_here
    GOOGLE_CLIENT_SECRET=your_client_secret_here
@@ -94,10 +123,12 @@ The Google Photos API client now uses persistent HTTPS connections (Keep-Alive) 
    PORT=3000
    NODE_ENV=development
    ```
+
 4. Build the server:
    ```bash
    npm run build
    ```
+   This compiles TypeScript to JavaScript in the `dist/` directory.
 5. Start the server:
    ```bash
    npm start
