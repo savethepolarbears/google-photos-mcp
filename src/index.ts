@@ -30,6 +30,47 @@ import logger from './utils/logger.js';
 // Load environment variables
 dotenv.config();
 
+/**
+ * Interface for formatted photo location data in MCP responses
+ */
+interface FormattedPhotoLocation {
+  latitude?: number;
+  longitude?: number;
+  name?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  region?: string;
+  approximate: boolean;
+}
+
+/**
+ * Interface for formatted photo data in MCP responses
+ */
+interface FormattedPhoto {
+  id: string;
+  filename: string;
+  description: string;
+  dateCreated: string;
+  url: string;
+  webUrl: string;
+  width: string;
+  height: string;
+  location?: FormattedPhotoLocation;
+  base64Image?: string;
+}
+
+/**
+ * Interface for formatted album data in MCP responses
+ */
+interface FormattedAlbum {
+  id: string;
+  title: string;
+  url: string;
+  itemsCount: string;
+  coverPhotoUrl?: string;
+}
+
 // Create the MCP server instance
 const server = new Server(
   {
@@ -295,7 +336,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         // Format the result
         const photoItems = photos.map(photo => {
-          const result: any = {
+          const result: FormattedPhoto = {
             id: photo.id,
             filename: photo.filename,
             description: photo.description || '',
@@ -305,7 +346,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             width: photo.mediaMetadata?.width || '',
             height: photo.mediaMetadata?.height || '',
           };
-          
+
           // Include location data if available
           if (photo.locationData) {
             result.location = {
@@ -319,7 +360,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               approximate: photo.locationData.approximate
             };
           }
-          
+
           return result;
         });
         
@@ -377,7 +418,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         // Format the result
         const photoItems = photos.map(photo => {
-          const result: any = {
+          const result: FormattedPhoto = {
             id: photo.id,
             filename: photo.filename,
             description: photo.description || '',
@@ -387,7 +428,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             width: photo.mediaMetadata?.width || '',
             height: photo.mediaMetadata?.height || '',
           };
-          
+
           // Include location data if available
           if (photo.locationData) {
             result.location = {
@@ -401,7 +442,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               approximate: photo.locationData.approximate
             };
           }
-          
+
           return result;
         });
         
@@ -514,7 +555,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         
         // Format the result
-        const result: any = {
+        const result: FormattedPhoto = {
           id: photo.id,
           filename: photo.filename,
           description: photo.description || '',
@@ -524,7 +565,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           width: photo.mediaMetadata?.width || '',
           height: photo.mediaMetadata?.height || '',
         };
-        
+
         // Include location data if available
         if (photo.locationData) {
           result.location = {
@@ -538,7 +579,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             approximate: photo.locationData.approximate
           };
         }
-        
+
         // Include base64-encoded image data if requested
         if (args.includeBase64 && base64Image) {
           result.base64Image = base64Image;
@@ -588,7 +629,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
         
         // Format the result
-        const result: any = {
+        const result: FormattedAlbum = {
           id: album.id,
           title: album.title,
           url: album.productUrl,
@@ -647,7 +688,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         
         // Format the result
         const photoItems = photos.map(photo => {
-          const result: any = {
+          const result: FormattedPhoto = {
             id: photo.id,
             filename: photo.filename,
             description: photo.description || '',
@@ -657,7 +698,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             width: photo.mediaMetadata?.width || '',
             height: photo.mediaMetadata?.height || '',
           };
-          
+
           // Include location data if available
           if (photo.locationData) {
             result.location = {
@@ -671,7 +712,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               approximate: photo.locationData.approximate
             };
           }
-          
+
           return result;
         });
         
@@ -760,9 +801,23 @@ async function main() {
   } else {
     // Run as HTTP server (for web integration / Cursor IDE)
     const app = express();
-    
+
     // Middleware
     app.use(express.json());
+
+    // DNS rebinding protection (MCP security requirement)
+    // Validates Host header to prevent malicious websites from accessing local server
+    app.use((req, res, next) => {
+      const host = req.get('host');
+      const allowedHosts = ['localhost:3000', '127.0.0.1:3000', 'localhost', '127.0.0.1'];
+
+      if (host && !allowedHosts.includes(host)) {
+        logger.warn(`Rejected request with invalid Host header: ${host}`);
+        return res.status(403).send('Forbidden: Invalid Host header');
+      }
+
+      next();
+    });
     
     // Set up authentication routes
     setupAuthRoutes(app);

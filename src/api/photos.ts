@@ -6,6 +6,7 @@ import config from '../utils/config.js';
 import logger from '../utils/logger.js';
 import { TokenData } from '../auth/tokens.js';
 import { getPhotoLocation, LocationData } from '../utils/location.js';
+import { withRetry } from '../utils/retry.js';
 
 const photosApi = axios.create({
   baseURL: 'https://photoslibrary.googleapis.com/v1',
@@ -598,10 +599,16 @@ export async function listAlbums(
 ): Promise<{ albums: Album[]; nextPageToken?: string }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
-    const response = await photosClient.albums.list({
-      pageSize,
-      pageToken,
-    });
+
+    // Apply retry logic per Google Photos API best practices
+    const response = await withRetry(
+      async () => await photosClient.albums.list({
+        pageSize,
+        pageToken,
+      }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'list albums'
+    );
 
     return {
       albums: response.data.albums ?? [],
@@ -625,9 +632,15 @@ export async function listAlbums(
 export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Promise<Album> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
-    const response = await photosClient.albums.get({
-      albumId,
-    });
+
+    // Apply retry logic per Google Photos API best practices
+    const response = await withRetry(
+      async () => await photosClient.albums.get({
+        albumId,
+      }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'get album'
+    );
 
     if (!response.data) {
       throw new Error('Album not found');
@@ -657,14 +670,20 @@ export async function searchPhotos(
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
-    const response = await photosClient.mediaItems.search({
-      requestBody: {
-        albumId: params.albumId,
-        pageSize: params.pageSize ?? 25,
-        pageToken: params.pageToken,
-        filters: params.filters,
-      },
-    });
+
+    // Apply retry logic per Google Photos API best practices
+    const response = await withRetry(
+      async () => await photosClient.mediaItems.search({
+        requestBody: {
+          albumId: params.albumId,
+          pageSize: params.pageSize ?? 25,
+          pageToken: params.pageToken,
+          filters: params.filters,
+        },
+      }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'search photos'
+    );
 
     const photos = (response.data.mediaItems ?? []) as PhotoItem[];
     await enrichPhotosWithLocation(photos, includeLocation, false);
@@ -731,9 +750,15 @@ export async function getPhoto(
 ): Promise<PhotoItem> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
-    const response = await photosClient.mediaItems.get({
-      mediaItemId: photoId,
-    });
+
+    // Apply retry logic per Google Photos API best practices
+    const response = await withRetry(
+      async () => await photosClient.mediaItems.get({
+        mediaItemId: photoId,
+      }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'get photo'
+    );
 
     if (!response.data) {
       throw new Error('Photo not found');

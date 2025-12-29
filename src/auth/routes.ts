@@ -77,13 +77,15 @@ export function setupAuthRoutes(app: express.Express): void {
       // Exchange the code for tokens
       const oauth2Client = createOAuthClient();
       const { tokens } = await oauth2Client.getToken(code as string);
-      
+
       if (!tokens.access_token || !tokens.refresh_token) {
         logger.error('Did not receive all required tokens');
         return res.status(500).send('Failed to get required tokens');
       }
-      
-      const identity = resolveUserIdentity(parseIdToken(tokens.id_token));
+
+      // Verify JWT signature before trusting the payload (CRITICAL security)
+      const verifiedPayload = await parseIdToken(tokens.id_token, oauth2Client);
+      const identity = resolveUserIdentity(verifiedPayload);
 
       if (!identity.userId) {
         logger.warn('Could not resolve user identity from ID token, generating fallback ID');

@@ -1,5 +1,20 @@
 import axios from 'axios';
 import logger from './logger.js';
+import { nominatimRateLimiter } from './nominatimRateLimiter.js';
+
+/**
+ * Minimal photo interface for location processing.
+ * Defines only the fields needed for location extraction.
+ */
+interface PhotoForLocation {
+  id?: string;
+  description?: string;
+  mediaMetadata?: {
+    photo?: Record<string, unknown>;
+    creationTime?: string;
+  };
+  locationData?: LocationData;
+}
 
 /**
  * Interface representing location data extracted or enriched for a photo.
@@ -31,7 +46,7 @@ export interface LocationData {
  * @param photo - The photo object from the Google Photos API.
  * @returns The extracted LocationData or null if no location info found.
  */
-export function extractLocationFromPhoto(photo: any): LocationData | null {
+export function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null {
   try {
     if (
       !photo || 
@@ -87,16 +102,19 @@ export function extractLocationFromPhoto(photo: any): LocationData | null {
 export async function searchLocationByName(locationName: string): Promise<LocationData | null> {
   try {
     // Use a free geocoding API (Nominatim/OpenStreetMap)
-    const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-      params: {
-        q: locationName,
-        format: 'json',
-        limit: 1
-      },
-      headers: {
-        'User-Agent': 'Google-Photos-MCP-Server/1.0'
-      }
-    });
+    // Rate limited to 1 req/sec per Nominatim usage policy
+    const response = await nominatimRateLimiter.throttle(async () =>
+      axios.get(`https://nominatim.openstreetmap.org/search`, {
+        params: {
+          q: locationName,
+          format: 'json',
+          limit: 1
+        },
+        headers: {
+          'User-Agent': 'Google-Photos-MCP-Server/1.0'
+        }
+      })
+    );
 
     if (response.data && response.data.length > 0) {
       const result = response.data[0];
@@ -128,7 +146,7 @@ export async function searchLocationByName(locationName: string): Promise<Locati
  * @returns A Promise resolving to LocationData or null if no location data is available.
  */
 export async function getPhotoLocation(
-  photo: any, 
+  photo: PhotoForLocation,
   performGeocoding: boolean = false
 ): Promise<LocationData | null> {
   try {

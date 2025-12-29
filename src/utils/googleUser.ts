@@ -1,4 +1,6 @@
 import logger from './logger.js';
+import { OAuth2Client } from 'google-auth-library';
+import config from './config.js';
 
 /**
  * Interface representing the payload of a Google ID Token.
@@ -19,41 +21,58 @@ export interface GoogleIdTokenPayload {
 }
 
 /**
- * Decodes a Base64URL encoded string.
+ * Parses and verifies a Google ID token (JWT) with signature validation.
+ * Uses OAuth2Client.verifyIdToken() to ensure token authenticity.
  *
- * @param input - The Base64URL encoded string.
- * @returns The decoded string in UTF-8 format.
- */
-function base64UrlDecode(input: string): string {
-  const normalized = input.replace(/-/g, '+').replace(/_/g, '/');
-  const padding = normalized.length % 4;
-  const padded = padding ? normalized.padEnd(normalized.length + (4 - padding), '=') : normalized;
-  return Buffer.from(padded, 'base64').toString('utf8');
-}
-
-/**
- * Parses a Google ID token (JWT) to extract its payload.
+ * SECURITY: This function verifies the JWT signature to prevent token forgery.
+ * Do NOT use manual Base64 decoding without verification.
  *
  * @param idToken - The JWT ID token string from Google.
- * @returns The parsed payload object, or null if parsing fails or token is missing.
+ * @param oauth2Client - The OAuth2 client for signature verification.
+ * @returns The verified payload object, or null if verification fails or token is missing.
  */
-export function parseIdToken(idToken?: string | null): GoogleIdTokenPayload | null {
+export async function parseIdToken(
+  idToken: string | null | undefined,
+  oauth2Client: OAuth2Client
+): Promise<GoogleIdTokenPayload | null> {
   if (!idToken) {
     return null;
   }
 
   try {
-    const segments = idToken.split('.');
-    if (segments.length < 2) {
+    // Verify JWT signature and claims (CRITICAL security requirement)
+    const ticket = await oauth2Client.verifyIdToken({
+      idToken,
+      audience: config.google.clientId,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      logger.warn('JWT verification succeeded but payload is empty');
       return null;
     }
 
-    const payloadSegment = segments[1];
-    const decoded = base64UrlDecode(payloadSegment);
-    const payload = JSON.parse(decoded) as GoogleIdTokenPayload;
-    return payload;
+    // Verify issuer is Google
+    if (
+      payload.iss !== 'https://accounts.google.com' &&
+      payload.iss !== 'accounts.google.com'
+    ) {
+      logger.warn(`Invalid JWT issuer: ${payload.iss}`);
+      return null;
+    }
+
+    return {
+      email: payload.email,
+      sub: payload.sub,
+      name: payload.name,
+      given_name: payload.given_name,
+      family_name: payload.family_name,
+      picture: payload.picture,
+    };
   } catch (error) {
-    logger.warn(`Failed to parse Google ID token: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `JWT verification failed: ${error instanceof Error ? error.message : String(error)}`
+    );
     return null;
   }
 }

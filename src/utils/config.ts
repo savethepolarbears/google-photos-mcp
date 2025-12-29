@@ -5,6 +5,32 @@ import path from 'path';
 dotenv.config();
 
 /**
+ * Validates and sanitizes the token storage path to prevent path traversal attacks.
+ * Ensures the path stays within the project directory.
+ *
+ * @param inputPath - The token storage path from environment or default
+ * @returns Validated absolute path
+ * @throws Error if path escapes project directory
+ */
+function validateTokenStoragePath(inputPath: string): string {
+  const projectRoot = process.cwd();
+  const resolvedPath = path.resolve(projectRoot, inputPath);
+  const relativePath = path.relative(projectRoot, resolvedPath);
+
+  // Prevent path traversal outside project directory
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(
+      `SECURITY ERROR: TOKEN_STORAGE_PATH must be within project directory.\n` +
+      `Attempted path: ${inputPath}\n` +
+      `Resolved to: ${resolvedPath}\n` +
+      `This prevents path traversal attacks.`
+    );
+  }
+
+  return resolvedPath;
+}
+
+/**
  * Global configuration object for the application.
  * Values are loaded from environment variables or use default fallbacks.
  */
@@ -37,7 +63,7 @@ export const config = {
       // 'https://www.googleapis.com/auth/photoslibrary.appendonly',
     ],
   },
-  
+
   /**
    * Server Configuration.
    * Settings for the HTTP server.
@@ -48,7 +74,7 @@ export const config = {
     /** Node environment (e.g., 'development', 'production') */
     env: process.env.NODE_ENV || 'development',
   },
-  
+
   /**
    * MCP Server Configuration.
    * Metadata for the Model Context Protocol server.
@@ -59,7 +85,7 @@ export const config = {
     /** Version of the MCP server */
     version: process.env.MCP_SERVER_VERSION || '0.1.0',
   },
-  
+
   /**
    * Logger Configuration.
    */
@@ -67,13 +93,15 @@ export const config = {
     /** Minimum log level (default: 'info') */
     level: process.env.LOG_LEVEL || 'info',
   },
-  
+
   /**
    * Token Storage Configuration.
    */
   tokens: {
-    /** File path where authentication tokens are stored */
-    path: process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.json'),
+    /** File path where authentication tokens are stored (validated to prevent path traversal) */
+    path: validateTokenStoragePath(
+      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.json')
+    ),
   },
 };
 
@@ -90,5 +118,28 @@ requiredEnvVars.forEach(envVar => {
     console.warn(`Warning: Required environment variable ${envVar} is not set.`);
   }
 });
+
+// Security: Validate HTTPS redirect URI in production (MCP + OAuth 2.1 requirement)
+if (config.server.env === 'production') {
+  if (!config.google.redirectUri.startsWith('https://')) {
+    throw new Error(
+      `SECURITY ERROR: GOOGLE_REDIRECT_URI must use HTTPS in production.\n` +
+      `Current value: ${config.google.redirectUri}\n` +
+      `This prevents MITM attacks on the OAuth flow.`
+    );
+  }
+}
+
+// Warn about HTTP redirect URI in non-localhost scenarios
+if (
+  config.google.redirectUri.startsWith('http://') &&
+  !config.google.redirectUri.includes('localhost') &&
+  !config.google.redirectUri.includes('127.0.0.1')
+) {
+  console.warn(
+    `⚠️  SECURITY WARNING: OAuth redirect URI is using HTTP: ${config.google.redirectUri}\n` +
+    `   This is only safe for localhost. Use HTTPS for production deployments.`
+  );
+}
 
 export default config;
