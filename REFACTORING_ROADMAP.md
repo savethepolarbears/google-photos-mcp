@@ -107,9 +107,15 @@ function decrypt(encrypted: string): string {
 
 ### 2. Extract GooglePhotosMCPCore Base Class (HIGH Priority)
 
-**Current State**: 300+ lines duplicated between `index.ts` (HTTP mode) and `dxt-server.ts` (STDIO mode)
+**Current State**:
+- ✅ GooglePhotosMCPCore created in `src/mcp/core.ts` (526 lines)
+- ✅ All tool handlers centralized with proper typing
+- ✅ Shared formatPhoto logic
+- ✅ Quota management and validation integrated
+- ⚠️ **NOT YET INTEGRATED** into index.ts and dxt-server.ts
+- 300+ lines of duplication still exist in deployment modes
 
-**Why Needed**:
+**Why Integration Needed**:
 - Security patches must be applied twice
 - Features drift between deployment modes
 - Maintenance nightmare (2x effort for every change)
@@ -192,9 +198,21 @@ export class GooglePhotosDXTServer extends GooglePhotosMCPCore {
 5. Remove duplicated code
 6. Test both HTTP and STDIO modes
 
-**Effort**: 2-3 days
-**Risk**: HIGH (requires careful testing of both deployment modes)
-**Impact**: Eliminates 300+ lines of duplication, prevents future divergence
+**Integration Steps** (Next Session):
+1. Refactor `src/index.ts` to extend GooglePhotosMCPCore
+   - Remove tool handler code (lines 200-700)
+   - Keep HTTP-specific setup (Express, SSE, health checks)
+   - Call `super()` in constructor, use `this.server` from parent
+2. Refactor `src/dxt-server.ts` to extend GooglePhotosMCPCore
+   - Remove duplicated tool handlers
+   - Keep DXT-specific timeout logic
+3. Test both modes thoroughly
+4. Remove backup files
+
+**Effort**: 2-3 hours (careful integration + testing)
+**Risk**: MEDIUM (both modes must work identically)
+**Impact**: Eliminates 300+ lines of duplication immediately
+**Status**: Infrastructure ready, integration pending
 
 ---
 
