@@ -35,6 +35,8 @@ import {
   getAlbumSchema,
   listAlbumPhotosSchema,
 } from './schemas/toolSchemas.js';
+import { quotaManager } from './utils/quotaManager.js';
+import { healthChecker } from './utils/healthCheck.js';
 
 // Load environment variables
 dotenv.config();
@@ -306,7 +308,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'search_photos': {
         // Validate arguments with Zod schema
         const args = validateArgs(request.params.arguments, searchPhotosSchema);
-        
+
+        // Check API quota before making request
+        quotaManager.checkQuota(false);
+
         // If still no tokens found, prompt for authentication
         if (!tokens) {
           return {
@@ -331,7 +336,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.pageToken,
           args.includeLocation !== false
         );
-        
+
+        // Record successful API request for quota tracking
+        quotaManager.recordRequest(false);
+
         // Format the result
         const photoItems = photos.map(photo => {
           const result: FormattedPhoto = {
@@ -379,7 +387,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'search_photos_by_location': {
         // Validate arguments with Zod schema
         const args = validateArgs(request.params.arguments, searchPhotosByLocationSchema);
-        
+
+        // Check API quota
+        quotaManager.checkQuota(false);
+
         // If still no tokens found, prompt for authentication
         if (!tokens) {
           return {
@@ -403,7 +414,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.pageSize || 25,
           args.pageToken
         );
-        
+
+        // Record successful API request
+        quotaManager.recordRequest(false);
+
         // Format the result
         const photoItems = photos.map(photo => {
           const result: FormattedPhoto = {
@@ -451,7 +465,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'list_albums': {
         // Validate arguments with Zod schema
         const args = validateArgs(request.params.arguments, listAlbumsSchema);
-        
+
+        // Check API quota
+        quotaManager.checkQuota(false);
+
         // If still no tokens found, prompt for authentication
         if (!tokens) {
           return {
@@ -474,7 +491,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.pageSize || 20,
           args.pageToken
         );
-        
+
+        // Record successful API request
+        quotaManager.recordRequest(false);
+
         // Format the result
         const albumItems = albums.map(album => ({
           id: album.id,
@@ -500,7 +520,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'get_photo': {
         // Validate arguments with Zod schema
         const args = validateArgs(request.params.arguments, getPhotoSchema);
-        
+
+        // Check API quota (this is a media request if base64 requested)
+        quotaManager.checkQuota(args.includeBase64 || false);
+
         // If still no tokens found, prompt for authentication
         if (!tokens) {
           return {
@@ -523,7 +546,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.photoId,
           args.includeLocation
         );
-        
+
+        // Record successful API request
+        quotaManager.recordRequest(args.includeBase64 || false);
+
         // Get base64 image if requested
         let base64Image: string | undefined;
         if (args.includeBase64 && photo.baseUrl) {
@@ -595,7 +621,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           oauth2Client,
           args.albumId
         );
-        
+
+        // Record successful API request
+        quotaManager.recordRequest(false);
+
         // Format the result
         const result: FormattedAlbum = {
           id: album.id,
@@ -642,7 +671,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args.pageToken,
           args.includeLocation !== false
         );
-        
+
+        // Record successful API request
+        quotaManager.recordRequest(false);
+
         // Format the result
         const photoItems = photos.map(photo => {
           const result: FormattedPhoto = {
@@ -775,10 +807,16 @@ async function main() {
 
       next();
     });
-    
-    // Set up authentication routes
-    setupAuthRoutes(app);
-    
+
+    // Set up authentication routes (cleanup function available but not needed due to unref())
+    const authCleanup = setupAuthRoutes(app);
+
+    // Optional: Clean up on graceful shutdown
+    process.on('SIGTERM', () => {
+      authCleanup();
+      process.exit(0);
+    });
+
     // Add root route for the home page
     app.get('/', (req, res) => {
       res.send(`
@@ -875,9 +913,23 @@ async function main() {
       }
     });
     
-    // Health check endpoint
-    app.get('/health', (req, res) => {
-      res.json({ status: 'ok' });
+    // Health check endpoints
+    app.get('/health', async (req, res) => {
+      const health = await healthChecker.check({ detailed: false });
+      const statusCode = health.status === 'healthy' ? 200 : 503;
+      res.status(statusCode).json({ status: health.status });
+    });
+
+    app.get('/health/detailed', async (req, res) => {
+      const health = await healthChecker.check({ detailed: true });
+      res.json(health);
+    });
+
+    app.get('/metrics', (req, res) => {
+      res.json({
+        timestamp: new Date().toISOString(),
+        quota: quotaManager.getStats(),
+      });
     });
     
     // Start HTTP server

@@ -12,12 +12,23 @@ import { parseIdToken, resolveUserIdentity } from '../utils/googleUser.js';
  *
  * @param app - The Express application instance.
  */
-export function setupAuthRoutes(app: express.Express): void {
+/**
+ * Cleanup function for auth routes (stops background timers)
+ */
+export type AuthRoutesCleanup = () => void;
+
+/**
+ * Sets up authentication routes and returns cleanup function.
+ *
+ * @param app - The Express application instance
+ * @returns Cleanup function to stop background timers
+ */
+export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
   // Store state tokens to prevent CSRF attacks
   const authStates = new Map<string, { expires: number }>();
-  
+
   // Clean up expired state tokens every 15 minutes
-  setInterval(() => {
+  const cleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [state, data] of authStates.entries()) {
       if (data.expires < now) {
@@ -25,6 +36,9 @@ export function setupAuthRoutes(app: express.Express): void {
       }
     }
   }, 15 * 60 * 1000);
+
+  // Don't keep process alive just for cleanup timer
+  cleanupInterval.unref();
   
   // Main auth route - redirects to Google's OAuth page
   app.get('/auth', (req, res) => {
@@ -151,4 +165,9 @@ export function setupAuthRoutes(app: express.Express): void {
       </html>
     `);
   });
+
+  // Return cleanup function to stop background timer
+  return () => {
+    clearInterval(cleanupInterval);
+  };
 }
