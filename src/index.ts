@@ -26,6 +26,15 @@ import {
   getAlbum,
 } from './api/photos.js';
 import logger from './utils/logger.js';
+import { validateArgs } from './utils/validation.js';
+import {
+  searchPhotosSchema,
+  searchPhotosByLocationSchema,
+  getPhotoSchema,
+  listAlbumsSchema,
+  getAlbumSchema,
+  listAlbumPhotosSchema,
+} from './schemas/toolSchemas.js';
 
 // Load environment variables
 dotenv.config();
@@ -295,19 +304,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }]
         };
       case 'search_photos': {
-        const args = request.params.arguments as {
-          query: string;
-          pageSize?: number;
-          pageToken?: string;
-          includeLocation?: boolean;
-        };
-
-        if (!args.query) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Missing required parameter: query'
-          );
-        }
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, searchPhotosSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {
@@ -379,18 +377,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'search_photos_by_location': {
-        const args = request.params.arguments as {
-          locationName: string;
-          pageSize?: number;
-          pageToken?: string;
-        };
-
-        if (!args.locationName) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Missing required parameter: locationName'
-          );
-        }
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, searchPhotosByLocationSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {
@@ -461,10 +449,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'list_albums': {
-        const args = request.params.arguments as {
-          pageSize?: number;
-          pageToken?: string;
-        };
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, listAlbumsSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {
@@ -512,18 +498,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'get_photo': {
-        const args = request.params.arguments as {
-          photoId: string;
-          includeBase64: boolean;
-          includeLocation: boolean;
-        };
-
-        if (!args.photoId) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Missing required parameter: photoId'
-          );
-        }
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, getPhotoSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {
@@ -595,16 +571,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'get_album': {
-        const args = request.params.arguments as {
-          albumId: string;
-        };
-
-        if (!args.albumId) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Missing required parameter: albumId'
-          );
-        }
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, getAlbumSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {
@@ -647,19 +615,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'list_album_photos': {
-        const args = request.params.arguments as {
-          albumId: string;
-          pageSize?: number;
-          pageToken?: string;
-          includeLocation?: boolean;
-        };
-
-        if (!args.albumId) {
-          throw new McpError(
-            ErrorCode.InvalidParams,
-            'Missing required parameter: albumId'
-          );
-        }
+        // Validate arguments with Zod schema
+        const args = validateArgs(request.params.arguments, listAlbumPhotosSchema);
         
         // If still no tokens found, prompt for authentication
         if (!tokens) {

@@ -11,7 +11,8 @@
     "stdio": "node dist/index.js --stdio",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "node --loader ts-node/esm --test src/api/__tests__/photos.test.ts && node --loader ts-node/esm test/photos.test.ts"
+    "test": "node --loader ts-node/esm --test src/api/__tests__/photos.test.ts test/photos.test.ts",
+    "test:security": "node --loader ts-node/esm --test test/security.test.ts"
   },
   "keywords": [
     "mcp",
@@ -36,10 +37,12 @@
     "@types/cors": "^2.8.15",
     "@types/express": "^4.17.20",
     "@types/node": "^20.8.9",
+    "@types/supertest": "^6.0.3",
     "@typescript-eslint/eslint-plugin": "^6.9.1",
     "@typescript-eslint/parser": "^6.9.1",
     "eslint": "^8.52.0",
     "prettier": "^3.0.3",
+    "supertest": "^7.1.4",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"
   }
