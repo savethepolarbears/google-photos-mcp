@@ -19,7 +19,9 @@ build/
 
 # Tokens and credentials
 tokens.json
+tokens.json.backup-*
 credentials.json
+.google-photos-mcp/
 
 # Logs
 logs/
