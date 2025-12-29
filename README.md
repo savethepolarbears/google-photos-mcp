@@ -28,17 +28,46 @@ A Model Context Protocol (MCP) server for Google Photos integration, allowing Cl
 
 For technical details, see `.jules/sentinel.md`.
 
-## ⚡ Performance Optimizations
+## ⚡ Performance & Modern Protocol Support
+
+### Streamable HTTP Transport (December 2025)
+
+Upgraded to **Streamable HTTP transport** (2025-06-18 MCP specification):
+- ✅ SSE transport deprecated and removed
+- ✅ Modern session-based protocol with proper lifecycle management
+- ✅ Supports incremental results and bidirectional communication
+- ✅ Production-ready for networked MCP deployments
 
 ### HTTPS Keep-Alive (December 2025)
 
-The Google Photos API client now uses persistent HTTPS connections (Keep-Alive) to improve performance:
-- **Reduces latency** by reusing TCP connections
+The Google Photos API client uses persistent HTTPS connections (Keep-Alive) for performance:
+- **Reduces latency** by reusing TCP connections (30-50ms per request)
 - **Connection pooling**: Max 50 concurrent connections, keeps 10 idle connections warm
 - **Particularly beneficial** for operations with multiple API calls (pagination, location enrichment)
 - Automatically managed - no user configuration required
 
 **Technical Details**: Configured with 30s keep-alive probes, 60s idle timeout, optimized for Google Photos API quota limits.
+
+### Port Configuration
+
+**Dynamic port support** via environment variable:
+```bash
+# Run on custom port (avoids conflicts with other dev servers)
+PORT=3001 npm start
+
+# Or set in .env file:
+PORT=3001
+```
+
+**Important**: If you change PORT, also update `GOOGLE_REDIRECT_URI` in .env to match:
+```
+GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
+```
+
+**Recommended for Claude Desktop**: Use STDIO mode instead (no port needed):
+```bash
+npm run stdio
+```
 
 ## Features
 

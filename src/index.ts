@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import express, { Express } from 'express';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { randomUUID } from 'crypto';
 import {
   ListResourcesRequestSchema,
   ListPromptsRequestSchema,
+  isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
 import { setupAuthRoutes } from './auth/routes.js';
@@ -24,7 +26,7 @@ dotenv.config();
  */
 class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
   private app: Express;
-  private sseTransports = new Map<string, SSEServerTransport>();
+  private transports = new Map<string, StreamableHTTPServerTransport>();
   private authCleanup?: () => void;
 
   constructor() {
@@ -48,7 +50,13 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     // Validates Host header to prevent malicious websites from accessing local server
     this.app.use((req, res, next) => {
       const host = req.get('host');
-      const allowedHosts = ['localhost:3000', '127.0.0.1:3000', 'localhost', '127.0.0.1'];
+      const port = process.env.PORT || '3000';
+      const allowedHosts = [
+        `localhost:${port}`,
+        `127.0.0.1:${port}`,
+        'localhost',
+        '127.0.0.1'
+      ];
 
       if (host && !allowedHosts.includes(host)) {
         logger.warn(`Rejected request with invalid Host header: ${host}`);
@@ -116,49 +124,74 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
       `);
     });
 
-    // SSE endpoint for MCP communication
-    this.app.get('/mcp', async (req, res) => {
-      try {
-        const transport = new SSEServerTransport('/mcp', res);
-
-        // Store the transport by session ID
-        const sessionId = transport.sessionId;
-        this.sseTransports.set(sessionId, transport);
-
-        // Clean up when the connection closes
-        transport.onclose = () => {
-          this.sseTransports.delete(sessionId);
-        };
-
-        await this.server.connect(transport);
-      } catch (error) {
-        logger.error(`Error setting up SSE: ${error instanceof Error ? error.message : String(error)}`);
-        res.status(500).send('Failed to set up SSE connection');
-      }
-    });
-
-    // Handle POST requests to the SSE endpoint
+    // Streamable HTTP endpoint for MCP communication (2025-06-18 spec)
     this.app.post('/mcp', async (req, res) => {
       try {
-        // Get the session ID from the query parameter
-        const sessionId = req.query.sessionId as string;
-        if (!sessionId) {
-          return res.status(400).send('Missing sessionId parameter');
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        let transport: StreamableHTTPServerTransport;
+
+        if (sessionId && this.transports.has(sessionId)) {
+          // Reuse existing session
+          transport = this.transports.get(sessionId)!;
+        } else if (!sessionId && isInitializeRequest(req.body)) {
+          // New session initialization
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (id) => {
+              this.transports.set(id, transport);
+              logger.info(`MCP session initialized: ${id}`);
+            },
+            onsessionclosed: (id) => {
+              this.transports.delete(id);
+              logger.info(`MCP session closed: ${id}`);
+            }
+          });
+
+          transport.onclose = () => {
+            if (transport.sessionId) {
+              this.transports.delete(transport.sessionId);
+            }
+          };
+
+          await this.server.connect(transport);
+        } else {
+          return res.status(400).json({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Invalid session or missing initialize request' },
+            id: null
+          });
         }
 
-        // Get the SSE transport
-        const transport = this.sseTransports.get(sessionId);
-        if (!transport) {
-          return res.status(400).send('No active SSE session with the provided sessionId');
-        }
-
-        // Handle the POST message
-        await transport.handlePostMessage(req, res);
+        await transport.handleRequest(req, res, req.body);
       } catch (error) {
-        logger.error(`Error handling POST: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(`Error handling MCP request: ${error instanceof Error ? error.message : String(error)}`);
         if (!res.headersSent) {
           res.status(500).send('Internal server error');
         }
+      }
+    });
+
+    // GET endpoint for Streamable HTTP (required by spec)
+    this.app.get('/mcp', async (req, res) => {
+      const sessionId = req.headers['mcp-session-id'] as string;
+      const transport = this.transports.get(sessionId);
+
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.status(400).send('Invalid or missing session ID');
+      }
+    });
+
+    // DELETE endpoint for session cleanup (required by spec)
+    this.app.delete('/mcp', async (req, res) => {
+      const sessionId = req.headers['mcp-session-id'] as string;
+      const transport = this.transports.get(sessionId);
+
+      if (transport) {
+        await transport.handleRequest(req, res);
+      } else {
+        res.status(400).send('Invalid or missing session ID');
       }
     });
 
