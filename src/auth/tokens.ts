@@ -56,6 +56,8 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
     
     // Write back to file
     await fs.writeFile(config.tokens.path, JSON.stringify(allTokens, null, 2));
+    // Set restrictive file permissions (owner read/write only)
+    await fs.chmod(config.tokens.path, 0o600);
     logger.debug(`Saved tokens for user ${userId}`);
   } catch (error) {
     logger.error(`Failed to save tokens: ${error instanceof Error ? error.message : String(error)}`);
@@ -194,6 +196,8 @@ export async function removeTokens(userId: string): Promise<void> {
     if (allTokens[userId]) {
       delete allTokens[userId];
       await fs.writeFile(config.tokens.path, JSON.stringify(allTokens, null, 2));
+      // Set restrictive file permissions (owner read/write only)
+      await fs.chmod(config.tokens.path, 0o600);
       logger.debug(`Removed tokens for user ${userId}`);
     }
   } catch (error) {

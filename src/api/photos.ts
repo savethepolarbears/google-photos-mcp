@@ -11,7 +11,13 @@ const photosApi = axios.create({
   baseURL: 'https://photoslibrary.googleapis.com/v1',
   timeout: 15000,
   // Optimization: Enable keep-alive to reuse TCP connections for better performance
-  httpsAgent: new https.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 30000,    // Send keep-alive packets every 30s
+    maxSockets: 50,           // Max concurrent connections per host
+    maxFreeSockets: 10,       // Max idle connections to keep open
+    timeout: 60000,           // Socket idle timeout (60s)
+  }),
 });
 
 /**

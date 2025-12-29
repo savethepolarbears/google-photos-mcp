@@ -6,6 +6,40 @@ A Model Context Protocol (MCP) server for Google Photos integration, allowing Cl
 
 **As of March 31, 2025, Google Photos API access is limited to app-created content only.** This MCP server may have limited functionality with your existing photos. For full library access, Google now recommends using the Photos Picker API.
 
+## 🛡️ Security Notice: CORS Removed (December 2025)
+
+**Breaking Change**: CORS middleware has been removed for security reasons (commit 8afc1e2).
+
+**Why**: The previous permissive CORS configuration exposed localhost users to drive-by attacks from malicious websites.
+
+**Impact**:
+- ✅ STDIO mode (Claude Desktop): No impact - continues to work normally
+- ✅ SSE mode (Cursor IDE): No impact for same-origin requests
+- ❌ Browser-based clients: Will encounter CORS errors
+
+**Supported Use Cases**:
+- Claude Desktop (STDIO transport) - **Recommended**
+- Cursor IDE (SSE transport)
+- Server-to-server MCP clients
+
+**Not Supported**:
+- Direct browser AJAX calls from web applications
+- Cross-origin browser requests
+
+For technical details, see `.jules/sentinel.md`.
+
+## ⚡ Performance Optimizations
+
+### HTTPS Keep-Alive (December 2025)
+
+The Google Photos API client now uses persistent HTTPS connections (Keep-Alive) to improve performance:
+- **Reduces latency** by reusing TCP connections
+- **Connection pooling**: Max 50 concurrent connections, keeps 10 idle connections warm
+- **Particularly beneficial** for operations with multiple API calls (pagination, location enrichment)
+- Automatically managed - no user configuration required
+
+**Technical Details**: Configured with 30s keep-alive probes, 60s idle timeout, optimized for Google Photos API quota limits.
+
 ## Features
 
 - Search photos by content, date, location
