@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { PhotoItem } from '../api/photos.js';
 import { getFirstAvailableTokens, TokenData } from '../auth/tokens.js';
+import { tokenRefreshManager } from '../auth/tokenRefreshManager.js';
 import {
   setupOAuthClient,
   searchPhotosByText,
@@ -300,6 +301,27 @@ export class GooglePhotosMCPCore {
   }
 
   /**
+   * Gets an authenticated OAuth2Client, refreshing tokens if necessary.
+   * Uses tokenRefreshManager to prevent concurrent refreshes.
+   */
+  private async getAuthenticatedClient(tokens: TokenData) {
+    const oauth2Client = setupOAuthClient(tokens);
+    const userId = tokens.userId || 'default';
+    const freshTokens = await tokenRefreshManager.refreshIfNeeded(oauth2Client, userId, tokens);
+
+    // If tokens were refreshed, update the client credentials
+    if (freshTokens.access_token !== tokens.access_token) {
+      oauth2Client.setCredentials({
+        access_token: freshTokens.access_token,
+        refresh_token: freshTokens.refresh_token,
+        expiry_date: freshTokens.expiry_date,
+      });
+    }
+
+    return oauth2Client;
+  }
+
+  /**
    * Tool Handlers
    */
   private handleAuthStatus(tokens: TokenData | null) {
@@ -322,7 +344,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, searchPhotosSchema);
     quotaManager.checkQuota(false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByText(
       oauth2Client,
       args.query,
@@ -352,7 +374,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, searchPhotosByLocationSchema);
     quotaManager.checkQuota(false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByLocation(
       oauth2Client,
       args.locationName,
@@ -381,7 +403,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, listAlbumsSchema);
     quotaManager.checkQuota(false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { albums, nextPageToken } = await listAlbums(
       oauth2Client,
       args.pageSize || 20,
@@ -414,7 +436,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, getPhotoSchema);
     quotaManager.checkQuota(args.includeBase64 || false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const photo = await getPhoto(
       oauth2Client,
       args.photoId,
@@ -445,7 +467,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, getAlbumSchema);
     quotaManager.checkQuota(false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const album = await getAlbum(oauth2Client, args.albumId);
 
     quotaManager.recordRequest(false);
@@ -470,7 +492,7 @@ export class GooglePhotosMCPCore {
     const args = validateArgs(request.params.arguments, listAlbumPhotosSchema);
     quotaManager.checkQuota(false);
 
-    const oauth2Client = setupOAuthClient(tokens);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await listAlbumPhotos(
       oauth2Client,
       args.albumId,
