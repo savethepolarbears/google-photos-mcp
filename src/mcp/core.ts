@@ -270,33 +270,46 @@ export class GooglePhotosMCPCore {
     }
 
     // Execute tool handler
-    switch (request.params.name) {
-      case 'auth_status':
-        return this.handleAuthStatus(tokens);
+    try {
+      switch (request.params.name) {
+        case 'auth_status':
+          return await this.handleAuthStatus(tokens);
 
-      case 'search_photos':
-        return this.handleSearchPhotos(request, tokens!);
+        case 'search_photos':
+          return await this.handleSearchPhotos(request, tokens!);
 
-      case 'search_photos_by_location':
-        return this.handleSearchPhotosByLocation(request, tokens!);
+        case 'search_photos_by_location':
+          return await this.handleSearchPhotosByLocation(request, tokens!);
 
-      case 'list_albums':
-        return this.handleListAlbums(request, tokens!);
+        case 'list_albums':
+          return await this.handleListAlbums(request, tokens!);
 
-      case 'get_photo':
-        return this.handleGetPhoto(request, tokens!);
+        case 'get_photo':
+          return await this.handleGetPhoto(request, tokens!);
 
-      case 'get_album':
-        return this.handleGetAlbum(request, tokens!);
+        case 'get_album':
+          return await this.handleGetAlbum(request, tokens!);
 
-      case 'list_album_photos':
-        return this.handleListAlbumPhotos(request, tokens!);
+        case 'list_album_photos':
+          return await this.handleListAlbumPhotos(request, tokens!);
 
-      default:
-        throw new McpError(
-          ErrorCode.MethodNotFound,
-          `Unknown tool: ${request.params.name}`
-        );
+        default:
+          throw new McpError(
+            ErrorCode.MethodNotFound,
+            `Unknown tool: ${request.params.name}`
+          );
+      }
+    } catch (error) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      return {
+        isError: true,
+        content: [{
+          type: "text",
+          text: error instanceof Error ? error.message : String(error)
+        }]
+      };
     }
   }
 
