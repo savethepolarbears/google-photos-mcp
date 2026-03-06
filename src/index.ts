@@ -54,8 +54,10 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
       const allowedHosts = [
         `localhost:${port}`,
         `127.0.0.1:${port}`,
+        `[::1]:${port}`,
         'localhost',
-        '127.0.0.1'
+        '127.0.0.1',
+        '[::1]'
       ];
 
       if (host && !allowedHosts.includes(host)) {
