@@ -19,7 +19,16 @@ vi.mock('../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { listAlbums, getAlbum, createAlbum, batchAddMediaItemsToAlbum } from '../../src/api/repositories/albumsRepository.js';
+import {
+  listAlbums,
+  getAlbum,
+  createAlbum,
+  batchAddMediaItemsToAlbum,
+  // @ts-expect-error - not yet implemented (RED state)
+  addEnrichment,
+  // @ts-expect-error - not yet implemented (RED state)
+  patchAlbum,
+} from '../../src/api/repositories/albumsRepository.js';
 import { getPhotoClient } from '../../src/api/client.js';
 import type { OAuth2Client } from 'google-auth-library';
 
@@ -174,5 +183,115 @@ describe('batchAddMediaItemsToAlbum', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
     await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).rejects.toThrow('Failed to add media items to album');
+  });
+});
+
+// ---- Phase 3 repository functions (RED state -- not yet implemented) ----
+
+describe('addEnrichment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls albums.addEnrichment with correct TextEnrichment payload', async () => {
+    const mockAddEnrichment = vi.fn().mockResolvedValue({ data: { enrichmentItem: { id: 'enrich-1' } } });
+    const mockClient = {
+      albums: {
+        addEnrichment: mockAddEnrichment,
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - addEnrichment not yet exported (RED state)
+    await addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'Summer memories' }, undefined);
+
+    expect(mockAddEnrichment).toHaveBeenCalledWith(
+      expect.objectContaining({ albumId: 'album-1' })
+    );
+  });
+
+  it('calls albums.addEnrichment with correct LocationEnrichment payload', async () => {
+    const mockAddEnrichment = vi.fn().mockResolvedValue({ data: { enrichmentItem: { id: 'enrich-2' } } });
+    const mockClient = {
+      albums: {
+        addEnrichment: mockAddEnrichment,
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - addEnrichment not yet exported (RED state)
+    await addEnrichment(mockOAuth2Client, 'album-1', { type: 'LOCATION', locationName: 'Paris, France' }, undefined);
+
+    expect(mockAddEnrichment).toHaveBeenCalledWith(
+      expect.objectContaining({ albumId: 'album-1' })
+    );
+  });
+
+  it('surfaces 403 error for non-app-created albums', async () => {
+    const permissionError = Object.assign(new Error('PERMISSION_DENIED'), { code: 403 });
+    const mockClient = {
+      albums: {
+        addEnrichment: vi.fn().mockRejectedValue(permissionError),
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - addEnrichment not yet exported (RED state)
+    await expect(addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'x' }, undefined))
+      .rejects.toThrow();
+  });
+});
+
+describe('patchAlbum', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls albums.patch with coverPhotoMediaItemId and updateMask', async () => {
+    const mockPatch = vi.fn().mockResolvedValue({ data: { id: 'album-1', title: 'Vacation', productUrl: '...' } });
+    const mockClient = {
+      albums: {
+        patch: mockPatch,
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - patchAlbum not yet exported (RED state)
+    await patchAlbum(mockOAuth2Client, 'album-1', { coverPhotoMediaItemId: 'media-1' });
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      expect.objectContaining({ albumId: 'album-1' })
+    );
+  });
+
+  it('calls albums.patch with title and updateMask', async () => {
+    const mockPatch = vi.fn().mockResolvedValue({ data: { id: 'album-1', title: 'New Title', productUrl: '...' } });
+    const mockClient = {
+      albums: {
+        patch: mockPatch,
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - patchAlbum not yet exported (RED state)
+    const result = await patchAlbum(mockOAuth2Client, 'album-1', { title: 'New Title' });
+
+    expect(mockPatch).toHaveBeenCalledWith(
+      expect.objectContaining({ albumId: 'album-1' })
+    );
+    expect(result.title).toBe('New Title');
+  });
+
+  it('surfaces 403 PERMISSION_DENIED error', async () => {
+    const permissionError = Object.assign(new Error('PERMISSION_DENIED'), { code: 403 });
+    const mockClient = {
+      albums: {
+        patch: vi.fn().mockRejectedValue(permissionError),
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+
+    // @ts-expect-error - patchAlbum not yet exported (RED state)
+    await expect(patchAlbum(mockOAuth2Client, 'album-1', { title: 'x' })).rejects.toThrow();
   });
 });
