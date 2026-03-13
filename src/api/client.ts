@@ -95,6 +95,15 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           throw toError(error, 'albums.get');
         }
       },
+      create: async (params: { title: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<Album>('/albums', { album: { title: params.title } }, { headers });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.create');
+        }
+      },
     },
     mediaItems: {
       search: async (params: {

@@ -79,3 +79,29 @@ export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Pro
     throw new Error('Failed to get album', { cause: error });
   }
 }
+
+/**
+ * Creates a new album.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param title - The title of the new album.
+ * @returns A Promise resolving to the created Album object.
+ * @throws Error if creating the album fails.
+ */
+export async function createAlbum(oauth2Client: OAuth2Client, title: string): Promise<Album> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+
+    const response = await withRetry(
+      async () => await photosClient.albums.create({ title }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'create album'
+    );
+
+    return response.data as Album;
+  } catch (error) {
+    const message = toError(error, 'create album').message;
+    logger.error(`Failed to create album: ${message}`);
+    throw new Error('Failed to create album', { cause: error });
+  }
+}

@@ -60,7 +60,7 @@ const config = {
       // For full library access, users should use the Google Photos Picker API
       'https://www.googleapis.com/auth/photoslibrary.readonly',
       // Alternative scope for 2025+ (requires app-created content only)
-      // 'https://www.googleapis.com/auth/photoslibrary.appendonly',
+      'https://www.googleapis.com/auth/photoslibrary.appendonly',
     ],
   },
 
