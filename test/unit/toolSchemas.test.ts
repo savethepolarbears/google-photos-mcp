@@ -11,6 +11,9 @@ import {
   listAlbumsSchema,
   getAlbumSchema,
   listAlbumPhotosSchema,
+  createAlbumSchema,
+  uploadMediaSchema,
+  addMediaToAlbumSchema,
 } from '../../src/schemas/toolSchemas.js';
 
 describe('searchPhotosSchema', () => {
@@ -144,5 +147,54 @@ describe('listAlbumPhotosSchema', () => {
     expect(() =>
       listAlbumPhotosSchema.parse({ albumId: 'album-1', pageSize: 101 }),
     ).toThrow();
+  });
+});
+
+describe('createAlbumSchema', () => {
+  it('accepts { title: \'My Album\' }', () => {
+    const result = createAlbumSchema.parse({ title: 'My Album' });
+    expect(result.title).toBe('My Album');
+  });
+
+  it('rejects empty title', () => {
+    expect(() => createAlbumSchema.parse({ title: '' })).toThrow();
+  });
+});
+
+describe('uploadMediaSchema', () => {
+  it('accepts { filePath: \'/tmp/photo.jpg\', mimeType: \'image/jpeg\', fileName: \'photo.jpg\' }', () => {
+    const result = uploadMediaSchema.parse({ filePath: '/tmp/photo.jpg', mimeType: 'image/jpeg', fileName: 'photo.jpg' });
+    expect(result.filePath).toBe('/tmp/photo.jpg');
+  });
+
+  it('accepts optional albumId and description', () => {
+    const result = uploadMediaSchema.parse({ filePath: '/tmp/photo.jpg', mimeType: 'image/jpeg', fileName: 'photo.jpg', albumId: 'a1', description: 'desc' });
+    expect(result.albumId).toBe('a1');
+    expect(result.description).toBe('desc');
+  });
+
+  it('rejects missing filePath', () => {
+    expect(() => uploadMediaSchema.parse({ mimeType: 'image/jpeg', fileName: 'photo.jpg' })).toThrow();
+  });
+});
+
+describe('addMediaToAlbumSchema', () => {
+  it('accepts { albumId: \'a1\', mediaItemIds: [\'m1\', \'m2\'] }', () => {
+    const result = addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds: ['m1', 'm2'] });
+    expect(result.albumId).toBe('a1');
+    expect(result.mediaItemIds).toHaveLength(2);
+  });
+
+  it('rejects 0 mediaItemIds (min 1)', () => {
+    expect(() => addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds: [] })).toThrow();
+  });
+
+  it('rejects 51 mediaItemIds (max 50)', () => {
+    const mediaItemIds = Array(51).fill('m');
+    expect(() => addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds })).toThrow();
+  });
+
+  it('rejects missing albumId', () => {
+    expect(() => addMediaToAlbumSchema.parse({ mediaItemIds: ['m1'] })).toThrow();
   });
 });

@@ -27,10 +27,15 @@ vi.mock('../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('fs/promises', () => ({ readFile: vi.fn().mockResolvedValue(Buffer.from('fake-image-data')) }));
+
 import {
   listAlbumPhotos,
   getPhoto,
   getPhotoAsBase64,
+  listMediaItems,
+  uploadMedia,
+  batchCreateMediaItems
 } from '../../src/api/repositories/photosRepository.js';
 import { getPhotoClient } from '../../src/api/client.js';
 import type { OAuth2Client } from 'google-auth-library';
@@ -130,5 +135,96 @@ describe('getPhoto', () => {
 describe('getPhotoAsBase64', () => {
   it('throws for empty URL', async () => {
     await expect(getPhotoAsBase64('')).rejects.toThrow('Invalid photo URL');
+  });
+});
+
+describe('listMediaItems', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls photosClient.mediaItems.list({ pageSize, pageToken }) and returns { photos, nextPageToken }', async () => {
+    const mockClient = {
+      mediaItems: {
+        list: vi.fn().mockResolvedValue({
+          data: {
+            mediaItems: [{ id: 'p1', filename: 'photo1.jpg', baseUrl: 'url', productUrl: 'purl' }],
+            nextPageToken: 'next'
+          }
+        })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    const result = await listMediaItems(mockOAuth2Client, 25, 'token');
+    expect(result.photos).toHaveLength(1);
+    expect(result.nextPageToken).toBe('next');
+  });
+
+  it('returns empty array when API returns no items', async () => {
+    const mockClient = {
+      mediaItems: {
+        list: vi.fn().mockResolvedValue({ data: {} })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    const result = await listMediaItems(mockOAuth2Client, 25);
+    expect(result.photos).toEqual([]);
+  });
+});
+
+describe('uploadMedia', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls photosClient.uploads.upload({ bytes, mimeType, fileName }) then photosClient.mediaItems.batchCreate(...) and returns { mediaItemId, uploadToken }', async () => {
+    const mockClient = {
+      uploads: {
+        upload: vi.fn().mockResolvedValue({ data: 'tok123' })
+      },
+      mediaItems: {
+        batchCreate: vi.fn().mockResolvedValue({
+          data: {
+            newMediaItemResults: [{ mediaItem: { id: 'new-media-id' } }]
+          }
+        })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    const result = await uploadMedia(mockOAuth2Client, '/tmp/photo.jpg', 'image/jpeg', 'photo.jpg');
+    expect(result.mediaItemId).toBe('new-media-id');
+    expect(result.uploadToken).toBeDefined();
+  });
+
+  it('throws "Failed to upload media" on upload step API failure', async () => {
+    const mockClient = {
+      uploads: {
+        upload: vi.fn().mockRejectedValue(new Error('API failure'))
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    await expect(uploadMedia(mockOAuth2Client, '/tmp/photo.jpg', 'image/jpeg', 'photo.jpg')).rejects.toThrow('Failed to upload media');
+  });
+});
+
+describe('batchCreateMediaItems', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls photosClient.mediaItems.batchCreate({ newMediaItems }) and returns { mediaItems }', async () => {
+    const mockClient = {
+      mediaItems: {
+        batchCreate: vi.fn().mockResolvedValue({
+          data: {
+            newMediaItemResults: [{ mediaItem: { id: 'new-media-id' } }]
+          }
+        })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    const result = await batchCreateMediaItems(mockOAuth2Client, [{ description: 'test', simpleMediaItem: { uploadToken: 'tok123' } }]);
+    expect(result.mediaItems).toBeDefined();
+    expect(result.mediaItems[0].id).toBe('new-media-id');
   });
 });
