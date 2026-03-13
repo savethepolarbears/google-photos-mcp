@@ -38,6 +38,7 @@ export {
 export {
   listAlbums,
   getAlbum,
+  createAlbum,
 } from './repositories/albumsRepository.js';
 
 // Repository exports (Photos)

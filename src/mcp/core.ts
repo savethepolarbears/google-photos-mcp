@@ -21,6 +21,7 @@ import {
   getPhoto,
   getPhotoAsBase64,
   getAlbum,
+  createAlbum,
 } from '../api/photos.js';
 import logger from '../utils/logger.js';
 import { validateArgs } from '../utils/validation.js';
@@ -31,6 +32,7 @@ import {
   listAlbumsSchema,
   getAlbumSchema,
   listAlbumPhotosSchema,
+  createAlbumSchema,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -299,6 +301,20 @@ export class GooglePhotosMCPCore {
           },
         },
         {
+          name: 'create_album',
+          description: 'Create a new Google Photos album',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Title for the new album (required)',
+              },
+            },
+            required: ['title'],
+          },
+        },
+        {
           name: 'list_album_photos',
           description: 'List photos in a specific album',
           inputSchema: {
@@ -391,6 +407,9 @@ export class GooglePhotosMCPCore {
         case 'get_album':
           return await this.handleGetAlbum(request, tokens);
 
+        case 'create_album':
+          return await this.handleCreateAlbum(request, tokens);
+
         case 'list_album_photos':
           return await this.handleListAlbumPhotos(request, tokens);
 
@@ -455,6 +474,29 @@ export class GooglePhotosMCPCore {
         })
       }]
     };
+  }
+
+  private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, createAlbumSchema);
+    quotaManager.checkQuota(false);
+    
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const album = await createAlbum(oauth2Client, args.title);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ album }, null, 2),
+        }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
   }
 
   private async handleSearchPhotos(request: CallToolRequest, tokens: TokenData) {

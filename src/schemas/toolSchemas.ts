@@ -58,3 +58,7 @@ export const listAlbumPhotosSchema = z.object({
   includeLocation: z.boolean().optional(),
 });
 
+export const createAlbumSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+});
+
