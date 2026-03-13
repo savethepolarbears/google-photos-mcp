@@ -105,3 +105,31 @@ export async function createAlbum(oauth2Client: OAuth2Client, title: string): Pr
     throw new Error('Failed to create album', { cause: error });
   }
 }
+
+/**
+ * Adds existing media items to an album.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param albumId - The ID of the album to add media items to.
+ * @param mediaItemIds - Array of media item IDs to add.
+ * @throws Error if adding media items fails.
+ */
+export async function batchAddMediaItemsToAlbum(
+  oauth2Client: OAuth2Client,
+  albumId: string,
+  mediaItemIds: string[]
+): Promise<void> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+
+    await withRetry(
+      async () => await photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'batch add media items to album'
+    );
+  } catch (error) {
+    const message = toError(error, 'batch add media items to album').message;
+    logger.error(`Failed to add media to album: ${message}`);
+    throw new Error('Failed to add media to album', { cause: error });
+  }
+}

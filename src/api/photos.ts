@@ -47,6 +47,8 @@ export {
   getPhoto,
   getPhotoAsBase64,
   listMediaItems,
+  uploadMedia,
+  batchCreateMediaItems,
 } from './repositories/photosRepository.js';
 
 // Service exports (High-level)

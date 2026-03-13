@@ -124,6 +124,19 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           throw toError(error, 'albums.create');
         }
       },
+      batchAddMediaItems: async (params: { albumId: string; mediaItemIds: string[] }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post(
+            `/albums/${params.albumId}:batchAddMediaItems`,
+            { mediaItemIds: params.mediaItemIds },
+            { headers }
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.batchAddMediaItems');
+        }
+      },
     },
     mediaItems: {
       batchCreate: async (params: {

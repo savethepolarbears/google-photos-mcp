@@ -62,3 +62,16 @@ export const createAlbumSchema = z.object({
   title: z.string().min(1, 'Title is required'),
 });
 
+export const uploadMediaSchema = z.object({
+  filePath: z.string().min(1, 'File path is required'),
+  mimeType: z.string().min(1, 'MIME type is required'),
+  fileName: z.string().min(1, 'File name is required'),
+  albumId: z.string().optional(),
+  description: z.string().optional(),
+});
+
+export const addMediaToAlbumSchema = z.object({
+  albumId: z.string().min(1, 'Album ID is required'),
+  mediaItemIds: z.array(z.string()).min(1).max(50),
+});
+

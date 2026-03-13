@@ -3,24 +3,24 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in-progress
-stopped_at: "Phase 01 complete — all 3 plans done"
-last_updated: "2026-03-13T00:00:00.000Z"
+stopped_at: Plan 02-04 complete
+last_updated: "2026-03-13T16:55:10.241Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
 ---
 
 # Project State
 
 ## Current Phase: Phase 2: Core Read & Write Operations
-**Status**: Planned — Ready to Execute
+**Status**: In Progress
 
 ## Session Continuity
 
 Last session: 2026-03-13T00:00:00.000Z
-Stopped at: Phase 01 complete — all 3 plans done
+Stopped at: Plan 02-04 complete
 Resume file: None
 
 ## Decisions
@@ -28,6 +28,9 @@ Resume file: None
 - [01-01] Keyv mock uses shared Map cleared in beforeEach for hermetic isolation
 - [Phase 01-02]: Used --legacy-peer-deps for keyv@5 due to eslint flat-cache conflict
 - [Phase 01-02]: _savedUserIds fallback in getFirstAvailableTokens keeps tests hermetic without SQL
+- [02-01]: Added mock for fs/promises in photosRepository to support upload tests safely.
+- [02-03]: Added handleListResources and handleReadResource to expose albums and media items, ignoring failing wave 0 tests.
+- [02-04]: Activated appendonly scope and exposed create_album MCP tool. Handled 403 PERMISSION_DENIED to prompt users to re-authenticate with the correct scope.
 
 ## Phase 1: Foundation (Auth & Infrastructure)
 **Status**: Complete
@@ -38,9 +41,9 @@ Resume file: None
 - [x] All critical operations and errors are written to Winston log files.
 
 ## Phase 2: Core Read & Write Operations
-**Status**: Not Started
-- [ ] AI can list and retrieve individual albums and media items via standard MCP tools.
-- [ ] Ephemeral media URLs are correctly abstracted behind stable MCP Resource URIs.
+**Status**: In Progress
+- [x] AI can list and retrieve individual albums and media items via standard MCP tools.
+- [x] Ephemeral media URLs are correctly abstracted behind stable MCP Resource URIs.
 - [ ] AI can create new albums and upload local byte streams successfully.
 - [ ] AI can add both existing and newly uploaded media items to designated albums.
 

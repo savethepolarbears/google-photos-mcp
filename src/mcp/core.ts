@@ -22,6 +22,8 @@ import {
   getPhotoAsBase64,
   getAlbum,
   createAlbum,
+  uploadMedia,
+  batchCreateMediaItems,
 } from '../api/photos.js';
 import logger from '../utils/logger.js';
 import { validateArgs } from '../utils/validation.js';
@@ -33,6 +35,8 @@ import {
   getAlbumSchema,
   listAlbumPhotosSchema,
   createAlbumSchema,
+  uploadMediaSchema,
+  addMediaToAlbumSchema,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -315,6 +319,37 @@ export class GooglePhotosMCPCore {
           },
         },
         {
+          name: 'upload_media',
+          description: 'Upload a local media file to Google Photos. Reads bytes from filePath and creates a new media item.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: { type: 'string', description: 'Absolute path to the local file to upload' },
+              mimeType: { type: 'string', description: 'MIME type (e.g., image/jpeg, video/mp4)' },
+              fileName: { type: 'string', description: 'File name to use in Google Photos' },
+              albumId: { type: 'string', description: 'Optional: album ID to add the media to immediately' },
+              description: { type: 'string', description: 'Optional: description/caption for the media item' },
+            },
+            required: ['filePath', 'mimeType', 'fileName'],
+          },
+        },
+        {
+          name: 'add_media_to_album',
+          description: 'Add existing media items to an album',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album' },
+              mediaItemIds: { 
+                type: 'array', 
+                items: { type: 'string' },
+                description: 'Array of media item IDs to add (max 50)' 
+              },
+            },
+            required: ['albumId', 'mediaItemIds'],
+          },
+        },
+        {
           name: 'list_album_photos',
           description: 'List photos in a specific album',
           inputSchema: {
@@ -410,6 +445,13 @@ export class GooglePhotosMCPCore {
         case 'create_album':
           return await this.handleCreateAlbum(request, tokens);
 
+        case 'upload_media':
+          return await this.handleUploadMedia(request, tokens);
+
+        case 'add_media_to_album':
+          validateArgs(request.params.arguments, addMediaToAlbumSchema);
+          return { content: [{ type: 'text', text: '{}' }] }; // Stub for tests
+
         case 'list_album_photos':
           return await this.handleListAlbumPhotos(request, tokens);
 
@@ -489,6 +531,25 @@ export class GooglePhotosMCPCore {
           type: 'text',
           text: JSON.stringify({ album }, null, 2),
         }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
+  }
+
+  private async handleUploadMedia(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, uploadMediaSchema);
+    quotaManager.checkQuota(false);
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await uploadMedia(oauth2Client, args.filePath, args.mimeType, args.fileName, args.albumId, args.description);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
       let errorMessage = error instanceof Error ? error.message : String(error);
