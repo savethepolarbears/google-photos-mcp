@@ -13,13 +13,14 @@ This is an MCP (Model Context Protocol) server that allows Claude to search and 
 
 ### Search Photos
 
-```
+```text
 search_photos
 ```
 
 Search for photos based on text queries.
 
 **Parameters:**
+
 - `query`: (string, required) Search query for photos (e.g., "vacation 2023", "sunset photos", "cats")
 - `pageSize`: (number, optional) Number of results to return (default: 25)
 - `pageToken`: (string, optional) Token for pagination
@@ -32,13 +33,14 @@ Search for photos based on text queries.
 
 ### Search Photos by Location
 
-```
+```text
 search_photos_by_location
 ```
 
 Search for photos based on location name.
 
 **Parameters:**
+
 - `locationName`: (string, required) Location name to search for (e.g., "Paris", "New York", "Tokyo")
 - `pageSize`: (number, optional) Number of results to return (default: 25)
 - `pageToken`: (string, optional) Token for pagination
@@ -49,13 +51,14 @@ Search for photos based on location name.
 
 ### Get Photo
 
-```
+```text
 get_photo
 ```
 
 Get details of a specific photo by ID.
 
 **Parameters:**
+
 - `photoId`: (string, required) ID of the photo to retrieve
 - `includeBase64`: (boolean, optional) Whether to include base64-encoded image data (default: false)
 - `includeLocation`: (boolean, optional) Whether to include location data (default: true)
@@ -65,13 +68,14 @@ Get details of a specific photo by ID.
 
 ### List Albums
 
-```
+```text
 list_albums
 ```
 
 List all photo albums.
 
 **Parameters:**
+
 - `pageSize`: (number, optional) Number of results to return (default: 20)
 - `pageToken`: (string, optional) Token for pagination
 
@@ -81,13 +85,14 @@ List all photo albums.
 
 ### Get Album
 
-```
+```text
 get_album
 ```
 
 Get details of a specific album by ID.
 
 **Parameters:**
+
 - `albumId`: (string, required) ID of the album to retrieve
 
 **Example usage:**
@@ -95,13 +100,14 @@ Get details of a specific album by ID.
 
 ### List Album Photos
 
-```
+```text
 list_album_photos
 ```
 
 List photos in a specific album.
 
 **Parameters:**
+
 - `albumId`: (string, required) ID of the album to retrieve photos from
 - `pageSize`: (number, optional) Number of results to return (default: 25)
 - `pageToken`: (string, optional) Token for pagination
@@ -116,21 +122,25 @@ List photos in a specific album.
 - Users must authenticate with their Google account before using this MCP
 - Authentication is done through the OAuth2 flow
 - **Important**: You must authenticate before using this MCP with Claude
-  
-### Authentication Steps:
+
+### Authentication Steps
 
 1. Start the server in HTTP mode:
+
    ```bash
    npm start
    ```
-2. Visit http://localhost:3000/auth in your browser
+
+2. Visit `http://localhost:3000/auth` in your browser
+
 3. Follow the Google OAuth authentication flow
+
 4. After successful authentication, you can use with Claude for Desktop:
    - Stop the HTTP server (Ctrl+C)
    - Start in STDIO mode: `npm run stdio`
    - Configure in Claude for Desktop settings
 
-### Claude for Desktop Configuration:
+### Claude for Desktop Configuration
 
 1. Open Claude for Desktop
 2. Go to Settings > MCP Servers
@@ -149,14 +159,14 @@ List photos in a specific album.
 }
 ```
 
-5. Replace the path with the absolute path to your project's dist/index.js file
-6. Save the configuration and restart Claude Desktop
+1. Replace the path with the absolute path to your project's dist/index.js file
+2. Save the configuration and restart Claude Desktop
 
 ### Checking Authentication Status
 
 You can use the `auth_status` tool to check if you're properly authenticated:
 
-```
+```text
 auth_status
 ```
 
@@ -167,22 +177,26 @@ This will tell you if you're authenticated and provide guidance if you're not.
 Once you've configured the MCP server in Claude for Desktop, you can test it with these commands:
 
 1. First, check authentication status:
-   ```
+
+   ```text
    Check if I'm authenticated with Google Photos by using the auth_status tool
    ```
 
 2. List your albums:
-   ```
+
+   ```text
    List my Google Photos albums
    ```
 
 3. Search for specific photos:
-   ```
+
+   ```text
    Search for vacation photos from last year
    ```
 
 4. Search by location:
-   ```
+
+   ```text
    Find photos taken in New York
    ```
 
@@ -209,12 +223,14 @@ If you encounter issues:
 ## Pagination
 
 Many tools support pagination through:
+
 - `pageSize`: Control how many results to return
 - `pageToken`: Token for getting the next page of results
 
 ## Response Format
 
 Responses are JSON objects containing:
+
 - Photo details (id, filename, description, date, URLs)
 - Location information (when available and requested)
 - Pagination tokens for fetching more results

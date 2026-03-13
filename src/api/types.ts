@@ -21,7 +21,7 @@ export interface MediaItemsSearchResponse {
 /**
  * Response from Google Photos API when fetching a single media item
  */
-export interface MediaItemResponse extends PhotoItem {}
+export type MediaItemResponse = PhotoItem;
 
 /**
  * Represents a photo item from Google Photos API.

@@ -15,7 +15,7 @@ import { parseIdToken, resolveUserIdentity } from '../utils/googleUser.js';
 /**
  * Cleanup function for auth routes (stops background timers)
  */
-export type AuthRoutesCleanup = () => void;
+type AuthRoutesCleanup = () => void;
 
 /**
  * Sets up authentication routes and returns cleanup function.

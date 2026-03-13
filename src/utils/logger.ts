@@ -19,16 +19,28 @@ const logFormat = winston.format.combine(
 );
 
 /**
+ * Flag indicating if running in test mode (Vitest / Jest).
+ * When true, file transports are suppressed to avoid creating log files during tests.
+ */
+const isTestMode = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+
+/**
  * List of Winston transports (outputs) for the logger.
- * - Always includes file transports for 'error.log' (error level) and 'combined.log' (all levels).
- * - Includes Console transport:
+ * - In production/development: file transports for 'error.log' and 'combined.log'.
+ * - In test mode: no file transports (avoids polluting the project root with log files).
+ * - Console transport:
  *   - In STDIO mode: writes to stderr to avoid interfering with MCP protocol on stdout.
  *   - In HTTP mode: writes to stdout as normal.
+ *   - In test mode: suppressed entirely (tests mock the logger).
  */
-const transports: winston.transport[] = [
-  new winston.transports.File({ filename: 'error.log', level: 'error' }),
-  new winston.transports.File({ filename: 'combined.log' }),
-];
+const transports: winston.transport[] = [];
+
+if (!isTestMode) {
+  transports.push(
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' }),
+  );
+}
 
 // In STDIO mode, send console output to stderr to avoid interfering with MCP protocol
 if (useStdio) {

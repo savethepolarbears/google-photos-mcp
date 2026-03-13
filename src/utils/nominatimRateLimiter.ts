@@ -6,7 +6,7 @@ import logger from './logger.js';
  *
  * @see https://operations.osmfoundation.org/policies/nominatim/
  */
-export class NominatimRateLimiter {
+class NominatimRateLimiter {
   private lastRequestTime: number = 0;
   private readonly minIntervalMs: number;
   private requestQueue: Array<() => void> = [];

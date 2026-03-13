@@ -1,0 +1,24 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['test/**/*.test.ts'],
+    exclude: ['node_modules', 'dist', 'test/photos.test.ts', 'test/security.test.ts', 'test/tokens.test.ts', 'src/api/__tests__/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/index.ts', 'src/dxt-server.ts', 'src/views/**', 'src/types/**'],
+      reporter: ['text', 'text-summary'],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80,
+      },
+    },
+    testTimeout: 10000,
+    hookTimeout: 10000,
+  },
+});

@@ -69,7 +69,7 @@ export function toError(error: unknown, context: string): Error {
  * @param auth - The authenticated OAuth2 client.
  * @returns An object with methods to interact with albums and media items.
  */
-export function createPhotosLibraryClient(auth: OAuth2Client) {
+function createPhotosLibraryClient(auth: OAuth2Client) {
   return {
     albums: {
       list: async (params: { pageSize?: number; pageToken?: string }) => {

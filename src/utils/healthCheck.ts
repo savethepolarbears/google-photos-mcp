@@ -6,7 +6,7 @@ import config from './config.js';
 /**
  * Health status for individual checks
  */
-export interface HealthStatus {
+interface HealthStatus {
   status: 'pass' | 'fail';
   message?: string;
   responseTime?: number;
@@ -15,7 +15,7 @@ export interface HealthStatus {
 /**
  * Overall health check result
  */
-export interface HealthCheckResult {
+interface HealthCheckResult {
   status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: string;
   checks: {
@@ -32,7 +32,7 @@ export interface HealthCheckResult {
 /**
  * Performs health checks on system components
  */
-export class HealthChecker {
+class HealthChecker {
   private startTime = Date.now();
 
   /**

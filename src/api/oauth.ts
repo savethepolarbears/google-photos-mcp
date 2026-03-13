@@ -45,9 +45,11 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
  */
 export async function getAuthorizedHeaders(auth: OAuth2Client): Promise<Record<string, string>> {
   try {
-    return await auth.getRequestHeaders();
+    const headers = await auth.getRequestHeaders();
+    // google-auth-library v10 returns Headers object; convert to plain record
+    return Object.fromEntries(Object.entries(headers));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Authorization failed: ${message}`);
+    throw new Error(`Authorization failed: ${message}`, { cause: error });
   }
 }

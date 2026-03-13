@@ -5,7 +5,7 @@ import config from './config.js';
 /**
  * Interface representing the payload of a Google ID Token.
  */
-export interface GoogleIdTokenPayload {
+interface GoogleIdTokenPayload {
   /** User's email address */
   email?: string;
   /** Subject identifier (unique user ID) */

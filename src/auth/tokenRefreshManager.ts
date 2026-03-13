@@ -6,7 +6,7 @@ import { TokenData, saveTokens } from './tokens.js';
  * Manages token refresh operations with mutex to prevent concurrent refreshes.
  * Ensures only one refresh happens at a time per user.
  */
-export class TokenRefreshManager {
+class TokenRefreshManager {
   private refreshPromises = new Map<string, Promise<TokenData>>();
 
   /**
@@ -71,7 +71,7 @@ export class TokenRefreshManager {
       const { credentials } = await oauth2Client.refreshAccessToken();
 
       const newTokens: TokenData = {
-        access_token: credentials.access_token!,
+        access_token: credentials.access_token || currentTokens.access_token,
         refresh_token: credentials.refresh_token || currentTokens.refresh_token,
         expiry_date: credentials.expiry_date || 0,
         userEmail: currentTokens.userEmail,

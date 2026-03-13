@@ -1,8 +1,10 @@
-# Refactoring Roadmap
+# Refactoring Roadmap (Historical)
 
-This document outlines remaining architectural improvements identified during comprehensive code review.
+> **Status**: All phases complete. This document is retained as historical reference.
 
-## COMPLETED ✅
+This document outlines architectural improvements identified during comprehensive code review. All items have been completed.
+
+## Completed Phase 1 ✅
 
 All CRITICAL and HIGH priority security, performance, and validation improvements have been implemented:
 
@@ -20,7 +22,7 @@ All CRITICAL and HIGH priority security, performance, and validation improvement
 - ✅ Comprehensive security test suite (18 tests)
 - ✅ Fixed all 'any' types with proper interfaces
 
-## COMPLETED PHASE 2 REFACTORINGS ✅
+## Completed Phase 2 ✅
 
 All three major architectural refactorings from Phase 2 have been successfully completed:
 
@@ -29,6 +31,7 @@ All three major architectural refactorings from Phase 2 have been successfully c
 **Completed**: December 29, 2025
 
 **Results**:
+
 - ✅ index.ts: 962 → 310 lines (-68%, -652 lines)
 - ✅ dxt-server.ts: 706 → 156 lines (-78%, -550 lines)
 - ✅ Total duplication eliminated: ~1,200 lines
@@ -36,12 +39,14 @@ All three major architectural refactorings from Phase 2 have been successfully c
 - ✅ All 22 tests passing
 
 **Implementation**:
+
 - GooglePhotosHTTPServer extends GooglePhotosMCPCore (HTTP/SSE transport)
 - GooglePhotosDXTServer extends GooglePhotosMCPCore (STDIO with timeout wrapper)
 - Made registerHandlers() and handleListTools() protected for subclass customization
 - Single source of truth for all tool handlers, validation, and formatting
 
 **Benefits**:
+
 - Security patches automatically apply to both modes
 - Zero feature drift between deployment modes
 - Maintenance reduced by 50% (one codebase instead of two)
@@ -55,6 +60,7 @@ All three major architectural refactorings from Phase 2 have been successfully c
 **Completed**: December 29, 2025
 
 **Results**:
+
 - ✅ OAuth tokens stored in OS-native encrypted keychain (keytar)
 - ✅ Automatic migration from plaintext tokens.json
 - ✅ Metadata stored separately with 0600 permissions
@@ -62,15 +68,17 @@ All three major architectural refactorings from Phase 2 have been successfully c
 - ✅ All 22 tests passing
 
 **Implementation**:
+
 - Added keytar@^7.9.0 dependency
 - Created src/auth/secureTokenStorage.ts (220 lines)
-  * saveTokensSecure(): OS keychain storage
-  * getTokensSecure(): Keychain retrieval
-  * migrateLegacyTokens(): Auto-migration on startup
-  * Backup created automatically (tokens.json.backup-*)
+  - saveTokensSecure(): OS keychain storage
+  - getTokensSecure(): Keychain retrieval
+  - migrateLegacyTokens(): Auto-migration on startup
+  - Backup created automatically (tokens.json.backup-*)
 - Updated src/auth/tokens.ts to use secure storage (backward compatible API)
 
 **Benefits**:
+
 - Defense-in-depth security (OS encryption + file permissions)
 - No plaintext tokens exposed to backup services or malware
 - Zero user action required (migration is automatic)
@@ -85,6 +93,7 @@ All three major architectural refactorings from Phase 2 have been successfully c
 **Completed**: December 29, 2025
 
 **Results**:
+
 - ✅ photos.ts: 904 → 76 lines (-91%, -828 lines)
 - ✅ Code split into 8 focused modules
 - ✅ Clear separation by responsibility
@@ -92,7 +101,8 @@ All three major architectural refactorings from Phase 2 have been successfully c
 - ✅ All 22 tests passing
 
 **New Module Structure**:
-```
+
+```text
 src/api/
 ├── types.ts (117 lines) - Type definitions and interfaces
 ├── oauth.ts (54 lines) - OAuth2 client management
@@ -111,6 +121,7 @@ src/api/
 ```
 
 **Benefits**:
+
 - Single Responsibility Principle enforced
 - Better testability (focused unit tests per module)
 - Easier code navigation (find by responsibility)
@@ -121,24 +132,12 @@ src/api/
 
 ---
 
-## REMAINING WORK
-
-**NONE** - All Phase 2 refactorings complete!
-
-**Total Lines Eliminated**: ~2,000+ lines of duplication
-- GooglePhotosMCPCore integration: -1,200 lines
-- photos.ts modularization: -828 lines (logic now organized, not deleted)
-
-**Total Commits in Phase 2**: 3 commits
-**All Tests Passing**: 22/22 ✓
-
----
-
-## DEPENDENCY UPDATES ✅
+## Dependency Updates ✅
 
 **Completed**: Previous session
 
 **Results**:
+
 - ✅ Updated @modelcontextprotocol/sdk: 1.9.0 → 1.24.0+
 - ✅ Updated axios, body-parser, js-yaml, jws, brace-expansion
 - ✅ 0 vulnerabilities remaining
@@ -146,46 +145,52 @@ src/api/
 
 ---
 
-## TESTING STATUS ✅
+## Testing Status ✅
 
 **Test Coverage**: 22/22 tests passing (100%)
+
 - ✅ 4 unit tests (photo search token matching)
 - ✅ 18 security tests (CORS, DNS rebinding, CSRF, JWT, file permissions)
 - ✅ Tests complete in <60 seconds
 - ✅ No flaky tests
 
 **Test Infrastructure**:
+
 - ✅ setupAuthRoutes cleanup prevents test hanging
 - ✅ All security validations covered
 - ✅ Type safety verified across all modules
 
 ---
 
-## OBSERVABILITY & MONITORING ✅
+## Observability & Monitoring ✅
 
 **Production-Ready Endpoints**:
-- `/health` - Basic liveness check (200/503 status)
-- `/health/detailed` - Component diagnostics (auth, API, storage with response times)
-- `/metrics` - Quota utilization stats (requests, media bytes, reset time)
+
+- `/health` — Basic liveness check (200/503 status)
+- `/health/detailed` — Component diagnostics (auth, API, storage with response times)
+- `/metrics` — Quota utilization stats (requests, media bytes, reset time)
 
 **Implemented Features**:
+
 - ✅ QuotaManager: 10k/day request tracking, 75k/day media bytes
 - ✅ HealthChecker: Component-based health monitoring
 - ✅ Structured logging with context
 - ✅ Request/error logging throughout
 
 **Optional Future Enhancements**:
+
 - Request duration tracking (p50, p95, p99 latencies)
 - Error rate by tool type
 - OpenTelemetry integration for distributed tracing
 
 ---
 
-## FUTURE WORK (Optional)
+## Future Work (Optional)
 
 **All critical, high, and medium priority work is complete.**
 
 Optional nice-to-haves:
+
 1. Add structured logging with request correlation IDs
 2. Implement p50/p95/p99 latency tracking
 3. Add OpenTelemetry for distributed tracing
@@ -194,9 +199,10 @@ Optional nice-to-haves:
 
 ---
 
-## SUCCESS CRITERIA
+## Success Criteria
 
 Current implementation achieves:
+
 - ✅ MCP specification compliance (2025-03-26)
 - ✅ OAuth 2.1 security requirements
 - ✅ Google Photos API best practices (retry, quotas, caching)

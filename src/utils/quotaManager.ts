@@ -7,7 +7,7 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
  *
  * @see https://developers.google.com/photos/overview/api-limits-quotas
  */
-export class QuotaManager {
+class QuotaManager {
   private requestCount: number = 0;
   private mediaByteCount: number = 0;
   private resetTime: number;

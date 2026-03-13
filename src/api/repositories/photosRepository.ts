@@ -52,7 +52,7 @@ export async function searchPhotos(
   } catch (error) {
     const message = toError(error, 'search photos').message;
     logger.error(`Failed to search photos: ${message}`);
-    throw new Error('Failed to search photos');
+    throw new Error('Failed to search photos', { cause: error });
   }
 }
 
@@ -87,7 +87,7 @@ export async function listAlbumPhotos(
   } catch (error) {
     const message = toError(error, 'list album photos').message;
     logger.error(`Failed to list album photos: ${message}`);
-    throw new Error('Failed to list album photos');
+    throw new Error('Failed to list album photos', { cause: error });
   }
 }
 
@@ -140,7 +140,7 @@ export async function getPhoto(
   } catch (error) {
     const message = toError(error, 'get photo').message;
     logger.error(`Failed to get photo: ${message}`);
-    throw new Error('Failed to get photo');
+    throw new Error('Failed to get photo', { cause: error });
   }
 }
 
@@ -163,6 +163,6 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
     return buffer.toString('base64');
   } catch (error) {
     logger.error(`Failed to download photo: ${error instanceof Error ? error.message : String(error)}`);
-    throw new Error('Failed to download photo');
+    throw new Error('Failed to download photo', { cause: error });
   }
 }

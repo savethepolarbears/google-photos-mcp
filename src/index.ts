@@ -130,17 +130,20 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     this.app.post('/mcp', async (req, res) => {
       try {
         const sessionId = req.headers['mcp-session-id'] as string | undefined;
-        let transport: StreamableHTTPServerTransport;
+        let transport: StreamableHTTPServerTransport | undefined;
 
-        if (sessionId && this.transports.has(sessionId)) {
+        if (sessionId) {
+          transport = this.transports.get(sessionId);
+        }
+
+        if (transport) {
           // Reuse existing session
-          transport = this.transports.get(sessionId)!;
         } else if (!sessionId && isInitializeRequest(req.body)) {
           // New session initialization
-          transport = new StreamableHTTPServerTransport({
+          const newTransport = new StreamableHTTPServerTransport({
             sessionIdGenerator: () => randomUUID(),
             onsessioninitialized: (id) => {
-              this.transports.set(id, transport);
+              this.transports.set(id, newTransport);
               logger.info(`MCP session initialized: ${id}`);
             },
             onsessionclosed: (id) => {
@@ -149,13 +152,14 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
             }
           });
 
-          transport.onclose = () => {
-            if (transport.sessionId) {
-              this.transports.delete(transport.sessionId);
+          newTransport.onclose = () => {
+            if (newTransport.sessionId) {
+              this.transports.delete(newTransport.sessionId);
             }
           };
 
-          await this.server.connect(transport);
+          await this.server.connect(newTransport);
+          transport = newTransport;
         } else {
           return res.status(400).json({
             jsonrpc: '2.0',
@@ -164,7 +168,9 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
           });
         }
 
-        await transport.handleRequest(req, res, req.body);
+        if (transport) {
+          await transport.handleRequest(req, res, req.body);
+        }
       } catch (error) {
         logger.error(`Error handling MCP request: ${error instanceof Error ? error.message : String(error)}`);
         if (!res.headersSent) {

@@ -13,7 +13,7 @@ The codebase follows a **Layered Architecture**, separating the presentation/int
 - **Service Layer (`src/api/services/`)**: Orchestrates complex business logic spanning multiple operations. For instance, `photoSearchService.ts` combines Google Photos API search with client-side token matching and location enrichment.
 - **Repository Layer (`src/api/repositories/`)**: Encapsulates direct data access to the Google Photos API (e.g., `photosRepository.ts`, `albumsRepository.ts`). Responsibilities include setting up API requests and applying retry policies.
 - **Domain / Utilities Layer (`src/api/search/`, `src/api/enrichment/`)**: Contains pure business logic for parsing search strings, building API filters, matching tokens, and fetching location metadata via Nominatim.
-- **Infrastructure / Cross-Cutting Concerns**: 
+- **Infrastructure / Cross-Cutting Concerns**:
   - `src/auth/`: Manages OAuth2 flows, secure token storage in the OS keychain, and mutex-protected token refreshing.
   - `src/utils/`: Provides logging (Winston), configuration management, rate limiting, quota tracking, health checks, and retry mechanics.
 
