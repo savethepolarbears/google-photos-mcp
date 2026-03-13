@@ -19,7 +19,7 @@ vi.mock('../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { listAlbums, getAlbum } from '../../src/api/repositories/albumsRepository.js';
+import { listAlbums, getAlbum, createAlbum, batchAddMediaItemsToAlbum } from '../../src/api/repositories/albumsRepository.js';
 import { getPhotoClient } from '../../src/api/client.js';
 import type { OAuth2Client } from 'google-auth-library';
 
@@ -120,5 +120,59 @@ describe('getAlbum', () => {
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
 
     await expect(getAlbum(mockOAuth2Client, 'bad-id')).rejects.toThrow('Failed to get album');
+  });
+});
+
+describe('createAlbum', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls photosClient.albums.create({ title }) and returns Album with id and title', async () => {
+    const mockClient = {
+      albums: {
+        create: vi.fn().mockResolvedValue({ data: { id: 'new-album', title: 'My Album', productUrl: '...' } })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    const result = await createAlbum(mockOAuth2Client, 'My Album');
+    expect(result.id).toBe('new-album');
+    expect(result.title).toBe('My Album');
+  });
+
+  it('throws "Failed to create album" on API failure', async () => {
+    const mockClient = {
+      albums: {
+        create: vi.fn().mockRejectedValue(new Error('API failure'))
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    await expect(createAlbum(mockOAuth2Client, 'My Album')).rejects.toThrow('Failed to create album');
+  });
+});
+
+describe('batchAddMediaItemsToAlbum', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }) and resolves without error', async () => {
+    const mockClient = {
+      albums: {
+        batchAddMediaItems: vi.fn().mockResolvedValue({ data: {} })
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).resolves.not.toThrow();
+  });
+
+  it('throws "Failed to add media to album" on API failure', async () => {
+    const mockClient = {
+      albums: {
+        batchAddMediaItems: vi.fn().mockRejectedValue(new Error('API failure'))
+      }
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).rejects.toThrow('Failed to add media to album');
   });
 });
