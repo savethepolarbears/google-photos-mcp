@@ -1,66 +1,69 @@
-# Directory Structure
+# Project Structure
 
-## Root Layout
-The workspace is structured as a standard Node.js/TypeScript project, organized into `src` for source code, `test` for tests, and standard configuration files at the root.
+This document outlines the directory layout, key locations, and naming conventions for the Google Photos MCP server codebase.
 
+## 1. Directory Layout
+
+The workspace is organized into a standard Node.js/TypeScript structure:
+
+```text
+/Users/klkro/mcp-servers/google-photos/
+├── src/                    # Source code root
+│   ├── api/                # Google Photos API integration
+│   │   ├── enrichment/     # Location data enrichment (Nominatim)
+│   │   ├── repositories/   # CRUD operations for photos and albums
+│   │   ├── search/         # Search parsing, token matching, and filter builders
+│   │   ├── services/       # High-level orchestration and business logic
+│   │   ├── __tests__/      # API-specific tests
+│   │   ├── client.ts       # HTTP client and error handling wrapper
+│   │   ├── oauth.ts        # OAuth client setup
+│   │   ├── photos.ts       # Facade module re-exporting API functionalities
+│   │   └── types.ts        # API-specific TypeScript interfaces
+│   ├── auth/               # Authentication and token management
+│   │   ├── routes.ts       # Express routes for OAuth callbacks
+│   │   ├── secureTokenStorage.ts # OS keychain integration for tokens
+│   │   ├── tokenRefreshManager.ts # Mutex-based token refresher
+│   │   └── tokens.ts       # Token data interfaces and accessors
+│   ├── mcp/                # Model Context Protocol implementation
+│   │   └── core.ts         # Shared MCP tool definitions and handlers
+│   ├── schemas/            # Zod validation schemas
+│   │   └── toolSchemas.ts  # Input validation schemas for MCP tools
+│   ├── types/              # Global TypeScript declarations
+│   │   └── mcp.d.ts        # MCP SDK type augmentations
+│   ├── utils/              # Cross-cutting utilities
+│   │   ├── config.ts       # Environment variable parsing
+│   │   ├── googleUser.ts   # User info extraction
+│   │   ├── healthCheck.ts  # System health monitoring
+│   │   ├── location.ts     # Geocoding utilities
+│   │   ├── logger.ts       # Winston logger setup
+│   │   ├── nominatimRateLimiter.ts # API rate limiting
+│   │   ├── quotaManager.ts # Google API quota tracking
+│   │   ├── retry.ts        # Exponential backoff utility
+│   │   └── validation.ts   # Argument validation wrapper
+│   ├── views/              # HTML views (e.g., for the HTTP server homepage)
+│   ├── index.ts            # Main entry point (HTTP & standard STDIO)
+│   └── dxt-server.ts       # Alternative entry point (DXT STDIO with timeouts)
+├── test/                   # Test suite root
+│   ├── helpers/            # Test factories and mocks
+│   ├── integration/        # End-to-end and integration tests
+│   ├── security/           # Security and vulnerability tests
+│   └── unit/               # Unit tests matching the src/ structure
+├── docs/                   # Project documentation
+├── dist/                   # Compiled JavaScript output
+└── .planning/              # Agent planning and architectural context
 ```
-/
-├── .env.example        # Environment variable template
-├── .eslintrc.json      # ESLint configuration
-├── package.json        # NPM dependencies and scripts
-├── tsconfig.json       # TypeScript compiler configuration
-├── vitest.config.ts    # Vitest testing configuration
-├── src/                # Primary source code directory
-├── test/               # Test suites (unit, integration, security)
-├── docs/               # Project documentation
-└── dist/               # Compiled JavaScript output
-```
 
-## Source Code (`src/`)
-The `src/` directory is organized by feature and architectural layer:
+## 2. Key Locations
 
-*   **`src/index.ts`**: The main entry point for starting the HTTP and standard STDIO servers.
-*   **`src/dxt-server.ts`**: An alternative entry point tailored for DXT clients, injecting execution timeouts.
+- **Tool Implementations**: Added or modified in `src/mcp/core.ts`, with input schemas in `src/schemas/toolSchemas.ts`.
+- **API Endpoints**: Modified via `src/api/repositories/` and orchestrated via `src/api/services/`. The entry point for the rest of the application is the facade `src/api/photos.ts`.
+- **Server Bootstrapping**: Managed in `src/index.ts` (Express and normal STDIO) and `src/dxt-server.ts` (timeout-wrapped STDIO).
+- **Authentication**: Handled primarily within `src/auth/` using secure OS keychain storage and automated refresh mechanisms.
 
-### API Layer (`src/api/`)
-Contains all logic for communicating with the Google Photos API.
-*   `src/api/photos.ts`: The facade module re-exporting the API's public interface.
-*   `src/api/client.ts`: Raw Axios HTTP client configuration and error mapping.
-*   `src/api/oauth.ts`: OAuth client factory and credential management.
-*   `src/api/types.ts`: Core TypeScript definitions for the Google Photos API domain.
-*   **`src/api/repositories/`**: Contains direct CRUD operations (e.g., `albumsRepository.ts`, `photosRepository.ts`).
-*   **`src/api/services/`**: Contains orchestration logic, like `photoSearchService.ts`.
-*   **`src/api/search/`**: Contains modules for building filters (`filterBuilder.ts`) and post-processing search results (`tokenMatcher.ts`).
-*   **`src/api/enrichment/`**: Contains location enrichment logic (`locationEnricher.ts`).
+## 3. Naming Conventions
 
-### Authentication (`src/auth/`)
-Handles the OAuth 2.0 flow and token lifecycle.
-*   `src/auth/routes.ts`: Express routes (`/auth`, `/oauth2callback`) for initial user authentication.
-*   `src/auth/tokens.ts`: Interfaces for retrieving and saving tokens.
-*   `src/auth/secureTokenStorage.ts`: Integration with `keytar` for OS-level secure credential storage.
-*   `src/auth/tokenRefreshManager.ts`: Singleton managing token refresh logic to avoid race conditions.
-
-### MCP Protocol (`src/mcp/`)
-*   `src/mcp/core.ts`: Contains `GooglePhotosMCPCore`, which defines the tools available to Claude and dispatches incoming tool execution requests to the correct service/repository.
-
-### Validation (`src/schemas/`)
-*   `src/schemas/toolSchemas.ts`: Zod schemas defining the expected input arguments for every MCP tool (e.g., `searchPhotosSchema`).
-
-### Utilities (`src/utils/`)
-Cross-cutting concerns and shared helpers.
-*   `logger.ts`: Winston-based logging, conditionally piping to stderr during STDIO mode.
-*   `quotaManager.ts`: Tracks API usage against daily limits.
-*   `healthCheck.ts`: Monitors the health of the API connection and token status.
-*   `retry.ts`: Generic retry mechanism with exponential backoff.
-*   `validation.ts`: Helper for executing Zod validations against tool arguments.
-*   `nominatimRateLimiter.ts` & `location.ts`: Rate-limiting logic specifically for external geocoding services.
-
-### Views (`src/views/`)
-*   `src/views/index.html`: Static HTML served during the OAuth flow.
-
-## Naming Conventions
-*   **Files/Modules**: `camelCase` (e.g., `photoSearchService.ts`, `dxt-server.ts`).
-*   **Classes/Interfaces**: `PascalCase` (e.g., `GooglePhotosMCPCore`, `PhotoItem`).
-*   **Variables/Functions**: `camelCase` (e.g., `getAuthenticatedClient`, `quotaManager`).
-*   **Tests**: Suffixed with `.test.ts` mirroring the source file name (e.g., `unit/photoSearchService.test.ts`).
-*   **Constants**: Upper `SNAKE_CASE` for global constants (e.g., `DXT_TIMEOUT`).
+- **Files and Directories**: `camelCase` is used for files and directories (e.g., `photoSearchService.ts`, `secureTokenStorage.ts`). Exceptions include root configuration files (`tsconfig.json`, `package.json`), documentation (`README.md`, `ARCHITECTURE.md`), and the main server files.
+- **Classes**: `PascalCase` is used for class names (e.g., `GooglePhotosMCPCore`, `TokenRefreshManager`).
+- **Functions and Variables**: `camelCase` is used for functions, methods, and variables (e.g., `searchPhotosByText`, `getFirstAvailableTokens`).
+- **Tests**: Test files append `.test.ts` to the module name being tested (e.g., `photosRepository.test.ts`).
+- **Interfaces/Types**: `PascalCase` is used for types and interfaces (e.g., `PhotoItem`, `FormattedPhoto`).

@@ -1,30 +1,24 @@
 # Codebase Conventions
 
-## Tech Stack & Tooling
-* **Language:** TypeScript
-* **Module System:** ES Modules (`"module": "NodeNext"`, `"moduleResolution": "NodeNext"`)
-* **Linting:** ESLint (`@typescript-eslint/recommended`)
-* **Formatting:** Prettier
-* **Validation:** Zod for runtime schema validation (`src/schemas/toolSchemas.ts`, `src/utils/validation.ts`)
+## 1. Code Style and Formatting
+- **TypeScript:** Strict mode is enabled (`strict: true`). Avoid `any`; use `unknown` if type is truly unknown, or define explicit types.
+- **Modules:** Node ESM (ECMAScript Modules) format. Imports must use `.js` extension (e.g., `import { logger } from './logger.js'`).
+- **Linter & Formatter:** Uses ESLint with `@typescript-eslint/recommended` and Prettier for code formatting. (Single quotes, trailing commas depending on Prettier defaults, typically double quotes for JSON and single quotes for TS/JS).
+- **Documentation:** Use JSDoc format for all exported functions, classes, and interfaces. Comments should describe the purpose, parameters (`@param`), and return value (`@returns`).
 
-## Code Organization & Architecture
-* **Facade Pattern:** The API layer uses a facade module (`src/api/photos.ts`) that re-exports functionality from focused sub-modules (e.g., `oauth.ts`, `client.ts`, `repositories/`, `services/`, `search/`).
-* **HTTP Client:** Uses `axios` with customized `https.Agent` for keep-alive and connection reuse to optimize performance.
-* **Separation of Concerns:** Clear separation between API wrapper (`client.ts`), token management (`auth/`), and specific features (e.g., `search/`, `enrichment/`).
-* **MCP Integration:** Core MCP logic is separated in `src/mcp/core.ts` and `src/dxt-server.ts`.
+## 2. Naming Conventions
+- **Variables and Functions:** `camelCase` (e.g., `getPhotoClient`, `listAlbums`).
+- **Classes and Interfaces:** `PascalCase` (e.g., `GooglePhotosMCPCore`, `PhotoItem`).
+- **Interfaces:** Do not use the `I` prefix (use `Album` instead of `IAlbum`).
+- **Response Types:** Types representing API responses should generally end with `Response` (e.g., `AlbumsListResponse`, `MediaItemResponse`).
 
-## Naming Conventions
-* **Files:** camelCase for TypeScript files (`photoSearchService.ts`, `albumsRepository.ts`).
-* **Variables & Functions:** camelCase.
-* **Types/Interfaces:** PascalCase (`AlbumsListResponse`, `MediaItemResponse`).
+## 3. Architectural Patterns
+- **Dependency Injection:** External clients (like `OAuth2Client`) are passed into service and repository functions rather than being instantiated globally. This enables easier mocking and testing.
+- **Factory Pattern:** Used to create configured instances, such as `createPhotosLibraryClient` for wrapping API calls.
+- **Singletons:** State-holding utilities (like `logger`, `quotaManager`, `tokenRefreshManager`) are exported as singleton instances.
+- **MCP Tool Handlers:** Tool arguments are validated using Zod schemas (`validateArgs`) before processing. Each MCP tool routes to a dedicated private handler method within the `GooglePhotosMCPCore` class.
 
-## Error Handling
-* **Standardization:** Centralized error normalization using the `toError` helper function (`src/api/client.ts`).
-* **Axios Errors:** Wraps Axios errors, attaching status codes and API context.
-* **Contextual Context:** Enriches specific errors, such as providing context on the 2025 API scope deprecations for `PERMISSION_DENIED` errors.
-* **Typing:** Returns standard `Error` instances avoiding string/null panics.
-
-## Logging
-* **Library:** Winston logger (`src/utils/logger.ts`).
-* **Environment Aware:** When the application runs in STDIO mode (for MCP via `--stdio`), console output is automatically redirected to `stderr` to avoid interfering with the JSON-RPC over `stdout`.
-* **File Transport:** Logs are simultaneously written to local files (`error.log`, `combined.log`).
+## 4. Error Handling
+- **Centralized Error Parsing:** The `toError` wrapper (in `src/api/client.ts`) converts unknown errors into standardized `Error` objects, specifically extracting nested `AxiosError` details and API-specific HTTP status codes.
+- **API Errors:** The codebase handles specific Google Photos API restrictions (e.g., 2025 scope deprecations) within the unified error handler.
+- **MCP Errors:** Protocol-level errors are thrown using the SDK's `McpError` (e.g., `ErrorCode.MethodNotFound`) to comply with the MCP specification.

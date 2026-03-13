@@ -1,31 +1,24 @@
 # External Integrations
 
-## External APIs & Services
+## 1. Google Cloud & Google Photos API
+- **Type**: External REST API & Authentication Provider
+- **Purpose**: The core data provider for the server. Handles OAuth 2.0 flow and fetches user photos, albums, and media items.
+- **Authentication**: OAuth 2.0 (Authorization Code Flow) requiring client ID and secret.
+- **Scopes**: Requires `https://www.googleapis.com/auth/photoslibrary.readonly`.
+- **Implementation**: Utilizes `google-auth-library` for authentication flows and token refreshing, and `axios` to execute raw requests against the Google Photos API endpoints (working around specific API deprecations where the official client might lack support).
 
-### 1. Google Photos API
-- **Purpose**: Main data source for the MCP server. Enables fetching albums, searching for media items, and retrieving photo metadata.
-- **Base URL**: `https://photoslibrary.googleapis.com/v1`
-- **Implementation**: Uses `axios` with connection pooling (`https.Agent` keep-alive settings) for performance optimizations.
-- **Key Capabilities**: 
-  - `albums.list` / `albums.get`
-  - `mediaItems.search` / `mediaItems.get`
+## 2. Nominatim (OpenStreetMap)
+- **Type**: External REST API
+- **Purpose**: Geocoding and reverse-geocoding for photo locations. Converts geographic coordinates (latitude/longitude) from photo metadata into human-readable locations, or vice versa for location-based search filtering.
+- **Endpoint**: `https://nominatim.openstreetmap.org/search`
+- **Constraints & Implementation**: Due to OSM's strict usage policy, the integration implements a custom `NominatimRateLimiter` (`src/utils/nominatimRateLimiter.ts`) to strictly throttle requests to a maximum of 1 request per second. Uses `axios` for HTTP calls.
 
-### 2. OpenStreetMap / Nominatim API
-- **Purpose**: Geocoding service used to enrich photo location data. It attempts to search for a location based on location names extracted from photo descriptions, since Google Photos API does not always expose precise location coordinates directly.
-- **Base URL**: `https://nominatim.openstreetmap.org/search`
-- **Implementation**: Free geocoding API accessed via `axios` and heavily rate-limited (1 request/second) via an internal `nominatimRateLimiter` to comply with Nominatim's strict usage policies. 
+## 3. Model Context Protocol (MCP)
+- **Type**: IPC / Tooling Protocol
+- **Purpose**: Exposes the local Google Photos capabilities to LLM clients (like Claude or Cursor).
+- **Implementation**: Uses `@modelcontextprotocol/sdk` to act as an MCP Server over `stdio`, defining various photo and album retrieval tools that the LLM can invoke.
 
-## Authentication & Authorization
-
-### Google Cloud OAuth2
-- **Purpose**: Securing access to user's Google Photos data.
-- **Mechanism**: OAuth 2.0 flow using `google-auth-library` and `googleapis`.
-- **Flow Details**: Uses Client ID, Client Secret, and a Redirect URI handled by an internal `express` server endpoint to acquire Access and Refresh tokens.
-- **Scope Limitations**: Aware of Google's 2025 API scope deprecations (restricting some scopes to app-created content only) and provides customized error messaging.
-
-## Local/System Integrations
-
-### OS Keychain (via `keytar`)
-- **Purpose**: Secure token storage.
-- **Mechanism**: The application securely stores OAuth sensitive tokens (`access_token`, `refresh_token`, `id_token`) using the host operating system's native keychain (Keychain Access on macOS, Secret Service on Linux, Credential Vault on Windows) rather than plain-text files.
-- **Metadata**: Non-sensitive token metadata (like `userId`, `userEmail`, timestamps) is stored alongside in `.google-photos-mcp/*.meta.json` files on the filesystem.
+## 4. System Keychain (via Keytar)
+- **Type**: Local OS Integration
+- **Purpose**: Secure credential storage.
+- **Implementation**: Instead of keeping long-lived refresh tokens in plain text or standard configuration files, the server uses the `keytar` library to store and retrieve the user's Google OAuth refresh tokens directly within the host operating system's native keychain/credential manager. Fallback file-based token storage (`tokens.json`) is also supported.

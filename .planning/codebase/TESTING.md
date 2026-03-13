@@ -1,31 +1,34 @@
 # Testing Patterns
 
-## Framework & Configuration
-* **Test Runner:** Vitest (`vitest run`, `vitest:watch`)
-* **Environment:** Node.js
-* **Globals:** Enabled in config (`import { describe, it, expect } from 'vitest'` is used explicitly in files, though globals are technically set to true).
+## 1. Framework and Tooling
+- **Test Runner:** [Vitest](https://vitest.dev/) is used as the test runner with the `node` environment.
+- **Global API:** Vitest globals are enabled, so `describe`, `it`, `expect`, `beforeEach`, and `vi` can be used directly or imported from `vitest`.
+- **Scripts:** 
+  - Run all tests: `npm run test`
+  - Watch mode: `npm run test:watch`
+  - Coverage: `npm run test:coverage`
+  - Security tests: `npm run test:security`
 
-## Directory Structure
-* **Unit Tests:** `test/unit/` (e.g., `client.test.ts`, `tokenMatcher.test.ts`)
-* **Integration Tests:** `test/integration/`
-* **Security Tests:** `test/security/`
-* **Helpers & Mocks:** `test/helpers/` (e.g., `mocks.ts`, `factories.ts`)
+## 2. Directory Structure
+Tests are isolated from the main `src` directory and structured logically inside `/test/`:
+- `test/unit/`: Unit tests for individual components, modules, and repositories.
+- `test/integration/`: Tests checking the interactions between components (e.g., `mcpCore.test.ts`).
+- `test/security/`: Dedicated security tests.
+- `test/helpers/`: Shared utilities, data factories, and mock builders.
 
-## File Naming
-* Test files follow the `*.test.ts` naming convention.
+**Naming convention:** Test files are named `[subject].test.ts` matching the file they test.
 
-## Mocking Strategy
-* **Factory Pattern for Mocks:** A shared mock factory approach is used to keep test files clean. Functions like `createMockAxiosError` and `createMockNetworkError` are exported from `test/helpers/mocks.ts` to simulate external dependency behaviors consistently.
-* **External Services:** HTTP calls (Axios) are generally mocked out rather than hitting live APIs.
+## 3. Mocking Strategy
+- **Module Mocks:** `vi.mock()` is heavily used to stub out internal dependencies, utilities (like `logger`, `retry`), and external APIs.
+- **Mock Helpers:** The `test/helpers/mocks.ts` file provides functions to instantiate complex mock objects, such as `createMockAxiosError` or `createMockNetworkError`.
+- **Data Factories:** `test/helpers/factories.ts` provides factory functions (`createMockPhotoItem`, `createMockAlbum`) to generate predictable, customizable data payloads for tests, eliminating boilerplate in individual tests.
+- **State Reset:** Tests use `beforeEach(() => { vi.clearAllMocks(); })` to ensure mock call histories do not leak between assertions.
 
-## Coverage Requirements
-* **Provider:** v8
-* **Thresholds:** strict limits defined in `vitest.config.ts`:
-  * Lines: 80%
-  * Functions: 80%
-  * Statements: 80%
-  * Branches: 70%
-* Excludes core entry points (`src/index.ts`, `src/dxt-server.ts`, types, views) from coverage metrics.
-
-## Assertions
-* Standard Vitest assertions are utilized: `expect(result).toBeInstanceOf(Error)`, `expect(result.message).toContain('...')`, `expect(result).not.toContain('...')`.
+## 4. Test Coverage
+- **Provider:** Coverage is gathered using Vitest's `v8` provider.
+- **Thresholds:** The project enforces strict code coverage thresholds defined in `vitest.config.ts`:
+  - **Lines:** 80%
+  - **Functions:** 80%
+  - **Statements:** 80%
+  - **Branches:** 70%
+- **Exclusions:** Entry points (`src/index.ts`, `src/dxt-server.ts`), types (`src/types/**`), and view templates are excluded from coverage calculations.
