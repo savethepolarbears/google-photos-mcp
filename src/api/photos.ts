@@ -45,6 +45,7 @@ export {
   listAlbumPhotos,
   getPhoto,
   getPhotoAsBase64,
+  listMediaItems,
 } from './repositories/photosRepository.js';
 
 // Service exports (High-level)

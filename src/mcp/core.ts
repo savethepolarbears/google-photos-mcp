@@ -15,6 +15,7 @@ import {
   searchPhotosByLocation,
   listAlbums,
   listAlbumPhotos,
+  listMediaItems,
   getPhoto,
   getPhotoAsBase64,
   getAlbum,
@@ -244,6 +245,24 @@ export class GooglePhotosMCPCore {
             required: ['albumId'],
           },
         },
+        {
+          name: 'list_media_items',
+          description: 'List all media items in the library (not filtered by album)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              pageSize: {
+                type: 'number',
+                description: 'Number of results to return (default: 25, max: 100)',
+                default: 25,
+              },
+              pageToken: {
+                type: 'string',
+                description: 'Token for pagination',
+              },
+            },
+          },
+        },
       ],
     };
   }
@@ -293,6 +312,9 @@ export class GooglePhotosMCPCore {
 
         case 'list_album_photos':
           return await this.handleListAlbumPhotos(request, tokens);
+
+        case 'list_media_items':
+          return await this.handleListMediaItems(request, tokens);
 
         default:
           throw new McpError(
@@ -524,6 +546,34 @@ export class GooglePhotosMCPCore {
         type: "text",
         text: JSON.stringify({
           albumId: args.albumId,
+          count: photoItems.length,
+          nextPageToken,
+          photos: photoItems,
+        }, null, 2)
+      }]
+    };
+  }
+
+  // listMediaItems uses listAlbumsSchema — same shape
+  private async handleListMediaItems(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, listAlbumsSchema);
+    quotaManager.checkQuota(false);
+
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const { photos, nextPageToken } = await listMediaItems(
+      oauth2Client,
+      args.pageSize || 25,
+      args.pageToken
+    );
+
+    quotaManager.recordRequest(false);
+
+    const photoItems = photos.map(p => this.formatPhoto(p));
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
           count: photoItems.length,
           nextPageToken,
           photos: photoItems,
