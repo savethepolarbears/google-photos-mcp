@@ -489,7 +489,82 @@ npm run lint
 
 ### Documentation
 
-The codebase is thoroughly documented using JSDoc/TSDoc comments. You can review the source code in `src/` to understand the purpose and usage of functions, classes, and interfaces.
+## Developer Guide
+
+If you are a new developer looking to contribute or understand the codebase, here is a quick overview:
+
+### Project Structure
+
+- **`src/index.ts`**: The main entry point. Sets up the Express server for HTTP mode and registers MCP routes.
+- **`src/dxt-server.ts`**: The DXT server implementation for STDIO mode.
+- **`src/mcp/core.ts`**: The core MCP implementation containing all tool handlers and logic.
+- **`src/api/`**: Contains all Google Photos API interaction logic, including clients, repositories, search logic, and type definitions.
+- **`src/auth/`**: Handles OAuth 2.0 flows, token management, and secure token storage using the OS keychain.
+- **`src/utils/`**: Shared utilities for configuration, health checking, location enrichment, logging, and retries.
+- **`src/schemas/`**: Zod schemas for validating tool arguments.
+- **`src/views/`**: Contains HTML templates for the authentication success and logout pages.
+
+### Building and Running
+
+To build the project:
+
+```bash
+npm run build
+```
+
+To run in HTTP mode (for authentication and Cursor):
+
+```bash
+npm start
+```
+
+To run in STDIO mode (for Claude Desktop):
+
+```bash
+npm run stdio
+```
+
+### Linting and Formatting
+
+The project uses ESLint and Prettier to maintain code quality.
+
+To check for linting errors:
+
+```bash
+npm run lint
+```
+
+To automatically format the codebase:
+
+```bash
+npm run format
+```
+
+### Testing
+
+The project uses Vitest for testing. Tests are located in the `test/` directory.
+
+To run all tests:
+
+```bash
+npm test
+```
+
+To run only security-focused tests:
+
+```bash
+npm run test:security
+```
+
+For interactive TDD:
+
+```bash
+npm run test:watch
+```
+
+### Code Documentation
+
+The codebase is thoroughly documented using JSDoc/TSDoc comments. Every public function, method, and class includes detailed docstrings explaining its purpose, parameters, and return values. You can review the source code in `src/` to understand the internal workings of the server.
 
 ## License
 

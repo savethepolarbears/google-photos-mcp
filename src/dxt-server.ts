@@ -113,6 +113,8 @@ class GooglePhotosDXTServer extends GooglePhotosMCPCore {
   /**
    * Starts the server in STDIO mode.
    * Connects via StdioServerTransport.
+   *
+   * @returns A Promise resolving when setup completes
    */
   async start(): Promise<void> {
     try {

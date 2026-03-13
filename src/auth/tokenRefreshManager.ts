@@ -70,8 +70,12 @@ class TokenRefreshManager {
 
       const { credentials } = await oauth2Client.refreshAccessToken();
 
+      if (!credentials.access_token) {
+        throw new Error('Token refresh did not return a new access token.');
+      }
+
       const newTokens: TokenData = {
-        access_token: credentials.access_token || currentTokens.access_token,
+        access_token: credentials.access_token,
         refresh_token: credentials.refresh_token || currentTokens.refresh_token,
         expiry_date: credentials.expiry_date || 0,
         userEmail: currentTokens.userEmail,

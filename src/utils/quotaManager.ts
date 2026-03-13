@@ -57,6 +57,7 @@ class QuotaManager {
    * Checks if a request would exceed quota limits.
    *
    * @param isMediaRequest - Whether this is a media byte request
+   * @returns void
    * @throws McpError if quota exceeded
    */
   checkQuota(isMediaRequest: boolean = false): void {
@@ -97,6 +98,7 @@ class QuotaManager {
    * Records a successful API request.
    *
    * @param isMediaRequest - Whether this was a media byte request
+   * @returns void
    */
   recordRequest(isMediaRequest: boolean = false): void {
     this.requestCount++;
@@ -124,6 +126,8 @@ class QuotaManager {
 
   /**
    * Gets current quota statistics.
+   *
+   * @returns Object containing requests, mediaBytes statistics and reset time string
    */
   getStats(): {
     requests: { used: number; max: number; remaining: number; utilizationPercent: number };

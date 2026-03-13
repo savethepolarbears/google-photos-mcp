@@ -41,6 +41,7 @@ export interface TokenDataWithMetadata extends SecureTokenData {
  * @param userId - Unique identifier for the user (typically Google sub claim)
  * @param tokens - Token data including access_token, refresh_token, etc.
  * @param metadata - Non-sensitive metadata (email, timestamps)
+ * @returns A promise that resolves when saving is complete
  */
 export async function saveTokensSecure(
   userId: string,
@@ -157,6 +158,7 @@ export async function listStoredUsers(): Promise<string[]> {
  * Reads tokens.json, stores each user's tokens in keychain, then deletes tokens.json.
  *
  * @param legacyTokensPath - Path to the legacy tokens.json file
+ * @returns A promise that resolves when migration is complete
  */
 export async function migrateLegacyTokens(legacyTokensPath: string): Promise<void> {
   try {

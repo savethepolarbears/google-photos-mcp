@@ -53,6 +53,7 @@ ensureMigrated().catch(error => {
  *
  * @param userId - The unique identifier of the user.
  * @param tokens - The token data to save.
+ * @returns A promise that resolves when tokens are securely saved
  * @throws Error if saving tokens fails.
  */
 export async function saveTokens(userId: string, tokens: TokenData): Promise<void> {

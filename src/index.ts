@@ -242,6 +242,9 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
 
   /**
    * Starts the HTTP server
+   *
+   * @param port - The port number to listen on (default is 3000)
+   * @returns A promise that resolves when the server has started
    */
   async start(port: number = 3000): Promise<void> {
     return new Promise((resolve) => {
@@ -257,6 +260,8 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
 
   /**
    * Cleanup on shutdown
+   *
+   * @returns void
    */
   shutdown(): void {
     if (this.authCleanup) {
@@ -268,6 +273,8 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
 /**
  * Main entry point for the application.
  * Determines the mode (STDIO or HTTP) and starts the appropriate server.
+ *
+ * @returns A promise indicating completion of setup
  */
 async function main() {
   const useStdio = process.argv.includes('--stdio');

@@ -85,6 +85,8 @@ class NominatimRateLimiter {
 
   /**
    * Gets statistics about the rate limiter state.
+   *
+   * @returns Object indicating the current queue length and last request timestamp
    */
   getStats(): { queueLength: number; lastRequestMs: number } {
     return {
