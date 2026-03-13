@@ -1,113 +1,99 @@
+/**
+ * Token storage using keyv + @keyv/sqlite.
+ *
+ * Security note: tokens are stored as plaintext JSON in a local SQLite file
+ * (tokens.db). This is intentional for a single-user local MCP server — the
+ * file is only readable by the OS user running the server. File-level
+ * encryption is not applied; if stricter at-rest encryption is needed,
+ * layer keyv-encrypted on top of this store.
+ *
+ * NEVER log token strings. NEVER commit tokens.db to git.
+ */
+import Keyv from 'keyv';
+import KeyvSqlite from '@keyv/sqlite';
 import config from '../utils/config.js';
 import logger from '../utils/logger.js';
-import {
-  saveTokensSecure,
-  getTokensSecure,
-  listStoredUsers,
-  migrateLegacyTokens,
-  TokenDataWithMetadata,
-} from './secureTokenStorage.js';
 
-/**
- * Interface representing the stored token data.
- * Maintained for backward compatibility with existing code.
- */
 export interface TokenData {
-  /** OAuth2 access token */
   access_token: string;
-  /** OAuth2 refresh token */
   refresh_token: string;
-  /** ID token from OAuth flow */
   id_token?: string;
-  /** Expiration timestamp (in milliseconds) */
   expiry_date: number;
-  /** User's email address (if available) */
   userEmail?: string;
-  /** Unique user identifier */
   userId?: string;
-  /** Timestamp when the token was last retrieved or updated */
   retrievedAt?: number;
 }
 
-/**
- * Migrates legacy plaintext tokens to secure keychain storage on first run.
- * This function is called automatically on module initialization.
- */
-async function ensureMigrated(): Promise<void> {
-  try {
-    await migrateLegacyTokens(config.tokens.path);
-  } catch (error) {
-    logger.error('Migration failed, but continuing (may need manual intervention):', error);
-  }
-}
+// Module-level singleton — one connection, reused across all calls.
+// Namespace 'tokens' scopes all keys so future keyv namespaces don't collide.
+export const tokenStore = new Keyv<string>({
+  store: new KeyvSqlite(`sqlite://${config.tokens.dbPath}`),
+  namespace: 'tokens',
+});
 
-// Run migration check on module load
-ensureMigrated().catch(error => {
-  logger.error('Failed to check migration status:', error);
+tokenStore.on('error', (err: Error) => {
+  logger.error('keyv token store error:', err);
 });
 
 /**
- * Save authentication tokens for a user to secure OS keychain.
- * Creates the metadata directory if it doesn't exist.
- * Tokens are encrypted by the OS and stored securely.
- *
- * @param userId - The unique identifier of the user.
- * @param tokens - The token data to save.
- * @returns A promise that resolves when tokens are securely saved
- * @throws Error if saving tokens fails.
+ * Save authentication tokens for a user to the local SQLite store.
  */
 export async function saveTokens(userId: string, tokens: TokenData): Promise<void> {
-  await saveTokensSecure(
-    userId,
-    {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      id_token: tokens.id_token,
-      expiry_date: tokens.expiry_date,
-    },
-    {
-      userEmail: tokens.userEmail,
-    }
-  );
+  await tokenStore.set(userId, JSON.stringify({ ...tokens, retrievedAt: Date.now() }));
+  logger.info(`Saved tokens for user ${userId}`);
 }
 
 /**
- * Get the first available tokens from any user.
- * This is useful for single-user scenarios or when any valid credential will do.
- *
- * @returns A Promise resolving to TokenData or null if no tokens are found.
+ * Retrieve authentication tokens for a specific user.
+ * Returns null if no tokens exist for that userId.
+ */
+export async function getTokens(userId: string): Promise<TokenData | null> {
+  const raw = await tokenStore.get(userId);
+  if (!raw) return null;
+  return JSON.parse(raw) as TokenData;
+}
+
+/**
+ * Return tokens for any stored user — sorted by retrievedAt descending.
+ * Useful for single-user scenarios or when any valid credential will do.
  */
 export async function getFirstAvailableTokens(): Promise<TokenData | null> {
   try {
-    // List all users with stored tokens
-    const userIds = await listStoredUsers();
+    // keyv does not expose a keys() iterator in all adapters; use the
+    // underlying sqlite adapter directly to list known user IDs.
+    const store = tokenStore as Keyv<string> & { opts?: { store?: { query?: (sql: string) => Promise<Array<{ key: string; value: string }>> } } };
+    const adapter = store.opts?.store;
+    if (!adapter || typeof adapter.query !== 'function') {
+      logger.warn('tokenStore adapter does not support query — cannot list users');
+      return null;
+    }
 
-    if (userIds.length === 0) {
+    // The @keyv/sqlite table is named after the namespace ("tokens").
+    // Keys are namespaced as "tokens:userId" — strip the prefix.
+    const rows: Array<{ key: string; value: string }> = await adapter.query(
+      `SELECT key, value FROM keyv WHERE key LIKE 'tokens:%'`
+    );
+
+    if (rows.length === 0) {
       logger.debug('No users with stored tokens found');
       return null;
     }
 
-    // Get tokens for the first user (they're already sorted by metadata file listing)
-    // In practice, we should get the most recently authenticated user
-    // For now, we'll get tokens for all users and sort by retrievedAt
+    const parsed: TokenData[] = rows
+      .map(row => {
+        try {
+          return JSON.parse(row.value) as TokenData;
+        } catch {
+          return null;
+        }
+      })
+      .filter((t): t is TokenData => t !== null);
 
-    const allTokens: TokenDataWithMetadata[] = [];
+    if (parsed.length === 0) return null;
 
-    for (const userId of userIds) {
-      const tokens = await getTokensSecure(userId);
-      if (tokens) {
-        allTokens.push(tokens);
-      }
-    }
-
-    if (allTokens.length === 0) {
-      return null;
-    }
-
-    // Sort by metadata retrieval time if available
-    // Note: retrievedAt is in metadata, not in the secure token payload
-    // For now, just return the first valid tokens
-    return allTokens[0];
+    // Return the most recently saved token
+    parsed.sort((a, b) => (b.retrievedAt ?? 0) - (a.retrievedAt ?? 0));
+    return parsed[0];
   } catch (error) {
     logger.debug(`No tokens found or error retrieving tokens: ${error instanceof Error ? error.message : String(error)}`);
     return null;

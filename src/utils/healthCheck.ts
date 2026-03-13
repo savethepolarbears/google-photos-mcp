@@ -151,7 +151,7 @@ class HealthChecker {
 
     try {
       // Check if tokens file is accessible
-      await fs.access(config.tokens.path, fs.constants.R_OK | fs.constants.W_OK);
+      await fs.access(config.tokens.dbPath, fs.constants.R_OK | fs.constants.W_OK);
 
       return {
         status: 'pass',

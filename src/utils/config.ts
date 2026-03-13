@@ -98,9 +98,9 @@ const config = {
    * Token Storage Configuration.
    */
   tokens: {
-    /** File path where authentication tokens are stored (validated to prevent path traversal) */
-    path: validateTokenStoragePath(
-      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.json')
+    /** SQLite database file path for keyv token storage (validated to prevent path traversal) */
+    dbPath: validateTokenStoragePath(
+      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.db')
     ),
   },
 };
