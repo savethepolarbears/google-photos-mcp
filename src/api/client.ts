@@ -128,6 +128,18 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           throw toError(error, 'mediaItems.get');
         }
       },
+      list: async (params: { pageSize?: number; pageToken?: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.get<MediaItemsSearchResponse>('/mediaItems', {
+            params,
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.list');
+        }
+      },
     },
   };
 }

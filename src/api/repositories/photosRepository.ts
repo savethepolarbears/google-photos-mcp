@@ -92,6 +92,38 @@ export async function listAlbumPhotos(
 }
 
 /**
+ * Lists all media items from the Google Photos library without album filtering.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param pageSize - The number of photos to retrieve per page. Default is 25.
+ * @param pageToken - The token for the next page of results.
+ * @returns A Promise resolving to a list of photos and an optional next page token.
+ * @throws Error if listing media items fails.
+ */
+export async function listMediaItems(
+  oauth2Client: OAuth2Client,
+  pageSize = 25,
+  pageToken?: string,
+): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+    const response = await withRetry(
+      async () => await photosClient.mediaItems.list({ pageSize, pageToken }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'list media items'
+    );
+    return {
+      photos: (response.data.mediaItems ?? []) as PhotoItem[],
+      nextPageToken: response.data.nextPageToken,
+    };
+  } catch (error) {
+    const message = toError(error, 'list media items').message;
+    logger.error(`Failed to list media items: ${message}`);
+    throw new Error('Failed to list media items', { cause: error });
+  }
+}
+
+/**
  * Gets a specific photo by its ID.
  *
  * @param oauth2Client - The authenticated OAuth2 client.
