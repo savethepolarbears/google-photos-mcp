@@ -34,7 +34,7 @@ import { quotaManager } from '../utils/quotaManager.js';
 /**
  * Formatted photo interfaces for MCP responses
  */
-export interface FormattedPhotoLocation {
+interface FormattedPhotoLocation {
   latitude?: number;
   longitude?: number;
   name?: string;
@@ -45,7 +45,7 @@ export interface FormattedPhotoLocation {
   approximate: boolean;
 }
 
-export interface FormattedPhoto {
+interface FormattedPhoto {
   id: string;
   filename: string;
   description: string;
@@ -58,7 +58,7 @@ export interface FormattedPhoto {
   base64Image?: string;
 }
 
-export interface FormattedAlbum {
+interface FormattedAlbum {
   id: string;
   title: string;
   url: string;
@@ -257,7 +257,11 @@ export class GooglePhotosMCPCore {
     // Get authentication tokens
     const tokens = await getFirstAvailableTokens();
 
-    if (!tokens && request.params.name !== 'auth_status') {
+    if (request.params.name === 'auth_status') {
+      return await this.handleAuthStatus(tokens);
+    }
+
+    if (!tokens) {
       return {
         content: [{
           type: "text",
@@ -272,26 +276,23 @@ export class GooglePhotosMCPCore {
     // Execute tool handler
     try {
       switch (request.params.name) {
-        case 'auth_status':
-          return await this.handleAuthStatus(tokens);
-
         case 'search_photos':
-          return await this.handleSearchPhotos(request, tokens!);
+          return await this.handleSearchPhotos(request, tokens);
 
         case 'search_photos_by_location':
-          return await this.handleSearchPhotosByLocation(request, tokens!);
+          return await this.handleSearchPhotosByLocation(request, tokens);
 
         case 'list_albums':
-          return await this.handleListAlbums(request, tokens!);
+          return await this.handleListAlbums(request, tokens);
 
         case 'get_photo':
-          return await this.handleGetPhoto(request, tokens!);
+          return await this.handleGetPhoto(request, tokens);
 
         case 'get_album':
-          return await this.handleGetAlbum(request, tokens!);
+          return await this.handleGetAlbum(request, tokens);
 
         case 'list_album_photos':
-          return await this.handleListAlbumPhotos(request, tokens!);
+          return await this.handleListAlbumPhotos(request, tokens);
 
         default:
           throw new McpError(

@@ -16,15 +16,9 @@
  * - services/photoSearchService.ts: High-level orchestration
  */
 
-// Type exports
+// Type exports (only those consumed by importers)
 export type {
   PhotoItem,
-  Album,
-  SearchFilter,
-  SearchParams,
-  AlbumsListResponse,
-  MediaItemsSearchResponse,
-  MediaItemResponse,
 } from './types.js';
 
 // OAuth exports
@@ -33,28 +27,12 @@ export {
   setupOAuthClient,
 } from './oauth.js';
 
-// Client exports
-export {
-  getPhotoClient,
-  toError,
-} from './client.js';
-
 // Search exports
 export {
   buildSearchTokens,
   matchesSearchTokens,
   filterPhotosByTokens,
-  matchesLocationQuery,
 } from './search/tokenMatcher.js';
-
-export {
-  buildFiltersFromQuery,
-} from './search/filterBuilder.js';
-
-// Enrichment exports
-export {
-  enrichPhotosWithLocation,
-} from './enrichment/locationEnricher.js';
 
 // Repository exports (Albums)
 export {
@@ -64,7 +42,6 @@ export {
 
 // Repository exports (Photos)
 export {
-  searchPhotos,
   listAlbumPhotos,
   getPhoto,
   getPhotoAsBase64,
@@ -75,3 +52,4 @@ export {
   searchPhotosByText,
   searchPhotosByLocation,
 } from './services/photoSearchService.js';
+

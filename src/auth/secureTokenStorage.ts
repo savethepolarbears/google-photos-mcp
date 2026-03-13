@@ -9,7 +9,7 @@ const METADATA_DIR = path.join(process.cwd(), '.google-photos-mcp');
 /**
  * Token data stored in OS keychain (sensitive fields only)
  */
-export interface SecureTokenData {
+interface SecureTokenData {
   access_token: string;
   refresh_token: string;
   id_token?: string;
@@ -19,7 +19,7 @@ export interface SecureTokenData {
 /**
  * Metadata stored in JSON file (non-sensitive)
  */
-export interface TokenMetadata {
+interface TokenMetadata {
   userId: string;
   userEmail?: string;
   retrievedAt: number;
@@ -41,6 +41,7 @@ export interface TokenDataWithMetadata extends SecureTokenData {
  * @param userId - Unique identifier for the user (typically Google sub claim)
  * @param tokens - Token data including access_token, refresh_token, etc.
  * @param metadata - Non-sensitive metadata (email, timestamps)
+ * @returns A promise that resolves when saving is complete
  */
 export async function saveTokensSecure(
   userId: string,
@@ -76,7 +77,10 @@ export async function saveTokensSecure(
     logger.info(`Securely saved tokens for user ${userId} to OS keychain`);
   } catch (error) {
     logger.error(`Failed to save tokens securely for user ${userId}:`, error);
-    throw error;
+    if (error instanceof Error) {
+      throw new Error(`Failed to save securely: ${error.message}`, { cause: error });
+    }
+    throw new Error('Failed to save securely', { cause: error });
   }
 }
 
@@ -104,7 +108,7 @@ export async function getTokensSecure(userId: string): Promise<TokenDataWithMeta
     try {
       const metadataContent = await fs.readFile(metadataFile, 'utf-8');
       metadata = JSON.parse(metadataContent);
-    } catch (error) {
+    } catch {
       // Metadata file missing - return tokens without metadata
       logger.warn(`Metadata file missing for user ${userId}, returning tokens without metadata`);
       return {
@@ -120,7 +124,10 @@ export async function getTokensSecure(userId: string): Promise<TokenDataWithMeta
     };
   } catch (error) {
     logger.error(`Failed to retrieve tokens for user ${userId}:`, error);
-    return null;
+    if (error instanceof Error) {
+      throw new Error(`Failed to retrieve securely: ${error.message}`, { cause: error });
+    }
+    throw new Error('Failed to retrieve securely', { cause: error });
   }
 }
 
@@ -144,41 +151,14 @@ export async function listStoredUsers(): Promise<string[]> {
   }
 }
 
-/**
- * Removes tokens for a specific user from OS keychain and deletes metadata.
- *
- * @param userId - User identifier to remove tokens for
- */
-export async function removeTokensSecure(userId: string): Promise<void> {
-  try {
-    // Remove from keychain
-    const deleted = await keytar.deletePassword(SERVICE_NAME, userId);
 
-    // Remove metadata file
-    const metadataFile = path.join(METADATA_DIR, `${userId}.meta.json`);
-    try {
-      await fs.unlink(metadataFile);
-    } catch (error) {
-      // Metadata file might not exist
-      logger.debug(`Metadata file for ${userId} already deleted or missing`);
-    }
-
-    if (deleted) {
-      logger.info(`Removed tokens for user ${userId} from OS keychain`);
-    } else {
-      logger.warn(`No tokens found for user ${userId} in OS keychain`);
-    }
-  } catch (error) {
-    logger.error(`Failed to remove tokens for user ${userId}:`, error);
-    throw error;
-  }
-}
 
 /**
  * Migrates tokens from legacy plaintext storage to secure keychain storage.
  * Reads tokens.json, stores each user's tokens in keychain, then deletes tokens.json.
  *
  * @param legacyTokensPath - Path to the legacy tokens.json file
+ * @returns A promise that resolves when migration is complete
  */
 export async function migrateLegacyTokens(legacyTokensPath: string): Promise<void> {
   try {
@@ -192,7 +172,14 @@ export async function migrateLegacyTokens(legacyTokensPath: string): Promise<voi
 
     // Read legacy tokens
     const content = await fs.readFile(legacyTokensPath, 'utf-8');
-    const legacyTokens: Record<string, any> = JSON.parse(content);
+    interface LegacyToken {
+      access_token: string;
+      refresh_token: string;
+      id_token?: string;
+      expiry_date: number;
+      userEmail?: string;
+    }
+    const legacyTokens: Record<string, LegacyToken> = JSON.parse(content);
 
     let migratedCount = 0;
 
@@ -221,6 +208,9 @@ export async function migrateLegacyTokens(legacyTokensPath: string): Promise<voi
     logger.info(`Legacy tokens backed up to: ${backupPath}`);
   } catch (error) {
     logger.error('Failed to migrate legacy tokens:', error);
-    throw error;
+    if (error instanceof Error) {
+      throw new Error(`Failed to migrate: ${error.message}`, { cause: error });
+    }
+    throw new Error('Failed to migrate legacy tokens', { cause: error });
   }
 }

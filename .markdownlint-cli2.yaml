@@ -1,0 +1,64 @@
+# markdownlint-cli2 configuration
+# https://github.com/DavidAnson/markdownlint-cli2
+
+# Glob patterns to lint
+globs:
+  - "**/*.md"
+  - "!node_modules"
+  - "!dist"
+  - "!.git"
+  - "!.jules"
+
+# Enable auto-fix when running with --fix
+fix: true
+
+# Rule configuration
+config:
+  # MD013 - Line length: disabled (too noisy for prose-heavy docs)
+  MD013: false
+
+  # MD033 - Inline HTML: allow common HTML elements
+  MD033:
+    allowed_elements:
+      - "br"
+      - "details"
+      - "summary"
+      - "sup"
+      - "sub"
+
+  # MD024 - Multiple headings with same content: allow in different nesting contexts
+  MD024:
+    siblings_only: true
+
+  # MD007 - Unordered list indentation: 2 spaces
+  MD007:
+    indent: 2
+
+  # MD009 - No trailing spaces
+  MD009:
+    br_spaces: 2
+
+  # MD010 - No hard tabs
+  MD010: true
+
+  # MD022 - Headings should be surrounded by blank lines
+  MD022: true
+
+  # MD030 - Spaces after list markers: 1 space
+  MD030:
+    ul_single: 1
+    ol_single: 1
+    ul_multi: 1
+    ol_multi: 1
+
+  # MD031 - Fenced code blocks should be surrounded by blank lines
+  MD031: true
+
+  # MD032 - Lists should be surrounded by blank lines
+  MD032: true
+
+  # MD040 - Fenced code blocks should have a language specified
+  MD040: true
+
+  # MD047 - Files should end with a single newline character
+  MD047: true

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "ignore": [
+    ".planning/**",
+    "src/api/__tests__/**",
+    ".agent/**"
+  ],
+  "ignoreDependencies": [],
+  "entry": [
+    "src/index.ts",
+    "src/dxt-server.ts",
+    "test/**/*.test.ts",
+    "test/helpers/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ]
+}

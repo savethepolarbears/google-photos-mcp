@@ -23,7 +23,7 @@ export function validateArgs<T>(
     return schema.parse(args);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const issues = error.errors
+      const issues = error.issues
         .map(e => `${e.path.join('.')}: ${e.message}`)
         .join(', ');
 

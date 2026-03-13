@@ -7,7 +7,7 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
  *
  * @see https://developers.google.com/photos/overview/api-limits-quotas
  */
-export class QuotaManager {
+class QuotaManager {
   private requestCount: number = 0;
   private mediaByteCount: number = 0;
   private resetTime: number;
@@ -57,6 +57,7 @@ export class QuotaManager {
    * Checks if a request would exceed quota limits.
    *
    * @param isMediaRequest - Whether this is a media byte request
+   * @returns void
    * @throws McpError if quota exceeded
    */
   checkQuota(isMediaRequest: boolean = false): void {
@@ -97,6 +98,7 @@ export class QuotaManager {
    * Records a successful API request.
    *
    * @param isMediaRequest - Whether this was a media byte request
+   * @returns void
    */
   recordRequest(isMediaRequest: boolean = false): void {
     this.requestCount++;
@@ -124,6 +126,8 @@ export class QuotaManager {
 
   /**
    * Gets current quota statistics.
+   *
+   * @returns Object containing requests, mediaBytes statistics and reset time string
    */
   getStats(): {
     requests: { used: number; max: number; remaining: number; utilizationPercent: number };

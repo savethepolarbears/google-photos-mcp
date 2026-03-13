@@ -19,7 +19,7 @@ interface PhotoForLocation {
 /**
  * Interface representing location data extracted or enriched for a photo.
  */
-export interface LocationData {
+interface LocationData {
   /** Latitude coordinate */
   latitude?: number;
   /** Longitude coordinate */
@@ -46,7 +46,7 @@ export interface LocationData {
  * @param photo - The photo object from the Google Photos API.
  * @returns The extracted LocationData or null if no location info found.
  */
-export function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null {
+function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null {
   try {
     if (
       !photo || 
@@ -99,7 +99,7 @@ export function extractLocationFromPhoto(photo: PhotoForLocation): LocationData 
  * @param locationName - The name of the location to search for (e.g., "Paris").
  * @returns A Promise resolving to LocationData or null if not found.
  */
-export async function searchLocationByName(locationName: string): Promise<LocationData | null> {
+async function searchLocationByName(locationName: string): Promise<LocationData | null> {
   try {
     // Use a free geocoding API (Nominatim/OpenStreetMap)
     // Rate limited to 1 req/sec per Nominatim usage policy

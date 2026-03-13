@@ -9,10 +9,14 @@
     "start": "node dist/index.js",
     "dev": "node --loader ts-node/esm src/index.ts",
     "stdio": "node dist/index.js --stdio",
-    "lint": "eslint . --ext .ts",
+    "lint": "eslint .",
     "format": "prettier --write \"src/**/*.ts\"",
-    "test": "node --loader ts-node/esm --test src/api/__tests__/photos.test.ts test/photos.test.ts",
-    "test:security": "node --loader ts-node/esm --test test/security.test.ts"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:security": "vitest run test/security/",
+    "lint:md": "markdownlint-cli2",
+    "lint:md:fix": "markdownlint-cli2 --fix"
   },
   "keywords": [
     "mcp",
@@ -24,27 +28,27 @@
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "axios": "^1.13.6",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "express": "^4.22.1",
-    "googleapis": "^128.0.0",
+    "axios": "^1.7.9",
+    "dotenv": "^17.3.1",
+    "express": "^5.0.1",
+    "google-auth-library": "^9.15.1",
+    "googleapis": "^144.0.0",
     "keytar": "^7.9.0",
-    "raw-body": "^3.0.0",
-    "winston": "^3.11.0",
-    "zod": "^3.22.4"
+    "winston": "^3.17.0",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.15",
-    "@types/express": "^4.17.20",
-    "@types/node": "^20.8.9",
-    "@types/supertest": "^6.0.3",
-    "@typescript-eslint/eslint-plugin": "^6.9.1",
-    "@typescript-eslint/parser": "^6.9.1",
-    "eslint": "^8.52.0",
-    "prettier": "^3.0.3",
-    "supertest": "^7.1.4",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.2.2"
+    "@eslint/js": "^9.21.0",
+    "@types/node": "22.19.15",
+    "@types/supertest": "7.2.0",
+    "@vitest/coverage-v8": "^3.0.6",
+    "eslint": "^9.21.0",
+    "markdownlint-cli2": "^0.21.0",
+    "prettier": "^3.5.1",
+    "supertest": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.1",
+    "vitest": "^3.0.6"
   }
 }

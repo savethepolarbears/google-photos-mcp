@@ -4,7 +4,7 @@ import { AxiosError } from 'axios';
 /**
  * Retry configuration options
  */
-export interface RetryConfig {
+interface RetryConfig {
   /** Maximum number of retry attempts (default: 3) */
   maxRetries?: number;
   /** Initial delay in milliseconds (default: 1000) */

@@ -59,7 +59,7 @@ export async function searchPhotosByText(
   } catch (error) {
     const message = toError(error, 'search photos by text').message;
     logger.error(`Failed to search photos by text: ${message}`);
-    throw new Error('Failed to search photos by text');
+    throw new Error('Failed to search photos by text', { cause: error });
   }
 }
 
@@ -101,6 +101,6 @@ export async function searchPhotosByLocation(
   } catch (error) {
     const message = toError(error, 'search photos by location').message;
     logger.error(`Failed to search photos by location: ${message}`);
-    throw new Error('Failed to search photos by location');
+    throw new Error('Failed to search photos by location', { cause: error });
   }
 }

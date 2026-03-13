@@ -4,7 +4,6 @@ import {
   saveTokensSecure,
   getTokensSecure,
   listStoredUsers,
-  removeTokensSecure,
   migrateLegacyTokens,
   TokenDataWithMetadata,
 } from './secureTokenStorage.js';
@@ -54,6 +53,7 @@ ensureMigrated().catch(error => {
  *
  * @param userId - The unique identifier of the user.
  * @param tokens - The token data to save.
+ * @returns A promise that resolves when tokens are securely saved
  * @throws Error if saving tokens fails.
  */
 export async function saveTokens(userId: string, tokens: TokenData): Promise<void> {
@@ -69,28 +69,6 @@ export async function saveTokens(userId: string, tokens: TokenData): Promise<voi
       userEmail: tokens.userEmail,
     }
   );
-}
-
-/**
- * Get tokens for a specific user from secure OS keychain.
- *
- * @param userId - The unique identifier of the user.
- * @param useDefault - If true, returns the most recently used tokens if the specific user's tokens are not found. Default is false.
- * @returns A Promise resolving to TokenData or null if not found.
- */
-export async function getTokens(userId: string, useDefault: boolean = false): Promise<TokenData | null> {
-  // Try to get tokens for this specific user
-  const tokens = await getTokensSecure(userId);
-  if (tokens) {
-    return tokens;
-  }
-
-  // If useDefault is true, get first available tokens
-  if (useDefault) {
-    return await getFirstAvailableTokens();
-  }
-
-  return null;
 }
 
 /**
@@ -134,14 +112,4 @@ export async function getFirstAvailableTokens(): Promise<TokenData | null> {
     logger.debug(`No tokens found or error retrieving tokens: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
-}
-
-/**
- * Remove tokens for a specific user from the secure storage.
- *
- * @param userId - The unique identifier of the user whose tokens should be removed.
- * @returns A Promise resolving when the operation is complete.
- */
-export async function removeTokens(userId: string): Promise<void> {
-  await removeTokensSecure(userId);
 }

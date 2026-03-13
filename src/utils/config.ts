@@ -34,7 +34,7 @@ function validateTokenStoragePath(inputPath: string): string {
  * Global configuration object for the application.
  * Values are loaded from environment variables or use default fallbacks.
  */
-export const config = {
+const config = {
   /**
    * Google OAuth Configuration.
    * Contains credentials and scopes required for authenticating with Google Photos API.

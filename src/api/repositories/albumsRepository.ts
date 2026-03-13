@@ -43,7 +43,7 @@ export async function listAlbums(
   } catch (error) {
     const message = toError(error, 'list albums').message;
     logger.error(`Failed to list albums: ${message}`);
-    throw new Error('Failed to list albums');
+    throw new Error('Failed to list albums', { cause: error });
   }
 }
 
@@ -76,6 +76,6 @@ export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Pro
   } catch (error) {
     const message = toError(error, 'get album').message;
     logger.error(`Failed to get album: ${message}`);
-    throw new Error('Failed to get album');
+    throw new Error('Failed to get album', { cause: error });
   }
 }

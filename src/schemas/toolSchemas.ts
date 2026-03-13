@@ -58,10 +58,3 @@ export const listAlbumPhotosSchema = z.object({
   includeLocation: z.boolean().optional(),
 });
 
-// Type inference from schemas
-export type SearchPhotosArgs = z.infer<typeof searchPhotosSchema>;
-export type SearchPhotosByLocationArgs = z.infer<typeof searchPhotosByLocationSchema>;
-export type GetPhotoArgs = z.infer<typeof getPhotoSchema>;
-export type ListAlbumsArgs = z.infer<typeof listAlbumsSchema>;
-export type GetAlbumArgs = z.infer<typeof getAlbumSchema>;
-export type ListAlbumPhotosArgs = z.infer<typeof listAlbumPhotosSchema>;

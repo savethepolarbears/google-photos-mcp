@@ -6,7 +6,7 @@ import logger from './logger.js';
  *
  * @see https://operations.osmfoundation.org/policies/nominatim/
  */
-export class NominatimRateLimiter {
+class NominatimRateLimiter {
   private lastRequestTime: number = 0;
   private readonly minIntervalMs: number;
   private requestQueue: Array<() => void> = [];
@@ -85,6 +85,8 @@ export class NominatimRateLimiter {
 
   /**
    * Gets statistics about the rate limiter state.
+   *
+   * @returns Object indicating the current queue length and last request timestamp
    */
   getStats(): { queueLength: number; lastRequestMs: number } {
     return {
