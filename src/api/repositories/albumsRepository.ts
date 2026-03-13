@@ -129,7 +129,7 @@ export async function batchAddMediaItemsToAlbum(
     );
   } catch (error) {
     const message = toError(error, 'batch add media items to album').message;
-    logger.error(`Failed to add media to album: ${message}`);
-    throw new Error('Failed to add media to album', { cause: error });
+    logger.error(`Failed to add media items to album: ${message}`);
+    throw new Error('Failed to add media items to album', { cause: error });
   }
 }

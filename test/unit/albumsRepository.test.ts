@@ -166,13 +166,13 @@ describe('batchAddMediaItemsToAlbum', () => {
     await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).resolves.not.toThrow();
   });
 
-  it('throws "Failed to add media to album" on API failure', async () => {
+  it('throws "Failed to add media items to album" on API failure', async () => {
     const mockClient = {
       albums: {
         batchAddMediaItems: vi.fn().mockRejectedValue(new Error('API failure'))
       }
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).rejects.toThrow('Failed to add media to album');
+    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).rejects.toThrow('Failed to add media items to album');
   });
 });
