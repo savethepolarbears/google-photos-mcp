@@ -19,11 +19,20 @@ Plans:
 ## Phase 2: Core Read & Write Operations
 **Objective**: Expose basic media and album management capabilities via standard MCP Tools and Resources.
 - **Requirements**: READ-01, READ-02, READ-03, WRIT-01, WRIT-02, WRIT-03
+- **Plans:** 6 plans
 - **Success Criteria**:
   - AI can list and retrieve individual albums and media items via standard MCP tools.
   - Ephemeral media URLs are correctly abstracted behind stable MCP Resource URIs.
   - AI can create new albums and upload local byte streams successfully.
   - AI can add both existing and newly uploaded media items to designated albums.
+
+Plans:
+- [ ] 02-01-PLAN.md — Wave 0: TDD scaffold — failing tests for all READ-03 + WRIT-01/02/03 cases
+- [ ] 02-02-PLAN.md — Wave 1: list_media_items tool — library-wide media listing (READ-01)
+- [ ] 02-03-PLAN.md — Wave 1: MCP Resource handlers — google-photos:// URI scheme (READ-02, READ-03)
+- [ ] 02-04-PLAN.md — Wave 2: create_album tool — album creation + appendonly scope activation (WRIT-01)
+- [ ] 02-05-PLAN.md — Wave 2: upload_media tool — two-step raw byte upload + batchCreate (WRIT-02)
+- [ ] 02-06-PLAN.md — Wave 2: add_media_to_album tool — batchAddMediaItems with 1-50 item validation (WRIT-03)
 
 ## Phase 3: Advanced API Coverage & Search
 **Objective**: Implement 100% of the remaining API endpoints, including advanced search and sharing capabilities.
