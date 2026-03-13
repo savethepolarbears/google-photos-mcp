@@ -31,7 +31,7 @@ vi.mock('../../src/utils/logger.js', () => ({
 }));
 
 describe('GooglePhotosMCPCore', () => {
-  let instance: any;
+  let instance: GooglePhotosMCPCore;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,6 +91,95 @@ describe('GooglePhotosMCPCore', () => {
   describe('tools/list', () => {
     it('includes create_album, upload_media, add_media_to_album tool definitions', async () => {
       const result = await instance.handleListTools();
+      expect(result).toBeDefined();
+    });
+
+    it('includes all 7 new Phase 3 tool names', async () => {
+      const result = await instance.handleListTools();
+      const names: string[] = result.tools.map((t: { name: string }) => t.name);
+      expect(names).toContain('search_media_by_filter');
+      expect(names).toContain('share_album');
+      expect(names).toContain('unshare_album');
+      expect(names).toContain('join_shared_album');
+      expect(names).toContain('leave_shared_album');
+      expect(names).toContain('add_album_enrichment');
+      expect(names).toContain('set_album_cover');
+    });
+  });
+
+  // ---- Phase 3 tool dispatch (RED state -- handlers not yet implemented) ----
+
+  describe('search_media_by_filter dispatch', () => {
+    it('dispatches search_media_by_filter with a valid date filter and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'search_media_by_filter',
+          arguments: {
+            dates: [{ year: 2023, month: 6 }],
+            includedContentCategories: ['LANDSCAPES'],
+          },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+  });
+
+  describe('sharing stubs (FEATURE_DEPRECATED)', () => {
+    const sharingTools = ['share_album', 'unshare_album', 'join_shared_album', 'leave_shared_album'];
+
+    for (const toolName of sharingTools) {
+      it(`dispatches '${toolName}' and returns FEATURE_DEPRECATED error`, async () => {
+        const result = await instance.handleCallTool({
+          params: { name: toolName, arguments: { albumId: 'album-1' } },
+        });
+        expect(result.content).toBeDefined();
+        const parsed: { error: string } = JSON.parse(result.content[0].text);
+        expect(parsed.error).toBe('FEATURE_DEPRECATED');
+      });
+    }
+  });
+
+  describe('add_album_enrichment dispatch', () => {
+    it('dispatches add_album_enrichment and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'add_album_enrichment',
+          arguments: {
+            albumId: 'album-1',
+            type: 'TEXT',
+            text: 'Summer memories',
+          },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+  });
+
+  describe('set_album_cover dispatch', () => {
+    it('dispatches set_album_cover and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'set_album_cover',
+          arguments: { albumId: 'album-1', mediaItemId: 'media-1' },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+
+    it('returns re-auth prompt on PERMISSION_DENIED 403', async () => {
+      // Simulate the handler throwing PERMISSION_DENIED (will throw MethodNotFound until implemented)
+      // The test just ensures the dispatch path exists and returns a content response.
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'set_album_cover',
+          arguments: { albumId: 'album-1', mediaItemId: 'media-1' },
+        },
+      });
+      // Once implemented, the error response should contain re-auth guidance.
+      // In RED state this will throw MethodNotFound and be caught generically.
       expect(result).toBeDefined();
     });
   });

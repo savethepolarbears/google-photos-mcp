@@ -14,6 +14,12 @@ import {
   createAlbumSchema,
   uploadMediaSchema,
   addMediaToAlbumSchema,
+  // @ts-expect-error - not yet implemented (RED state)
+  searchMediaByFilterSchema,
+  // @ts-expect-error - not yet implemented (RED state)
+  addEnrichmentSchema,
+  // @ts-expect-error - not yet implemented (RED state)
+  setCoverPhotoSchema,
 } from '../../src/schemas/toolSchemas.js';
 
 describe('searchPhotosSchema', () => {
@@ -196,5 +202,86 @@ describe('addMediaToAlbumSchema', () => {
 
   it('rejects missing albumId', () => {
     expect(() => addMediaToAlbumSchema.parse({ mediaItemIds: ['m1'] })).toThrow();
+  });
+});
+
+// ---- Phase 3 schemas (RED state -- production code not yet written) ----
+
+// Narrow helper type: only what we call on these not-yet-exported schemas.
+type ZodLike = { parse: (input: unknown) => unknown };
+
+describe('searchMediaByFilterSchema', () => {
+  const schema = (searchMediaByFilterSchema as unknown) as ZodLike;
+
+  it('accepts valid date filter with content categories', () => {
+    const result = schema.parse({
+      dates: [{ year: 2023, month: 6 }],
+      includedContentCategories: ['LANDSCAPES'],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('accepts valid dateRanges with mediaType', () => {
+    const result = schema.parse({
+      dateRanges: [{ startDate: { year: 2023, month: 1, day: 1 }, endDate: { year: 2023, month: 12, day: 31 } }],
+      mediaTypes: ['PHOTO'],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('rejects when both dates and dateRanges are set', () => {
+    expect(() =>
+      schema.parse({
+        dates: [{ year: 2023 }],
+        dateRanges: [{ startDate: { year: 2023, month: 1, day: 1 }, endDate: { year: 2023, month: 12, day: 31 } }],
+      })
+    ).toThrow();
+  });
+
+  it('rejects more than 5 dates', () => {
+    const dates = Array(6).fill({ year: 2023 }) as unknown[];
+    expect(() => schema.parse({ dates })).toThrow();
+  });
+
+  it('rejects more than 5 dateRanges', () => {
+    const dateRanges = Array(6).fill({
+      startDate: { year: 2023, month: 1, day: 1 },
+      endDate: { year: 2023, month: 12, day: 31 },
+    }) as unknown[];
+    expect(() => schema.parse({ dateRanges })).toThrow();
+  });
+});
+
+describe('addEnrichmentSchema', () => {
+  const schema = (addEnrichmentSchema as unknown) as ZodLike;
+
+  it('accepts valid TextEnrichment input', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      type: 'TEXT',
+      text: 'Summer vacation memories',
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('accepts valid LocationEnrichment input', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      type: 'LOCATION',
+      locationName: 'Paris, France',
+    });
+    expect(result).toBeDefined();
+  });
+});
+
+describe('setCoverPhotoSchema', () => {
+  const schema = (setCoverPhotoSchema as unknown) as ZodLike;
+
+  it('accepts valid albumId and mediaItemId', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      mediaItemId: 'media-item-1',
+    });
+    expect(result).toBeDefined();
   });
 });
