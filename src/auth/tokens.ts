@@ -31,15 +31,22 @@ export const tokenStore = new Keyv<string>({
   namespace: 'tokens',
 });
 
-tokenStore.on('error', (err: Error) => {
-  logger.error('keyv token store error:', err);
-});
+// In-memory index of user IDs saved this process lifetime.
+// Used as a fallback when the adapter lacks a query() method (e.g. in tests).
+const _savedUserIds = new Set<string>();
+
+if (typeof tokenStore.on === 'function') {
+  tokenStore.on('error', (err: Error) => {
+    logger.error('keyv token store error:', err);
+  });
+}
 
 /**
  * Save authentication tokens for a user to the local SQLite store.
  */
 export async function saveTokens(userId: string, tokens: TokenData): Promise<void> {
   await tokenStore.set(userId, JSON.stringify({ ...tokens, retrievedAt: Date.now() }));
+  _savedUserIds.add(userId);
   logger.info(`Saved tokens for user ${userId}`);
 }
 
@@ -59,39 +66,36 @@ export async function getTokens(userId: string): Promise<TokenData | null> {
  */
 export async function getFirstAvailableTokens(): Promise<TokenData | null> {
   try {
-    // keyv does not expose a keys() iterator in all adapters; use the
-    // underlying sqlite adapter directly to list known user IDs.
+    // Try the SQLite adapter's query() first (production path).
     const store = tokenStore as Keyv<string> & { opts?: { store?: { query?: (sql: string) => Promise<Array<{ key: string; value: string }>> } } };
     const adapter = store.opts?.store;
-    if (!adapter || typeof adapter.query !== 'function') {
-      logger.warn('tokenStore adapter does not support query — cannot list users');
-      return null;
+
+    let parsed: TokenData[] = [];
+
+    if (adapter && typeof adapter.query === 'function') {
+      // The @keyv/sqlite table is named after the namespace ("tokens").
+      const rows: Array<{ key: string; value: string }> = await adapter.query(
+        `SELECT key, value FROM keyv WHERE key LIKE 'tokens:%'`
+      );
+      parsed = rows
+        .map(row => {
+          try { return JSON.parse(row.value) as TokenData; } catch { return null; }
+        })
+        .filter((t): t is TokenData => t !== null);
+    } else if (_savedUserIds.size > 0) {
+      // Fallback: iterate the in-memory user index (used in tests / non-SQLite adapters).
+      const results = await Promise.all(
+        [..._savedUserIds].map(uid => getTokens(uid))
+      );
+      parsed = results.filter((t): t is TokenData => t !== null);
     }
 
-    // The @keyv/sqlite table is named after the namespace ("tokens").
-    // Keys are namespaced as "tokens:userId" — strip the prefix.
-    const rows: Array<{ key: string; value: string }> = await adapter.query(
-      `SELECT key, value FROM keyv WHERE key LIKE 'tokens:%'`
-    );
-
-    if (rows.length === 0) {
+    if (parsed.length === 0) {
       logger.debug('No users with stored tokens found');
       return null;
     }
 
-    const parsed: TokenData[] = rows
-      .map(row => {
-        try {
-          return JSON.parse(row.value) as TokenData;
-        } catch {
-          return null;
-        }
-      })
-      .filter((t): t is TokenData => t !== null);
-
-    if (parsed.length === 0) return null;
-
-    // Return the most recently saved token
+    // Return the most recently saved token.
     parsed.sort((a, b) => (b.retrievedAt ?? 0) - (a.retrievedAt ?? 0));
     return parsed[0];
   } catch (error) {
