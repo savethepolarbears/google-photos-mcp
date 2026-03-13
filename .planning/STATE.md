@@ -2,25 +2,25 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Plan 02-04 complete
-last_updated: "2026-03-13T16:55:10.241Z"
+status: unknown
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-03-13T23:13:08.676Z"
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 6
-  completed_plans: 4
+  completed_phases: 2
+  total_plans: 12
+  completed_plans: 10
 ---
 
 # Project State
 
-## Current Phase: Phase 2: Core Read & Write Operations
-**Status**: In Progress
+## Current Phase: Phase 3: Advanced API Coverage & Search
+**Status**: Not Started
 
 ## Session Continuity
 
-Last session: 2026-03-13T00:00:00.000Z
-Stopped at: Plan 02-04 complete
+Last session: 2026-03-13T23:13:08.672Z
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
 
 ## Decisions
@@ -31,6 +31,9 @@ Resume file: None
 - [02-01]: Added mock for fs/promises in photosRepository to support upload tests safely.
 - [02-03]: Added handleListResources and handleReadResource to expose albums and media items, ignoring failing wave 0 tests.
 - [02-04]: Activated appendonly scope and exposed create_album MCP tool. Handled 403 PERMISSION_DENIED to prompt users to re-authenticate with the correct scope.
+- [02-05]: Added batchAddMediaItemsToAlbum stub to albumsRepository to fix test suite early.
+- [02-06]: Implemented add_media_to_album tool correctly utilizing the batch endpoint and restricted schema size to 1-50.
+- [Phase 03-01]: Used ZodLike cast for schema tests to avoid ts-expect-error on every .parse() call
 
 ## Phase 1: Foundation (Auth & Infrastructure)
 **Status**: Complete
@@ -41,11 +44,11 @@ Resume file: None
 - [x] All critical operations and errors are written to Winston log files.
 
 ## Phase 2: Core Read & Write Operations
-**Status**: In Progress
+**Status**: Complete
 - [x] AI can list and retrieve individual albums and media items via standard MCP tools.
 - [x] Ephemeral media URLs are correctly abstracted behind stable MCP Resource URIs.
-- [ ] AI can create new albums and upload local byte streams successfully.
-- [ ] AI can add both existing and newly uploaded media items to designated albums.
+- [x] AI can create new albums and upload local byte streams successfully.
+- [x] AI can add both existing and newly uploaded media items to designated albums.
 
 ## Phase 3: Advanced API Coverage & Search
 **Status**: Not Started

@@ -19,7 +19,7 @@ Plans:
 ## Phase 2: Core Read & Write Operations
 **Objective**: Expose basic media and album management capabilities via standard MCP Tools and Resources.
 - **Requirements**: READ-01, READ-02, READ-03, WRIT-01, WRIT-02, WRIT-03
-- **Plans:** 4/6 plans executed
+- **Plans:** 6/6 plans complete
 - **Success Criteria**:
   - AI can list and retrieve individual albums and media items via standard MCP tools.
   - Ephemeral media URLs are correctly abstracted behind stable MCP Resource URIs.
@@ -37,11 +37,17 @@ Plans:
 ## Phase 3: Advanced API Coverage & Search
 **Objective**: Implement 100% of the remaining API endpoints, including advanced search and sharing capabilities.
 - **Requirements**: READ-04, FULL-01, FULL-02, FULL-03, FULL-04
+- **Plans:** 1/3 plans executed
 - **Success Criteria**:
   - AI can retrieve media items using simple date and category filters.
   - AI can execute advanced searches combining multiple criteria (e.g., date ranges + specific content categories).
   - AI can manage shared albums (share, join, leave, unshare).
   - AI can add text/location enrichments to albums and update their cover photos.
+
+Plans:
+- [ ] 03-01-PLAN.md — Wave 1: TDD scaffold — failing tests for all Phase 3 requirements (READ-04, FULL-01-04)
+- [ ] 03-02-PLAN.md — Wave 2: search_media_by_filter tool + sharing stubs (READ-04, FULL-01, FULL-04)
+- [ ] 03-03-PLAN.md — Wave 3: Album enrichment + cover photo tools + edit.appcreateddata scope (FULL-02, FULL-03)
 
 ## Phase 4: Composite Workflows & Metadata
 **Objective**: Deliver high-level abstractions, automated enrichments, and multi-step workflows to reduce AI context overhead.
