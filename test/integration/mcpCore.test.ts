@@ -72,12 +72,12 @@ describe('GooglePhotosMCPCore', () => {
   });
 
   describe('handleListTools', () => {
-    it('returns all 7 tool definitions', async () => {
+    it('returns all 8 tool definitions', async () => {
       // Access the protected method via the server's handler
       // We invoke it through the class's internal method
       const result = await (core as unknown as { handleListTools: () => Promise<{ tools: unknown[] }> }).handleListTools();
 
-      expect(result.tools).toHaveLength(7);
+      expect(result.tools).toHaveLength(8);
       const toolNames = result.tools.map((t: unknown) => (t as { name: string }).name);
       expect(toolNames).toContain('auth_status');
       expect(toolNames).toContain('search_photos');

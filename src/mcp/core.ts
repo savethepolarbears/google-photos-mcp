@@ -3,6 +3,8 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   McpError,
   CallToolRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -93,6 +95,85 @@ export class GooglePhotosMCPCore {
   protected registerHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, this.handleListTools.bind(this));
     this.server.setRequestHandler(CallToolRequestSchema, this.handleCallTool.bind(this));
+    this.server.setRequestHandler(ListResourcesRequestSchema, this.handleListResources.bind(this));
+    this.server.setRequestHandler(ReadResourceRequestSchema, this.handleReadResource.bind(this));
+  }
+
+  protected async handleListResources() {
+    return {
+      resources: [
+        {
+          uri: 'google-photos://albums',
+          name: 'Google Photos Albums',
+          description: 'List of all Google Photos albums',
+          mimeType: 'application/json',
+        },
+      ],
+      resourceTemplates: [
+        {
+          uriTemplate: 'google-photos://albums/{albumId}',
+          name: 'Google Photos Album',
+          description: 'A specific Google Photos album by ID',
+          mimeType: 'application/json',
+        },
+        {
+          uriTemplate: 'google-photos://media/{mediaItemId}',
+          name: 'Google Photos Media Item',
+          description: 'A specific Google Photos media item by ID. Note: baseUrl is ephemeral (~60 min); always fetch fresh.',
+          mimeType: 'application/json',
+        },
+      ],
+    };
+  }
+
+  protected async handleReadResource(request: { params: { uri: string } }) {
+    const uri = request.params.uri;
+    const tokens = await getFirstAvailableTokens();
+    if (!tokens) throw new McpError(ErrorCode.InvalidRequest, 'Not authenticated');
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    if (uri === 'google-photos://albums') {
+      quotaManager.checkQuota(false);
+      const data = await listAlbums(oauth2Client);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(data, null, 2),
+        }],
+      };
+    }
+
+    const albumMatch = uri.match(/^google-photos:\/\/albums\/(.+)$/);
+    if (albumMatch) {
+      quotaManager.checkQuota(false);
+      const album = await getAlbum(oauth2Client, albumMatch[1]);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(album, null, 2),
+        }],
+      };
+    }
+
+    const mediaMatch = uri.match(/^google-photos:\/\/media\/(.+)$/);
+    if (mediaMatch) {
+      quotaManager.checkQuota(false);
+      const mediaItem = await getPhoto(oauth2Client, mediaMatch[1], false);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(mediaItem, null, 2),
+        }],
+      };
+    }
+
+    throw new McpError(ErrorCode.InvalidParams, `Unknown resource URI: ${uri}`);
   }
 
   /**
@@ -340,7 +421,7 @@ export class GooglePhotosMCPCore {
    * Gets an authenticated OAuth2Client, refreshing tokens if necessary.
    * Uses tokenRefreshManager to prevent concurrent refreshes.
    */
-  private async getAuthenticatedClient(tokens: TokenData) {
+  protected async getAuthenticatedClient(tokens: TokenData) {
     const oauth2Client = setupOAuthClient(tokens);
     const userId = tokens.userId || 'default';
     const freshTokens = await tokenRefreshManager.refreshIfNeeded(oauth2Client, userId, tokens);
