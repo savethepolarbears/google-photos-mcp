@@ -25,7 +25,11 @@ import {
   uploadMedia,
   batchCreateMediaItems,
   batchAddMediaItemsToAlbum,
+  addEnrichment,
+  patchAlbum,
 } from '../api/photos.js';
+import { searchPhotos } from '../api/repositories/photosRepository.js';
+import type { SearchFilter } from '../api/types.js';
 import logger from '../utils/logger.js';
 import { validateArgs } from '../utils/validation.js';
 import {
@@ -38,6 +42,9 @@ import {
   createAlbumSchema,
   uploadMediaSchema,
   addMediaToAlbumSchema,
+  searchMediaByFilterSchema,
+  addEnrichmentSchema,
+  setCoverPhotoSchema,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -398,6 +405,74 @@ export class GooglePhotosMCPCore {
             },
           },
         },
+        {
+          name: 'search_media_by_filter',
+          description: 'Search media items using structured filters (dates, categories, media type, features). Use this for deterministic filter-based retrieval instead of text queries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              dates: { type: 'array', description: 'Specific dates to filter by (max 5)' },
+              dateRanges: { type: 'array', description: 'Date ranges to filter by (max 5)' },
+              includedCategories: { type: 'array', description: 'Content categories to include' },
+              excludedCategories: { type: 'array', description: 'Content categories to exclude' },
+              mediaType: { type: 'string', enum: ['ALL_MEDIA', 'PHOTO', 'VIDEO'], description: 'Media type filter' },
+              includeFavorites: { type: 'boolean', description: 'Include only favorites' },
+              includeArchived: { type: 'boolean', description: 'Include archived items' },
+              orderBy: { type: 'string', description: 'Order results (requires dateFilter)' },
+              pageSize: { type: 'number', description: 'Number of results (max 100)' },
+              pageToken: { type: 'string', description: 'Token for pagination' },
+            },
+          },
+        },
+        {
+          name: 'share_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
+        },
+        {
+          name: 'unshare_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
+        },
+        {
+          name: 'join_shared_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
+        },
+        {
+          name: 'leave_shared_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
+        },
+        {
+          name: 'add_album_enrichment',
+          description: 'Add a text or location enrichment to a Google Photos album.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album' },
+              type: { type: 'string', enum: ['TEXT', 'LOCATION'], description: 'Enrichment type' },
+              text: { type: 'string', description: 'Text content (required when type is TEXT)' },
+              locationName: { type: 'string', description: 'Location name (required when type is LOCATION)' },
+              latitude: { type: 'number', description: 'Latitude for location enrichment' },
+              longitude: { type: 'number', description: 'Longitude for location enrichment' },
+              position: { type: 'string', enum: ['FIRST_IN_ALBUM', 'LAST_IN_ALBUM'], description: 'Position in album' },
+            },
+            required: ['albumId', 'type'],
+          },
+        },
+        {
+          name: 'set_album_cover',
+          description: 'Set the cover photo of a Google Photos album.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album' },
+              mediaItemId: { type: 'string', description: 'ID of the media item to use as cover' },
+            },
+            required: ['albumId', 'mediaItemId'],
+          },
+        },
       ],
     };
   }
@@ -459,6 +534,29 @@ export class GooglePhotosMCPCore {
 
         case 'list_media_items':
           return await this.handleListMediaItems(request, tokens);
+
+        case 'search_media_by_filter':
+          return await this.handleSearchMediaByFilter(request, tokens);
+
+        case 'share_album':
+        case 'unshare_album':
+        case 'join_shared_album':
+        case 'leave_shared_album':
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                error: 'FEATURE_DEPRECATED',
+                message: 'Google Photos sharing API was permanently removed on March 31, 2025. The photoslibrary.sharing scope is no longer valid. Sharing management is not possible via the Google Photos Library API.',
+              }),
+            }],
+          };
+
+        case 'add_album_enrichment':
+          return await this.handleAddAlbumEnrichment(request, tokens);
+
+        case 'set_album_cover':
+          return await this.handleSetAlbumCover(request, tokens);
 
         default:
           throw new McpError(
@@ -792,6 +890,112 @@ export class GooglePhotosMCPCore {
         }, null, 2)
       }]
     };
+  }
+
+  private async handleSearchMediaByFilter(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, searchMediaByFilterSchema);
+    quotaManager.checkQuota(false);
+
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    const filters: SearchFilter = {};
+
+    if (args.dates) {
+      filters.dateFilter = { dates: args.dates };
+    } else if (args.dateRanges) {
+      filters.dateFilter = { ranges: args.dateRanges };
+    }
+
+    if (args.includedCategories || args.excludedCategories) {
+      filters.contentFilter = {
+        includedContentCategories: args.includedCategories,
+        excludedContentCategories: args.excludedCategories,
+      };
+    }
+
+    if (args.mediaType) {
+      filters.mediaTypeFilter = { mediaTypes: [args.mediaType] };
+    }
+
+    const includedFeatures: string[] = [];
+    if (args.includeFavorites) includedFeatures.push('FAVORITES');
+    if (args.includeArchived) includedFeatures.push('INCLUDE_ARCHIVED');
+    if (includedFeatures.length > 0) {
+      filters.featureFilter = { includedFeatures };
+    }
+
+    const { photos, nextPageToken } = await searchPhotos(
+      oauth2Client,
+      {
+        filters,
+        pageSize: args.pageSize,
+        pageToken: args.pageToken,
+      },
+    );
+
+    quotaManager.recordRequest(false);
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          count: photos.length,
+          nextPageToken,
+          photos: photos.map(this.formatPhoto),
+        }, null, 2),
+      }],
+    };
+  }
+
+  private async handleAddAlbumEnrichment(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, addEnrichmentSchema);
+    quotaManager.checkQuota(false);
+
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await addEnrichment(
+        oauth2Client,
+        args.albumId,
+        {
+          type: args.type,
+          text: args.text,
+          locationName: args.locationName,
+          latitude: args.latitude,
+          longitude: args.longitude,
+        },
+        args.position,
+      );
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
+  }
+
+  private async handleSetAlbumCover(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, setCoverPhotoSchema);
+    quotaManager.checkQuota(false);
+
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await patchAlbum(oauth2Client, args.albumId, { coverPhotoMediaItemId: args.mediaItemId });
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
   }
 
   /**
