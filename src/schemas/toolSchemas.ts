@@ -72,6 +72,9 @@ export const uploadMediaSchema = z.object({
 
 export const addMediaToAlbumSchema = z.object({
   albumId: z.string().min(1, 'Album ID is required'),
-  mediaItemIds: z.array(z.string()).min(1).max(50),
+  mediaItemIds: z
+    .array(z.string())
+    .min(1, 'At least one media item ID is required')
+    .max(50, 'Maximum 50 media item IDs per call'),
 });
 

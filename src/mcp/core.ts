@@ -24,6 +24,7 @@ import {
   createAlbum,
   uploadMedia,
   batchCreateMediaItems,
+  batchAddMediaItemsToAlbum,
 } from '../api/photos.js';
 import logger from '../utils/logger.js';
 import { validateArgs } from '../utils/validation.js';
@@ -335,15 +336,17 @@ export class GooglePhotosMCPCore {
         },
         {
           name: 'add_media_to_album',
-          description: 'Add existing media items to an album',
+          description: 'Add existing media items to a Google Photos album. Maximum 50 items per call.',
           inputSchema: {
             type: 'object',
             properties: {
-              albumId: { type: 'string', description: 'ID of the album' },
-              mediaItemIds: { 
-                type: 'array', 
+              albumId: { type: 'string', description: 'ID of the album to add media to' },
+              mediaItemIds: {
+                type: 'array',
                 items: { type: 'string' },
-                description: 'Array of media item IDs to add (max 50)' 
+                description: 'Array of media item IDs to add (1-50 items)',
+                minItems: 1,
+                maxItems: 50,
               },
             },
             required: ['albumId', 'mediaItemIds'],
@@ -449,8 +452,7 @@ export class GooglePhotosMCPCore {
           return await this.handleUploadMedia(request, tokens);
 
         case 'add_media_to_album':
-          validateArgs(request.params.arguments, addMediaToAlbumSchema);
-          return { content: [{ type: 'text', text: '{}' }] }; // Stub for tests
+          return await this.handleAddMediaToAlbum(request, tokens);
 
         case 'list_album_photos':
           return await this.handleListAlbumPhotos(request, tokens);
@@ -550,6 +552,32 @@ export class GooglePhotosMCPCore {
       quotaManager.recordRequest(false);
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
+  }
+
+  private async handleAddMediaToAlbum(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, addMediaToAlbumSchema);
+    quotaManager.checkQuota(false);
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      await batchAddMediaItemsToAlbum(oauth2Client, args.albumId, args.mediaItemIds);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            albumId: args.albumId,
+            addedCount: args.mediaItemIds.length,
+          }, null, 2),
+        }],
       };
     } catch (error) {
       let errorMessage = error instanceof Error ? error.message : String(error);

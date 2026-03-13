@@ -39,6 +39,7 @@ export {
   listAlbums,
   getAlbum,
   createAlbum,
+  batchAddMediaItemsToAlbum,
 } from './repositories/albumsRepository.js';
 
 // Repository exports (Photos)
