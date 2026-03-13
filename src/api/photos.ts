@@ -40,7 +40,10 @@ export {
   getAlbum,
   createAlbum,
   batchAddMediaItemsToAlbum,
+  addEnrichment,
+  patchAlbum,
 } from './repositories/albumsRepository.js';
+export type { EnrichmentPayload, AlbumPatch } from './repositories/albumsRepository.js';
 
 // Repository exports (Photos)
 export {

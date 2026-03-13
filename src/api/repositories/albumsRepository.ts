@@ -106,6 +106,111 @@ export async function createAlbum(oauth2Client: OAuth2Client, title: string): Pr
   }
 }
 
+export interface EnrichmentPayload {
+  type: 'TEXT' | 'LOCATION';
+  text?: string;
+  locationName?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+/**
+ * Adds a text or location enrichment to an album.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param albumId - The ID of the album.
+ * @param enrichment - The enrichment payload (TEXT or LOCATION).
+ * @param position - Where to place the enrichment in the album.
+ * @throws Error if adding enrichment fails (e.g., 403 for non-app-created albums).
+ */
+export async function addEnrichment(
+  oauth2Client: OAuth2Client,
+  albumId: string,
+  enrichment: EnrichmentPayload,
+  position?: 'FIRST_IN_ALBUM' | 'LAST_IN_ALBUM',
+): Promise<{ enrichmentItem: { id: string } }> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+
+    const albumEnrichment =
+      enrichment.type === 'TEXT'
+        ? { textEnrichment: { text: enrichment.text } }
+        : {
+            locationEnrichment: {
+              location: {
+                locationName: enrichment.locationName,
+                latlng:
+                  enrichment.latitude != null && enrichment.longitude != null
+                    ? { latitude: enrichment.latitude, longitude: enrichment.longitude }
+                    : undefined,
+              },
+            },
+          };
+
+    const response = await withRetry(
+      async () =>
+        await photosClient.albums.addEnrichment({
+          albumId,
+          albumPosition: { position: position ?? 'LAST_IN_ALBUM' },
+          newEnrichmentItem: albumEnrichment,
+        }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'add enrichment',
+    );
+
+    return response.data as { enrichmentItem: { id: string } };
+  } catch (error) {
+    const message = toError(error, 'add enrichment').message;
+    logger.error(`Failed to add enrichment: ${message}`);
+    throw new Error('Failed to add enrichment', { cause: error });
+  }
+}
+
+export interface AlbumPatch {
+  title?: string;
+  coverPhotoMediaItemId?: string;
+}
+
+/**
+ * Patches an album's mutable fields (title, cover photo).
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param albumId - The ID of the album to patch.
+ * @param patch - Fields to update.
+ * @returns The updated Album object.
+ * @throws Error if the patch fails (e.g., 403 for non-app-created albums).
+ */
+export async function patchAlbum(
+  oauth2Client: OAuth2Client,
+  albumId: string,
+  patch: AlbumPatch,
+): Promise<Album> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+
+    const updateMask = Object.keys(patch)
+      .map((k) => (k === 'coverPhotoMediaItemId' ? 'coverPhotoMediaItemId' : k))
+      .join(',');
+
+    const response = await withRetry(
+      async () =>
+        await photosClient.albums.patch({
+          albumId,
+          updateMask,
+          requestBody: patch as Record<string, unknown>,
+        }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'patch album',
+    );
+
+    return response.data as Album;
+  } catch (error) {
+    const message = toError(error, 'patch album').message;
+    logger.error(`Failed to patch album: ${message}`);
+    throw new Error('Failed to patch album', { cause: error });
+  }
+}
+
 /**
  * Adds existing media items to an album.
  *

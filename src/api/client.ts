@@ -137,6 +137,40 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           throw toError(error, 'albums.batchAddMediaItems');
         }
       },
+      addEnrichment: async (params: {
+        albumId: string;
+        albumPosition?: { position: string };
+        newEnrichmentItem: Record<string, unknown>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post(
+            `/albums/${params.albumId}:addEnrichment`,
+            { newEnrichmentItem: params.newEnrichmentItem, albumPosition: params.albumPosition },
+            { headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.addEnrichment');
+        }
+      },
+      patch: async (params: {
+        albumId: string;
+        updateMask: string;
+        requestBody: Record<string, unknown>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.patch<Album>(
+            `/albums/${params.albumId}`,
+            params.requestBody,
+            { params: { updateMask: params.updateMask }, headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.patch');
+        }
+      },
     },
     mediaItems: {
       batchCreate: async (params: {

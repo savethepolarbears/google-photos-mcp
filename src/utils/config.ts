@@ -61,6 +61,7 @@ const config = {
       'https://www.googleapis.com/auth/photoslibrary.readonly',
       // Alternative scope for 2025+ (requires app-created content only)
       'https://www.googleapis.com/auth/photoslibrary.appendonly',
+      'https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata',
     ],
   },
 
