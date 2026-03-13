@@ -30,8 +30,6 @@ export default tseslint.config(
       'node_modules/**',
       'coverage/**',
       'docs/**',
-      'test/helpers/mocks.ts',
-      'test/helpers/factories.ts'
     ],
   }
 );

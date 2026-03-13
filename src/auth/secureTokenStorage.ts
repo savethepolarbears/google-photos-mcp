@@ -125,7 +125,7 @@ export async function getTokensSecure(userId: string): Promise<TokenDataWithMeta
   } catch (error) {
     logger.error(`Failed to retrieve tokens for user ${userId}:`, error);
     if (error instanceof Error) {
-        throw new Error(`Failed to retrieve securely: ${error.message}`, { cause: error });
+      throw new Error(`Failed to retrieve securely: ${error.message}`, { cause: error });
     }
     throw new Error('Failed to retrieve securely', { cause: error });
   }
@@ -209,7 +209,7 @@ export async function migrateLegacyTokens(legacyTokensPath: string): Promise<voi
   } catch (error) {
     logger.error('Failed to migrate legacy tokens:', error);
     if (error instanceof Error) {
-        throw new Error(`Failed to migrate: ${error.message}`, { cause: error });
+      throw new Error(`Failed to migrate: ${error.message}`, { cause: error });
     }
     throw new Error('Failed to migrate legacy tokens', { cause: error });
   }

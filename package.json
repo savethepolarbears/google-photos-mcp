@@ -29,7 +29,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "axios": "^1.7.9",
-    "dotenv": "^16.4.7",
+    "dotenv": "^17.3.1",
     "express": "^5.0.1",
     "google-auth-library": "^9.15.1",
     "googleapis": "^144.0.0",
@@ -39,11 +39,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
-    "@types/node": "^22.13.4",
-    "@types/supertest": "^6.0.2",
+    "@types/node": "22.19.15",
+    "@types/supertest": "7.2.0",
     "@vitest/coverage-v8": "^3.0.6",
     "eslint": "^9.21.0",
-    "markdownlint-cli2": "^0.17.2",
+    "markdownlint-cli2": "^0.21.0",
     "prettier": "^3.5.1",
     "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
