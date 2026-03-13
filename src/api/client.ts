@@ -8,6 +8,7 @@ import {
   MediaItemsSearchResponse,
   MediaItemResponse,
   SearchFilter,
+  BatchCreateResponse,
 } from './types.js';
 
 /**
@@ -71,6 +72,25 @@ export function toError(error: unknown, context: string): Error {
  */
 function createPhotosLibraryClient(auth: OAuth2Client) {
   return {
+    uploads: {
+      upload: async (params: { bytes: Buffer; mimeType: string; fileName: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<string>('/uploads', params.bytes, {
+            headers: {
+              ...headers,
+              'Content-type': 'application/octet-stream',
+              'X-Goog-Upload-Content-Type': params.mimeType,
+              'X-Goog-Upload-Protocol': 'raw',
+            },
+            responseType: 'text',
+          });
+          return { uploadToken: response.data as string };
+        } catch (error) {
+          throw toError(error, 'uploads.upload');
+        }
+      },
+    },
     albums: {
       list: async (params: { pageSize?: number; pageToken?: string }) => {
         try {
@@ -106,6 +126,28 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
       },
     },
     mediaItems: {
+      batchCreate: async (params: {
+        albumId?: string;
+        newMediaItems: Array<{ uploadToken: string; fileName?: string; description?: string }>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<BatchCreateResponse>(
+            '/mediaItems:batchCreate',
+            {
+              albumId: params.albumId,
+              newMediaItems: params.newMediaItems.map(item => ({
+                description: item.description,
+                simpleMediaItem: { uploadToken: item.uploadToken, fileName: item.fileName },
+              })),
+            },
+            { headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.batchCreate');
+        }
+      },
       search: async (params: {
         requestBody: {
           albumId?: string;

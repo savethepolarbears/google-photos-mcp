@@ -180,7 +180,7 @@ describe('uploadMedia', () => {
   it('calls photosClient.uploads.upload({ bytes, mimeType, fileName }) then photosClient.mediaItems.batchCreate(...) and returns { mediaItemId, uploadToken }', async () => {
     const mockClient = {
       uploads: {
-        upload: vi.fn().mockResolvedValue({ data: 'tok123' })
+        upload: vi.fn().mockResolvedValue({ uploadToken: 'tok123' })
       },
       mediaItems: {
         batchCreate: vi.fn().mockResolvedValue({
@@ -193,7 +193,7 @@ describe('uploadMedia', () => {
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
     const result = await uploadMedia(mockOAuth2Client, '/tmp/photo.jpg', 'image/jpeg', 'photo.jpg');
     expect(result.mediaItemId).toBe('new-media-id');
-    expect(result.uploadToken).toBeDefined();
+    expect(result.uploadToken).toBe('tok123');
   });
 
   it('throws "Failed to upload media" on upload step API failure', async () => {
@@ -217,14 +217,14 @@ describe('batchCreateMediaItems', () => {
       mediaItems: {
         batchCreate: vi.fn().mockResolvedValue({
           data: {
-            newMediaItemResults: [{ mediaItem: { id: 'new-media-id' } }]
+            newMediaItemResults: [{ uploadToken: 'tok123', status: {}, mediaItem: { id: 'new-media-id' } }]
           }
         })
       }
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    const result = await batchCreateMediaItems(mockOAuth2Client, [{ description: 'test', simpleMediaItem: { uploadToken: 'tok123' } }]);
+    const result = await batchCreateMediaItems(mockOAuth2Client, [{ description: 'test', uploadToken: 'tok123' }]);
     expect(result.mediaItems).toBeDefined();
-    expect(result.mediaItems[0].id).toBe('new-media-id');
+    expect(result.mediaItems[0].mediaItem?.id).toBe('new-media-id');
   });
 });

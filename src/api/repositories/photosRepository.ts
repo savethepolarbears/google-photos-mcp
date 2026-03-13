@@ -1,6 +1,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
-import { PhotoItem, SearchParams } from '../types.js';
+import { readFile } from 'fs/promises';
+import { PhotoItem, SearchParams, NewMediaItemResult, BatchCreateResponse } from '../types.js';
 import { getPhotoClient, toError } from '../client.js';
 import { enrichPhotosWithLocation } from '../enrichment/locationEnricher.js';
 import { getPhotoLocation } from '../../utils/location.js';
@@ -196,5 +197,67 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
   } catch (error) {
     logger.error(`Failed to download photo: ${error instanceof Error ? error.message : String(error)}`);
     throw new Error('Failed to download photo', { cause: error });
+  }
+}
+
+/**
+ * Uploads media from a local file and creates a Google Photos media item.
+ * Atomic two-step process: uploads bytes to get token, then batch creates.
+ */
+export async function uploadMedia(
+  oauth2Client: OAuth2Client,
+  filePath: string,
+  mimeType: string,
+  fileName: string,
+  albumId?: string,
+  description?: string,
+): Promise<{ mediaItemId: string; uploadToken: string }> {
+  try {
+    const bytes = await readFile(filePath);
+    const photosClient = getPhotoClient(oauth2Client);
+
+    const { uploadToken } = await withRetry(
+      async () => await photosClient.uploads.upload({ bytes, mimeType, fileName }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'upload media bytes'
+    );
+
+    const result = await photosClient.mediaItems.batchCreate({
+      albumId,
+      newMediaItems: [{ uploadToken, fileName, description }],
+    });
+
+    const mediaItemResult = result.data.newMediaItemResults?.[0];
+    return {
+      mediaItemId: mediaItemResult?.mediaItem?.id ?? '',
+      uploadToken,
+    };
+  } catch (error) {
+    logger.error(`Failed to upload media: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error('Failed to upload media', { cause: error });
+  }
+}
+
+/**
+ * Creates media items from existing upload tokens.
+ */
+export async function batchCreateMediaItems(
+  oauth2Client: OAuth2Client,
+  newMediaItems: Array<{ uploadToken: string; fileName?: string; description?: string }>,
+  albumId?: string,
+): Promise<{ mediaItems: NewMediaItemResult[] }> {
+  try {
+    const photosClient = getPhotoClient(oauth2Client);
+
+    const response = await withRetry(
+      async () => await photosClient.mediaItems.batchCreate({ newMediaItems, albumId }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      'batch create media items'
+    );
+
+    return { mediaItems: response.data.newMediaItemResults || [] };
+  } catch (error) {
+    logger.error(`Failed to batch create media items: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error('Failed to batch create media items', { cause: error });
   }
 }
