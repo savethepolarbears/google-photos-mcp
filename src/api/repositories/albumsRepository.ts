@@ -106,7 +106,7 @@ export async function createAlbum(oauth2Client: OAuth2Client, title: string): Pr
   }
 }
 
-export interface EnrichmentPayload {
+interface EnrichmentPayload {
   type: 'TEXT' | 'LOCATION';
   text?: string;
   locationName?: string;
@@ -166,7 +166,7 @@ export async function addEnrichment(
   }
 }
 
-export interface AlbumPatch {
+interface AlbumPatch {
   title?: string;
   coverPhotoMediaItemId?: string;
 }

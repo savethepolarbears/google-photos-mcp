@@ -19,7 +19,7 @@ interface PhotoForLocation {
 /**
  * Interface representing location data extracted or enriched for a photo.
  */
-export interface LocationData {
+interface LocationData {
   /** Latitude coordinate */
   latitude?: number;
   /** Longitude coordinate */

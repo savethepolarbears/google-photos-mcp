@@ -17,22 +17,17 @@
  */
 
 // Type exports (only those consumed by importers)
-export type {
-  PhotoItem,
-} from './types.js';
+export type { PhotoItem } from "./types.js";
 
 // OAuth exports
-export {
-  createOAuthClient,
-  setupOAuthClient,
-} from './oauth.js';
+export { createOAuthClient, setupOAuthClient } from "./oauth.js";
 
 // Search exports
 export {
   buildSearchTokens,
   matchesSearchTokens,
   filterPhotosByTokens,
-} from './search/tokenMatcher.js';
+} from "./search/tokenMatcher.js";
 
 // Repository exports (Albums)
 export {
@@ -42,8 +37,7 @@ export {
   batchAddMediaItemsToAlbum,
   addEnrichment,
   patchAlbum,
-} from './repositories/albumsRepository.js';
-export type { EnrichmentPayload, AlbumPatch } from './repositories/albumsRepository.js';
+} from "./repositories/albumsRepository.js";
 
 // Repository exports (Photos)
 export {
@@ -52,12 +46,10 @@ export {
   getPhotoAsBase64,
   listMediaItems,
   uploadMedia,
-  batchCreateMediaItems,
-} from './repositories/photosRepository.js';
+} from "./repositories/photosRepository.js";
 
 // Service exports (High-level)
 export {
   searchPhotosByText,
   searchPhotosByLocation,
-} from './services/photoSearchService.js';
-
+} from "./services/photoSearchService.js";
