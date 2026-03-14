@@ -52,9 +52,9 @@ describe('reverseGeocode', () => {
     const result = await reverseGeocode(48.8566, 2.3522);
 
     expect(result).not.toBeNull();
-    expect(result!.city).toBe('Paris');
-    expect(result!.countryName).toBe('France');
-    expect(result!.approximate).toBe(false);
+    expect(result?.city).toBe('Paris');
+    expect(result?.countryName).toBe('France');
+    expect(result?.approximate).toBe(false);
   });
 
   it('returns null when Nominatim response contains { error: "Unable to geocode" }', async () => {
@@ -143,8 +143,8 @@ describe('getPhotoLocation reverse-geocoding wiring', () => {
       expect.anything()
     );
     expect(result).not.toBeNull();
-    expect(result!.city).toBe('Paris');
-    expect(result!.countryName).toBe('France');
+    expect(result?.city).toBe('Paris');
+    expect(result?.countryName).toBe('France');
   });
 
   it('does NOT call reverseGeocode when performGeocoding=false even if photo has coords without name', async () => {
@@ -159,7 +159,7 @@ describe('getPhotoLocation reverse-geocoding wiring', () => {
       },
     };
 
-    const result = await getPhotoLocation(photo, false);
+    const _result = await getPhotoLocation(photo, false);
 
     expect(mockedAxios.get).not.toHaveBeenCalled();
     // result may be null (no description to extract from) or contain raw locationData

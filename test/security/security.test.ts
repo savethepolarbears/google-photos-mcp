@@ -5,10 +5,29 @@
  * Tests: CORS, DNS rebinding, CSRF, input validation, OAuth flow, JWT, file perms.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import path from 'path';
+
+// Mock @keyv/sqlite to prevent loading the native sqlite3 binary
+// (architecture-dependent; security tests don't exercise token storage)
+vi.mock('@keyv/sqlite', () => ({
+  default: class KeyvSqliteMock { readonly _mock = true; },
+}));
+
+vi.mock('keyv', () => ({
+  default: class KeyvMock {
+    async get() { return undefined; }
+    async set() {}
+    on() { return this; }
+  },
+}));
+
+vi.mock('../../src/utils/logger.js', () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 import { setupAuthRoutes } from '../../src/auth/routes.js';
 
 describe('Security Tests', () => {

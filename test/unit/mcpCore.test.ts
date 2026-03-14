@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GooglePhotosMCPCore } from '../../src/mcp/core.js';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { McpError } from '@modelcontextprotocol/sdk/types.js';
 
 vi.mock('../../src/auth/tokens.js', () => ({
   getFirstAvailableTokens: vi.fn().mockResolvedValue({ access_token: 'tok', userId: 'u1' }),

@@ -15,6 +15,12 @@ vi.mock('../../src/utils/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// Mock @keyv/sqlite to prevent loading the native sqlite3 binary
+// (architecture-dependent; the in-memory keyv mock above handles all storage)
+vi.mock('@keyv/sqlite', () => ({
+  default: class KeyvSqliteMock { readonly _mock = true; },
+}));
+
 // In-memory store shared across all keyv mock instances (cleared in beforeEach)
 const store = new Map<string, unknown>();
 
@@ -80,9 +86,9 @@ describe('tokens.ts — AUTH-01', () => {
       const retrieved = await getTokens('user-rt');
 
       expect(retrieved).not.toBeNull();
-      expect(retrieved!.access_token).toBe(token.access_token);
-      expect(retrieved!.refresh_token).toBe(token.refresh_token);
-      expect(retrieved!.expiry_date).toBe(token.expiry_date);
+      expect(retrieved?.access_token).toBe(token.access_token);
+      expect(retrieved?.refresh_token).toBe(token.refresh_token);
+      expect(retrieved?.expiry_date).toBe(token.expiry_date);
     });
 
     it('getTokens returns null for an unknown userId', async () => {
@@ -102,7 +108,7 @@ describe('tokens.ts — AUTH-01', () => {
       const result = await getFirstAvailableTokens();
       expect(result).not.toBeNull();
       // Should return one of the stored tokens (exact ordering is implementation-defined)
-      expect(['old-token', 'new-token']).toContain(result!.access_token);
+      expect(['old-token', 'new-token']).toContain(result?.access_token);
     });
 
     it('returns null when no tokens are stored', async () => {

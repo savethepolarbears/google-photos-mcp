@@ -1,7 +1,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
 import { readFile } from 'fs/promises';
-import { PhotoItem, SearchParams, NewMediaItemResult, BatchCreateResponse } from '../types.js';
+import { PhotoItem, SearchParams, NewMediaItemResult } from '../types.js';
 import { getPhotoClient, toError } from '../client.js';
 import { enrichPhotosWithLocation } from '../enrichment/locationEnricher.js';
 import { getPhotoLocation } from '../../utils/location.js';
