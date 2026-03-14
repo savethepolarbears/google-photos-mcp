@@ -192,14 +192,14 @@ export async function getPhotoLocation(
   performGeocoding: boolean = false
 ): Promise<LocationData | null> {
   try {
-    // Try to extract location from photo metadata first
-    const locationData = extractLocationFromPhoto(photo);
-    
-    // If we have a location name but want coordinates, try geocoding
+    // Try to extract location from photo metadata first; fall back to photo.locationData
+    const locationData = extractLocationFromPhoto(photo) ?? photo.locationData ?? null;
+
+    // If we have a location name but want coordinates, try forward geocoding
     if (
-      performGeocoding && 
-      locationData && 
-      locationData.locationName && 
+      performGeocoding &&
+      locationData &&
+      locationData.locationName &&
       (!locationData.latitude || !locationData.longitude)
     ) {
       const searchQuery = [
@@ -207,9 +207,9 @@ export async function getPhotoLocation(
         locationData.city,
         locationData.countryName
       ].filter(Boolean).join(', ');
-      
+
       const geocodedLocation = await searchLocationByName(searchQuery);
-      
+
       if (geocodedLocation) {
         return {
           ...locationData,
@@ -224,7 +224,32 @@ export async function getPhotoLocation(
         };
       }
     }
-    
+
+    // Reverse geocode: if we have coords but no location name, enrich with city/country
+    if (
+      performGeocoding &&
+      locationData &&
+      locationData.latitude &&
+      locationData.longitude &&
+      !locationData.locationName &&
+      !locationData.city &&
+      !locationData.countryName
+    ) {
+      const reverseResult = await reverseGeocode(locationData.latitude, locationData.longitude);
+      if (reverseResult) {
+        return {
+          ...locationData,
+          locationName: reverseResult.locationName,
+          formattedAddress: reverseResult.formattedAddress,
+          city: reverseResult.city,
+          countryName: reverseResult.countryName,
+          region: reverseResult.region,
+          // Keep approximate from original (coords came from metadata, not geocoding)
+          approximate: locationData.approximate,
+        };
+      }
+    }
+
     return locationData;
   } catch (error) {
     logger.error(`Error getting photo location: ${error instanceof Error ? error.message : String(error)}`);
