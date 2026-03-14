@@ -188,9 +188,7 @@ export async function patchAlbum(
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
-    const updateMask = Object.keys(patch)
-      .map((k) => (k === 'coverPhotoMediaItemId' ? 'coverPhotoMediaItemId' : k))
-      .join(',');
+    const updateMask = Object.keys(patch).join(',');
 
     const response = await withRetry(
       async () =>

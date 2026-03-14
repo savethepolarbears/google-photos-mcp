@@ -24,9 +24,7 @@ import {
   getAlbum,
   createAlbum,
   batchAddMediaItemsToAlbum,
-  // @ts-expect-error - not yet implemented (RED state)
   addEnrichment,
-  // @ts-expect-error - not yet implemented (RED state)
   patchAlbum,
 } from '../../src/api/repositories/albumsRepository.js';
 import { getPhotoClient } from '../../src/api/client.js';
@@ -202,7 +200,7 @@ describe('addEnrichment', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - addEnrichment not yet exported (RED state)
+
     await addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'Summer memories' }, undefined);
 
     expect(mockAddEnrichment).toHaveBeenCalledWith(
@@ -219,7 +217,7 @@ describe('addEnrichment', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - addEnrichment not yet exported (RED state)
+
     await addEnrichment(mockOAuth2Client, 'album-1', { type: 'LOCATION', locationName: 'Paris, France' }, undefined);
 
     expect(mockAddEnrichment).toHaveBeenCalledWith(
@@ -236,7 +234,7 @@ describe('addEnrichment', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - addEnrichment not yet exported (RED state)
+
     await expect(addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'x' }, undefined))
       .rejects.toThrow();
   });
@@ -256,7 +254,7 @@ describe('patchAlbum', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - patchAlbum not yet exported (RED state)
+
     await patchAlbum(mockOAuth2Client, 'album-1', { coverPhotoMediaItemId: 'media-1' });
 
     expect(mockPatch).toHaveBeenCalledWith(
@@ -273,7 +271,7 @@ describe('patchAlbum', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - patchAlbum not yet exported (RED state)
+
     const result = await patchAlbum(mockOAuth2Client, 'album-1', { title: 'New Title' });
 
     expect(mockPatch).toHaveBeenCalledWith(
@@ -291,7 +289,7 @@ describe('patchAlbum', () => {
     };
     vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
-    // @ts-expect-error - patchAlbum not yet exported (RED state)
+
     await expect(patchAlbum(mockOAuth2Client, 'album-1', { title: 'x' })).rejects.toThrow();
   });
 });

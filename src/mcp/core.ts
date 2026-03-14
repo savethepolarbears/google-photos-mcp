@@ -25,7 +25,6 @@ import {
   getAlbum,
   createAlbum,
   uploadMedia,
-  batchCreateMediaItems,
   batchAddMediaItemsToAlbum,
   addEnrichment,
   patchAlbum,
@@ -665,6 +664,14 @@ export class GooglePhotosMCPCore {
     };
   }
 
+  private enrichPermissionError(error: unknown): never {
+    let msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('PERMISSION_DENIED')) {
+      msg += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+    }
+    throw new Error(msg, { cause: error });
+  }
+
   private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, createAlbumSchema);
     quotaManager.checkQuota(false);
@@ -680,11 +687,7 @@ export class GooglePhotosMCPCore {
         }],
       };
     } catch (error) {
-      let errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('PERMISSION_DENIED')) {
-        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
-      }
-      throw new Error(errorMessage, { cause: error });
+      this.enrichPermissionError(error);
     }
   }
 
@@ -699,11 +702,7 @@ export class GooglePhotosMCPCore {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
-      let errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('PERMISSION_DENIED')) {
-        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
-      }
-      throw new Error(errorMessage, { cause: error });
+      this.enrichPermissionError(error);
     }
   }
 
@@ -725,11 +724,7 @@ export class GooglePhotosMCPCore {
         }],
       };
     } catch (error) {
-      let errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('PERMISSION_DENIED')) {
-        errorMessage += "\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).";
-      }
-      throw new Error(errorMessage, { cause: error });
+      this.enrichPermissionError(error);
     }
   }
 

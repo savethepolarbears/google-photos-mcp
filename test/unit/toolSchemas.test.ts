@@ -14,12 +14,11 @@ import {
   createAlbumSchema,
   uploadMediaSchema,
   addMediaToAlbumSchema,
-  // @ts-expect-error - not yet implemented (RED state)
   searchMediaByFilterSchema,
-  // @ts-expect-error - not yet implemented (RED state)
   addEnrichmentSchema,
-  // @ts-expect-error - not yet implemented (RED state)
   setCoverPhotoSchema,
+  createAlbumWithMediaSchema,
+  describeFilterCapabilitiesSchema,
 } from '../../src/schemas/toolSchemas.js';
 
 describe('searchPhotosSchema', () => {
@@ -207,11 +206,8 @@ describe('addMediaToAlbumSchema', () => {
 
 // ---- Phase 3 schemas (RED state -- production code not yet written) ----
 
-// Narrow helper type: only what we call on these not-yet-exported schemas.
-type ZodLike = { parse: (input: unknown) => unknown };
-
 describe('searchMediaByFilterSchema', () => {
-  const schema = (searchMediaByFilterSchema as unknown) as ZodLike;
+  const schema = searchMediaByFilterSchema;
 
   it('accepts valid date filter with content categories', () => {
     const result = schema.parse({
@@ -253,7 +249,7 @@ describe('searchMediaByFilterSchema', () => {
 });
 
 describe('addEnrichmentSchema', () => {
-  const schema = (addEnrichmentSchema as unknown) as ZodLike;
+  const schema = addEnrichmentSchema;
 
   it('accepts valid TextEnrichment input', () => {
     const result = schema.parse({
@@ -275,7 +271,7 @@ describe('addEnrichmentSchema', () => {
 });
 
 describe('setCoverPhotoSchema', () => {
-  const schema = (setCoverPhotoSchema as unknown) as ZodLike;
+  const schema = setCoverPhotoSchema;
 
   it('accepts valid albumId and mediaItemId', () => {
     const result = schema.parse({
@@ -283,5 +279,59 @@ describe('setCoverPhotoSchema', () => {
       mediaItemId: 'media-item-1',
     });
     expect(result).toBeDefined();
+  });
+});
+
+// ---- Phase 4 schemas ----
+
+describe('createAlbumWithMediaSchema', () => {
+  it('accepts valid albumTitle and files array', () => {
+    const result = createAlbumWithMediaSchema.parse({
+      albumTitle: 'Trip',
+      files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+    });
+    expect(result.albumTitle).toBe('Trip');
+    expect(result.files).toHaveLength(1);
+  });
+
+  it('rejects empty files array', () => {
+    expect(() =>
+      createAlbumWithMediaSchema.parse({ albumTitle: 'Trip', files: [] })
+    ).toThrow();
+  });
+
+  it('rejects files array with more than 50 items', () => {
+    const files = Array(51).fill({ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' });
+    expect(() =>
+      createAlbumWithMediaSchema.parse({ albumTitle: 'Trip', files })
+    ).toThrow();
+  });
+
+  it('rejects missing albumTitle', () => {
+    expect(() =>
+      createAlbumWithMediaSchema.parse({
+        files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+      })
+    ).toThrow();
+  });
+
+  it('accepts optional description on file items', () => {
+    const result = createAlbumWithMediaSchema.parse({
+      albumTitle: 'Trip',
+      files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg', description: 'Sunset' }],
+    });
+    expect(result.files[0].description).toBe('Sunset');
+  });
+});
+
+describe('describeFilterCapabilitiesSchema', () => {
+  it('accepts empty object {}', () => {
+    const result = describeFilterCapabilitiesSchema?.parse({});
+    expect(result).toBeDefined();
+  });
+
+  it('accepts undefined (schema is optional)', () => {
+    const result = describeFilterCapabilitiesSchema?.parse(undefined);
+    expect(result).toBeUndefined();
   });
 });
