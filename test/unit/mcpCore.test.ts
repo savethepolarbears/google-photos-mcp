@@ -250,4 +250,51 @@ describe('GooglePhotosMCPCore', () => {
       expect(parsed.dateFilter).toBeDefined();
     });
   });
+
+  describe('MCP Prompts', () => {
+    it('handleListPrompts returns array of 3 prompts with correct names', async () => {
+      const result = await instance.handleListPrompts();
+      expect(result.prompts).toHaveLength(3);
+      const names = result.prompts.map((p: { name: string }) => p.name);
+      expect(names).toContain('organize_photos');
+      expect(names).toContain('batch_upload_workflow');
+      expect(names).toContain('find_photos_by_criteria');
+    });
+
+    it('each prompt in list has description and arguments array', async () => {
+      const result = await instance.handleListPrompts();
+      for (const prompt of result.prompts) {
+        expect(prompt.description).toBeDefined();
+        expect(Array.isArray(prompt.arguments)).toBe(true);
+      }
+    });
+
+    it('handleGetPrompt organize_photos returns messages with role=user and text containing "list_albums"', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'organize_photos' } });
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('user');
+      expect(result.messages[0].content.text).toContain('list_albums');
+    });
+
+    it('handleGetPrompt organize_photos with theme includes theme in response text', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'organize_photos', arguments: { theme: 'vacation' } } });
+      expect(result.messages[0].content.text).toContain('vacation');
+    });
+
+    it('handleGetPrompt batch_upload_workflow returns messages mentioning "create_album_with_media"', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'batch_upload_workflow' } });
+      expect(result.messages[0].content.text).toContain('create_album_with_media');
+    });
+
+    it('handleGetPrompt find_photos_by_criteria with criteria includes criteria in response text', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'find_photos_by_criteria', arguments: { criteria: 'pet photos' } } });
+      expect(result.messages[0].content.text).toContain('pet photos');
+    });
+
+    it('handleGetPrompt with unknown prompt name throws McpError with InvalidParams', async () => {
+      await expect(
+        instance.handleGetPrompt({ params: { name: 'nonexistent_prompt' } })
+      ).rejects.toThrow(McpError);
+    });
+  });
 });
