@@ -5,6 +5,8 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   McpError,
   CallToolRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -113,6 +115,8 @@ export class GooglePhotosMCPCore {
     this.server.setRequestHandler(CallToolRequestSchema, this.handleCallTool.bind(this));
     this.server.setRequestHandler(ListResourcesRequestSchema, this.handleListResources.bind(this));
     this.server.setRequestHandler(ReadResourceRequestSchema, this.handleReadResource.bind(this));
+    this.server.setRequestHandler(ListPromptsRequestSchema, this.handleListPrompts.bind(this));
+    this.server.setRequestHandler(GetPromptRequestSchema, this.handleGetPrompt.bind(this));
   }
 
   protected async handleListResources() {
@@ -1057,6 +1061,100 @@ export class GooglePhotosMCPCore {
         text: JSON.stringify({ album, uploadResults, addedToAlbum: successIds.length }, null, 2),
       }],
     };
+  }
+
+  protected async handleListPrompts() {
+    return {
+      prompts: [
+        {
+          name: 'organize_photos',
+          description: 'Guides you through organizing photos into albums by theme or date range.',
+          arguments: [
+            { name: 'theme', description: 'Theme or subject (e.g., "vacation", "family")', required: false },
+            { name: 'dateRange', description: 'Date range (e.g., "2023", "summer 2022")', required: false },
+          ],
+        },
+        {
+          name: 'batch_upload_workflow',
+          description: 'Step-by-step workflow for uploading multiple local files to a Google Photos album.',
+          arguments: [
+            { name: 'albumName', description: 'Target album name (new or existing)', required: false },
+          ],
+        },
+        {
+          name: 'find_photos_by_criteria',
+          description: 'Constructs a valid Google Photos filter query from a plain-language description.',
+          arguments: [
+            { name: 'criteria', description: 'What you want to find (e.g., "pet photos from last year")', required: true },
+          ],
+        },
+      ],
+    };
+  }
+
+  protected async handleGetPrompt(request: { params: { name: string; arguments?: Record<string, string> } }) {
+    const args = request.params.arguments ?? {};
+    switch (request.params.name) {
+      case 'organize_photos':
+        return {
+          description: 'Workflow for organizing Google Photos into albums.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are organizing Google Photos${args.theme ? ` with theme: "${args.theme}"` : ''}${args.dateRange ? ` for date range: "${args.dateRange}"` : ''}.
+Steps:
+1. Use list_albums to see existing albums.
+2. Use search_media_by_filter or search_photos to find relevant photos.
+3. If needed, use create_album to create a new album.
+4. Use add_media_to_album to add photos. Maximum 50 items per call — paginate if more.
+5. Optionally use set_album_cover to set a representative cover photo.`,
+            },
+          }],
+        };
+      case 'batch_upload_workflow':
+        return {
+          description: 'Step-by-step batch upload workflow.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are uploading multiple files to Google Photos${args.albumName ? ` into album: "${args.albumName}"` : ''}.
+Preferred approach (single tool call):
+- Use create_album_with_media if you have a file list and album title. Max 50 files per call.
+
+Manual approach:
+1. Use create_album to create the album (if it doesn't exist).
+2. For each file, use upload_media with filePath, mimeType, fileName.
+3. Collect returned mediaItemIds.
+4. Use add_media_to_album with all collected IDs (max 50 per call).
+
+Error handling: If an upload fails, continue with remaining files and report partial results.`,
+            },
+          }],
+        };
+      case 'find_photos_by_criteria':
+        return {
+          description: 'Guide for constructing valid Google Photos filter queries.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You need to find photos matching: "${args.criteria ?? 'criteria not specified'}".
+
+Use describe_filter_capabilities to see all valid filter options, then use search_media_by_filter.
+
+Key rules:
+- albumId and filters are MUTUALLY EXCLUSIVE — do not use both.
+- dateFilter.dates (max 5) and dateFilter.dateRanges (max 5) are mutually exclusive — pick one.
+- orderBy requires a dateFilter to be present.
+- For plain-text search, use search_photos instead of filter-based search.`,
+            },
+          }],
+        };
+      default:
+        throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${request.params.name}`);
+    }
   }
 
   private handleDescribeFilterCapabilities() {
