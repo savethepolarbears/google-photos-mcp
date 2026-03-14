@@ -183,4 +183,71 @@ describe('GooglePhotosMCPCore', () => {
       expect(result).toBeDefined();
     });
   });
+
+  describe('create_album_with_media', () => {
+    it('creates album, uploads files, adds to album, returns aggregate result', async () => {
+      const { createAlbum, uploadMedia, batchAddMediaItemsToAlbum } = await import('../../src/api/photos.js');
+      vi.mocked(createAlbum).mockResolvedValue({ id: 'album-new', title: 'Trip' } as never);
+      vi.mocked(uploadMedia).mockResolvedValue({ id: 'media-1', filename: 'a.jpg' } as never);
+      vi.mocked(batchAddMediaItemsToAlbum).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'create_album_with_media',
+          arguments: {
+            albumTitle: 'Trip',
+            files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+          },
+        },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.album).toBeDefined();
+      expect(parsed.uploadResults).toHaveLength(1);
+      expect(parsed.uploadResults[0].success).toBe(true);
+      expect(parsed.addedToAlbum).toBe(1);
+    });
+
+    it('returns partial results when one upload fails without aborting', async () => {
+      const { createAlbum, uploadMedia, batchAddMediaItemsToAlbum } = await import('../../src/api/photos.js');
+      vi.mocked(createAlbum).mockResolvedValue({ id: 'album-new', title: 'Trip' } as never);
+      vi.mocked(uploadMedia)
+        .mockResolvedValueOnce({ id: 'media-1', filename: 'a.jpg' } as never)
+        .mockRejectedValueOnce(new Error('upload failed'));
+      vi.mocked(batchAddMediaItemsToAlbum).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'create_album_with_media',
+          arguments: {
+            albumTitle: 'Trip',
+            files: [
+              { filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' },
+              { filePath: '/b.jpg', mimeType: 'image/jpeg', fileName: 'b.jpg' },
+            ],
+          },
+        },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.uploadResults).toHaveLength(2);
+      expect(parsed.uploadResults[0].success).toBe(true);
+      expect(parsed.uploadResults[1].success).toBe(false);
+      expect(parsed.addedToAlbum).toBe(1);
+    });
+  });
+
+  describe('describe_filter_capabilities', () => {
+    it('returns JSON with contentCategories, mutuallyExclusive, and dateFilter constraints', async () => {
+      const result = await instance.handleCallTool({
+        params: { name: 'describe_filter_capabilities', arguments: {} },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.contentCategories).toBeDefined();
+      expect(Array.isArray(parsed.contentCategories)).toBe(true);
+      expect(parsed.mutuallyExclusive).toBeDefined();
+      expect(parsed.dateFilter).toBeDefined();
+    });
+  });
 });

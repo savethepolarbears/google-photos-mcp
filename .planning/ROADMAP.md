@@ -52,8 +52,14 @@ Plans:
 ## Phase 4: Composite Workflows & Metadata
 **Objective**: Deliver high-level abstractions, automated enrichments, and multi-step workflows to reduce AI context overhead.
 - **Requirements**: WORK-01, WORK-02, WORK-03, META-01
+- **Plans:** 1/3 plans executed
 - **Success Criteria**:
   - AI can execute complex, multi-step actions (e.g., batch uploads) using a single composite tool.
   - Semantic abstractions enable the AI to easily construct valid Google Photos search queries.
   - MCP Prompts successfully guide AI agents on how to execute common organizational tasks.
   - Photo metadata is automatically enriched with human-readable locations from latitude/longitude data.
+
+Plans:
+- [ ] 04-01-PLAN.md — Wave 1: Reverse geocoding — reverseGeocode(lat, lng) utility function (META-01)
+- [ ] 04-02-PLAN.md — Wave 1: Composite create_album_with_media tool + describe_filter_capabilities (WORK-01, WORK-02)
+- [ ] 04-03-PLAN.md — Wave 2: MCP Prompts — organize_photos, batch_upload_workflow, find_photos_by_criteria (WORK-03)

@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-03-13T23:32:40.986Z"
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-14T00:20:16.351Z"
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 12
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
 ---
 
 # Project State
@@ -19,8 +19,8 @@ progress:
 
 ## Session Continuity
 
-Last session: 2026-03-13T23:26:56.862Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-03-14T00:20:16.347Z
+Stopped at: Completed 04-01-PLAN.md
 Resume file: None
 
 ## Decisions
@@ -37,6 +37,8 @@ Resume file: None
 - [Phase 03-02]: Schemas pre-done from Plan 01 RED scaffold; Task 1 required no code
 - [Phase 03-02]: position is separate arg on addEnrichment(), not EnrichmentPayload field
 - [Phase 03-03]: Task 2 core.ts wiring was already committed in 03-02; albums.patch client uses requestBody + updateMask params separately
+- [Phase 04-01]: photo.locationData used as fallback when extractLocationFromPhoto returns null, enabling coord-only enrichment without changing callers
+- [Phase 04-01]: reverseGeocode sets approximate=false; getPhotoLocation preserves original approximate when merging; LocationData interface exported
 
 ## Phase 1: Foundation (Auth & Infrastructure)
 **Status**: Complete

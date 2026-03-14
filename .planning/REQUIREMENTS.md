@@ -35,7 +35,7 @@
 - [ ] **WORK-03**: System exposes MCP Prompts to guide AI agents on how to organize, tag, or retrieve complex sets of photos.
 
 ### Metadata Enrichment
-- [ ] **META-01**: System automatically enriches photo metadata by converting latitude/longitude to human-readable locations.
+- [x] **META-01**: System automatically enriches photo metadata by converting latitude/longitude to human-readable locations.
 
 ## v2 Requirements
 
@@ -73,7 +73,7 @@
 | WORK-01 | Phase 4 | Pending |
 | WORK-02 | Phase 4 | Pending |
 | WORK-03 | Phase 4 | Pending |
-| META-01 | Phase 4 | Pending |
+| META-01 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 20 total
