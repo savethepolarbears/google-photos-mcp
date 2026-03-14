@@ -32,7 +32,7 @@
 ### Composite Workflows & Prompts
 - [x] **WORK-01**: System provides high-level abstractions that batch or orchestrate multiple API calls efficiently (e.g., "Create an album and upload these 10 local files").
 - [x] **WORK-02**: System provides semantic abstractions for AI to natively understand Google Photos filter constructs.
-- [ ] **WORK-03**: System exposes MCP Prompts to guide AI agents on how to organize, tag, or retrieve complex sets of photos.
+- [x] **WORK-03**: System exposes MCP Prompts to guide AI agents on how to organize, tag, or retrieve complex sets of photos.
 
 ### Metadata Enrichment
 - [x] **META-01**: System automatically enriches photo metadata by converting latitude/longitude to human-readable locations.
@@ -72,7 +72,7 @@
 | FULL-04 | Phase 3 | Complete |
 | WORK-01 | Phase 4 | Complete |
 | WORK-02 | Phase 4 | Complete |
-| WORK-03 | Phase 4 | Pending |
+| WORK-03 | Phase 4 | Complete |
 | META-01 | Phase 4 | Complete |
 
 **Coverage:**
