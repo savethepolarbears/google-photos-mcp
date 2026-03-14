@@ -78,7 +78,7 @@ export const addMediaToAlbumSchema = z.object({
     .max(50, 'Maximum 50 media item IDs per call'),
 });
 
-const contentCategoryEnum = z.enum([
+export const contentCategoryEnum = z.enum([
   'LANDSCAPES', 'RECEIPTS', 'CITYSCAPES', 'LANDMARKS', 'SELFIES', 'PEOPLE',
   'PETS', 'WEDDINGS', 'BIRTHDAYS', 'DOCUMENTS', 'TRAVEL', 'ANIMALS', 'FOOD',
   'SPORT', 'NIGHT', 'PERFORMANCES', 'WHITEBOARDS', 'SCREENSHOTS', 'UTILITY',
@@ -151,4 +151,22 @@ export const setCoverPhotoSchema = z.object({
   albumId: z.string().min(1, 'Album ID is required'),
   mediaItemId: z.string().min(1, 'Media item ID is required'),
 });
+
+/**
+ * Schema for create_album_with_media composite tool arguments
+ */
+export const createAlbumWithMediaSchema = z.object({
+  albumTitle: z.string().min(1).max(500),
+  files: z.array(z.object({
+    filePath: z.string().min(1),
+    mimeType: z.string().min(1),
+    fileName: z.string().min(1),
+    description: z.string().optional(),
+  })).min(1, 'At least one file required').max(50, 'Maximum 50 files per call'),
+});
+
+/**
+ * Schema for describe_filter_capabilities tool arguments (no args needed)
+ */
+export const describeFilterCapabilitiesSchema = z.object({}).optional();
 

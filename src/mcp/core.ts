@@ -45,6 +45,8 @@ import {
   searchMediaByFilterSchema,
   addEnrichmentSchema,
   setCoverPhotoSchema,
+  createAlbumWithMediaSchema,
+  contentCategoryEnum,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -473,6 +475,41 @@ export class GooglePhotosMCPCore {
             required: ['albumId', 'mediaItemId'],
           },
         },
+        {
+          name: 'create_album_with_media',
+          description: 'Create a new album and upload multiple local files to it in one step. Handles partial failures — returns per-file results. Max 50 files per call. Note: albums cannot be deleted via the API, so an empty album persists if all uploads fail.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumTitle: { type: 'string', description: 'Title for the new album (1-500 chars)' },
+              files: {
+                type: 'array',
+                description: 'Files to upload (1-50 items)',
+                items: {
+                  type: 'object',
+                  properties: {
+                    filePath: { type: 'string', description: 'Absolute path to the local file' },
+                    mimeType: { type: 'string', description: 'MIME type (e.g., image/jpeg)' },
+                    fileName: { type: 'string', description: 'File name to use in Google Photos' },
+                    description: { type: 'string', description: 'Optional caption for the media item' },
+                  },
+                  required: ['filePath', 'mimeType', 'fileName'],
+                },
+                minItems: 1,
+                maxItems: 50,
+              },
+            },
+            required: ['albumTitle', 'files'],
+          },
+        },
+        {
+          name: 'describe_filter_capabilities',
+          description: 'Returns a machine-readable JSON reference of all valid Google Photos search filter options, constraints, and examples. No arguments needed. Use this before constructing search_media_by_filter queries.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
       ],
     };
   }
@@ -557,6 +594,12 @@ export class GooglePhotosMCPCore {
 
         case 'set_album_cover':
           return await this.handleSetAlbumCover(request, tokens);
+
+        case 'create_album_with_media':
+          return await this.handleCreateAlbumWithMedia(request, tokens);
+
+        case 'describe_filter_capabilities':
+          return this.handleDescribeFilterCapabilities();
 
         default:
           throw new McpError(
@@ -976,6 +1019,79 @@ export class GooglePhotosMCPCore {
       }
       throw new Error(errorMessage, { cause: error });
     }
+  }
+
+  private async handleCreateAlbumWithMedia(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, createAlbumWithMediaSchema);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    // Create the album first
+    quotaManager.checkQuota(false);
+    const album = await createAlbum(oauth2Client, args.albumTitle);
+    quotaManager.recordRequest(false);
+
+    // Upload each file, collecting per-file results (never abort on failure)
+    const uploadResults: Array<{ fileName: string; success: boolean; mediaItemId?: string; error?: string }> = [];
+    for (const file of args.files) {
+      try {
+        quotaManager.checkQuota(false);
+        const media = await uploadMedia(oauth2Client, file.filePath, file.mimeType, file.fileName, undefined, file.description);
+        quotaManager.recordRequest(false);
+        uploadResults.push({ fileName: file.fileName, success: true, mediaItemId: (media as { id?: string }).id });
+      } catch (err) {
+        uploadResults.push({ fileName: file.fileName, success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    // Batch-add successful uploads to the album
+    const successIds = uploadResults.filter(r => r.success && r.mediaItemId).map(r => r.mediaItemId as string);
+    if (successIds.length > 0) {
+      quotaManager.checkQuota(false);
+      await batchAddMediaItemsToAlbum(oauth2Client, album.id, successIds);
+      quotaManager.recordRequest(false);
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({ album, uploadResults, addedToAlbum: successIds.length }, null, 2),
+      }],
+    };
+  }
+
+  private handleDescribeFilterCapabilities() {
+    const capabilities = {
+      mutuallyExclusive: [['albumId', 'filters'], ['dates', 'dateRanges']],
+      dateFilter: {
+        description: 'Filter by specific dates or date ranges (mutually exclusive)',
+        maxDates: 5,
+        maxRanges: 5,
+        dateFields: { year: 'required (2000-2100)', month: 'optional (1-12)', day: 'optional (1-31)' },
+      },
+      contentCategories: contentCategoryEnum.options,
+      mediaTypes: ['ALL_MEDIA', 'PHOTO', 'VIDEO'],
+      featureFilters: {
+        includeFavorites: 'boolean — include only items marked as favorites',
+        includeArchived: 'boolean — include archived items',
+      },
+      orderBy: {
+        values: ['MediaMetadata.creation_time', 'MediaMetadata.creation_time desc'],
+        constraint: 'requires dateFilter (dates or dateRanges) to be set',
+      },
+      examples: [
+        {
+          description: 'All landscape photos from June 2023',
+          args: { dates: [{ year: 2023, month: 6 }], includedCategories: ['LANDSCAPES'], mediaType: 'PHOTO' },
+        },
+        {
+          description: 'Videos from 2022 ordered by newest first',
+          args: { dateRanges: [{ startDate: { year: 2022, month: 1, day: 1 }, endDate: { year: 2022, month: 12, day: 31 } }], mediaType: 'VIDEO', orderBy: 'MediaMetadata.creation_time desc' },
+        },
+      ],
+    };
+    return {
+      content: [{ type: 'text', text: JSON.stringify(capabilities, null, 2) }],
+    };
   }
 
   private async handleSetAlbumCover(request: CallToolRequest, tokens: TokenData) {
