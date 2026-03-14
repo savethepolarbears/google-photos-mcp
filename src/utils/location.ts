@@ -19,7 +19,7 @@ interface PhotoForLocation {
 /**
  * Interface representing location data extracted or enriched for a photo.
  */
-interface LocationData {
+export interface LocationData {
   /** Latitude coordinate */
   latitude?: number;
   /** Longitude coordinate */
@@ -133,6 +133,48 @@ async function searchLocationByName(locationName: string): Promise<LocationData 
     return null;
   } catch (error) {
     logger.error(`Error searching location by name: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * Reverse geocode latitude/longitude coordinates to a human-readable LocationData
+ * using Nominatim's /reverse endpoint.
+ *
+ * NOTE: Google Photos REST API does NOT return GPS coordinates in its responses.
+ * This function is useful only for user-provided coordinates or app-stored
+ * LocationEnrichment data that explicitly includes lat/lng.
+ *
+ * @param lat - Latitude coordinate.
+ * @param lng - Longitude coordinate.
+ * @returns A Promise resolving to LocationData or null on error or empty response.
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<LocationData | null> {
+  try {
+    const response = await nominatimRateLimiter.throttle(async () =>
+      axios.get('https://nominatim.openstreetmap.org/reverse', {
+        params: { lat, lon: lng, format: 'json' },
+        headers: { 'User-Agent': 'Google-Photos-MCP-Server/1.0' },
+      })
+    );
+
+    const r = response.data;
+    if (!r || r.error) {
+      return null;
+    }
+
+    return {
+      latitude: lat,
+      longitude: lng,
+      locationName: r.name || r.display_name?.split(',')[0],
+      formattedAddress: r.display_name,
+      countryName: r.address?.country,
+      city: r.address?.city || r.address?.town || r.address?.village,
+      region: r.address?.state,
+      approximate: false,
+    };
+  } catch (error) {
+    logger.error(`Error reverse geocoding (${lat}, ${lng}): ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
