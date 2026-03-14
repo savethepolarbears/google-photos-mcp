@@ -30,8 +30,8 @@
 - [x] **FULL-04**: AI can perform advanced media search using complex filters (date ranges, specific content categories like `PETS` or `LANDSCAPES`).
 
 ### Composite Workflows & Prompts
-- [ ] **WORK-01**: System provides high-level abstractions that batch or orchestrate multiple API calls efficiently (e.g., "Create an album and upload these 10 local files").
-- [ ] **WORK-02**: System provides semantic abstractions for AI to natively understand Google Photos filter constructs.
+- [x] **WORK-01**: System provides high-level abstractions that batch or orchestrate multiple API calls efficiently (e.g., "Create an album and upload these 10 local files").
+- [x] **WORK-02**: System provides semantic abstractions for AI to natively understand Google Photos filter constructs.
 - [ ] **WORK-03**: System exposes MCP Prompts to guide AI agents on how to organize, tag, or retrieve complex sets of photos.
 
 ### Metadata Enrichment
@@ -70,8 +70,8 @@
 | FULL-02 | Phase 3 | Complete |
 | FULL-03 | Phase 3 | Complete |
 | FULL-04 | Phase 3 | Complete |
-| WORK-01 | Phase 4 | Pending |
-| WORK-02 | Phase 4 | Pending |
+| WORK-01 | Phase 4 | Complete |
+| WORK-02 | Phase 4 | Complete |
 | WORK-03 | Phase 4 | Pending |
 | META-01 | Phase 4 | Complete |
 
