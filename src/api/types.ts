@@ -82,6 +82,16 @@ export interface Album {
   coverPhotoBaseUrl?: string;
 }
 
+export interface NewMediaItemResult {
+  uploadToken: string;
+  status: { message?: string; code?: number };
+  mediaItem?: PhotoItem;
+}
+
+export interface BatchCreateResponse {
+  newMediaItemResults: NewMediaItemResult[];
+}
+
 /**
  * Search filter for Google Photos API
  */

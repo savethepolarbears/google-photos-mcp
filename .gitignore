@@ -23,6 +23,15 @@ tokens.json.backup-*
 credentials.json
 .google-photos-mcp/
 
+# Token storage — keyv SQLite database
+tokens.db
+tokens.db-shm
+tokens.db-wal
+
+# keyv SQLite adapter files (generic guard)
+*.db-shm
+*.db-wal
+
 # Logs
 logs/
 *.log

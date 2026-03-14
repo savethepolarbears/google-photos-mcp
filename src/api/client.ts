@@ -8,6 +8,7 @@ import {
   MediaItemsSearchResponse,
   MediaItemResponse,
   SearchFilter,
+  BatchCreateResponse,
 } from './types.js';
 
 /**
@@ -71,6 +72,25 @@ export function toError(error: unknown, context: string): Error {
  */
 function createPhotosLibraryClient(auth: OAuth2Client) {
   return {
+    uploads: {
+      upload: async (params: { bytes: Buffer; mimeType: string; fileName: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<string>('/uploads', params.bytes, {
+            headers: {
+              ...headers,
+              'Content-type': 'application/octet-stream',
+              'X-Goog-Upload-Content-Type': params.mimeType,
+              'X-Goog-Upload-Protocol': 'raw',
+            },
+            responseType: 'text',
+          });
+          return { uploadToken: response.data as string };
+        } catch (error) {
+          throw toError(error, 'uploads.upload');
+        }
+      },
+    },
     albums: {
       list: async (params: { pageSize?: number; pageToken?: string }) => {
         try {
@@ -95,8 +115,86 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           throw toError(error, 'albums.get');
         }
       },
+      create: async (params: { title: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<Album>('/albums', { album: { title: params.title } }, { headers });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.create');
+        }
+      },
+      batchAddMediaItems: async (params: { albumId: string; mediaItemIds: string[] }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post(
+            `/albums/${params.albumId}:batchAddMediaItems`,
+            { mediaItemIds: params.mediaItemIds },
+            { headers }
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.batchAddMediaItems');
+        }
+      },
+      addEnrichment: async (params: {
+        albumId: string;
+        albumPosition?: { position: string };
+        newEnrichmentItem: Record<string, unknown>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post(
+            `/albums/${params.albumId}:addEnrichment`,
+            { newEnrichmentItem: params.newEnrichmentItem, albumPosition: params.albumPosition },
+            { headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.addEnrichment');
+        }
+      },
+      patch: async (params: {
+        albumId: string;
+        updateMask: string;
+        requestBody: Record<string, unknown>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.patch<Album>(
+            `/albums/${params.albumId}`,
+            params.requestBody,
+            { params: { updateMask: params.updateMask }, headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'albums.patch');
+        }
+      },
     },
     mediaItems: {
+      batchCreate: async (params: {
+        albumId?: string;
+        newMediaItems: Array<{ uploadToken: string; fileName?: string; description?: string }>;
+      }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.post<BatchCreateResponse>(
+            '/mediaItems:batchCreate',
+            {
+              albumId: params.albumId,
+              newMediaItems: params.newMediaItems.map(item => ({
+                description: item.description,
+                simpleMediaItem: { uploadToken: item.uploadToken, fileName: item.fileName },
+              })),
+            },
+            { headers },
+          );
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.batchCreate');
+        }
+      },
       search: async (params: {
         requestBody: {
           albumId?: string;
@@ -126,6 +224,18 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           return { data: response.data };
         } catch (error) {
           throw toError(error, 'mediaItems.get');
+        }
+      },
+      list: async (params: { pageSize?: number; pageToken?: string }) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await photosApi.get<MediaItemsSearchResponse>('/mediaItems', {
+            params,
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'mediaItems.list');
         }
       },
     },

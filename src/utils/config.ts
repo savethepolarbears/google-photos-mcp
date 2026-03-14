@@ -60,7 +60,8 @@ const config = {
       // For full library access, users should use the Google Photos Picker API
       'https://www.googleapis.com/auth/photoslibrary.readonly',
       // Alternative scope for 2025+ (requires app-created content only)
-      // 'https://www.googleapis.com/auth/photoslibrary.appendonly',
+      'https://www.googleapis.com/auth/photoslibrary.appendonly',
+      'https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata',
     ],
   },
 
@@ -98,9 +99,9 @@ const config = {
    * Token Storage Configuration.
    */
   tokens: {
-    /** File path where authentication tokens are stored (validated to prevent path traversal) */
-    path: validateTokenStoragePath(
-      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.json')
+    /** SQLite database file path for keyv token storage (validated to prevent path traversal) */
+    dbPath: validateTokenStoragePath(
+      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.db')
     ),
   },
 };

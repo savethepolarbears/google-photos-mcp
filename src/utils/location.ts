@@ -19,7 +19,7 @@ interface PhotoForLocation {
 /**
  * Interface representing location data extracted or enriched for a photo.
  */
-interface LocationData {
+export interface LocationData {
   /** Latitude coordinate */
   latitude?: number;
   /** Longitude coordinate */
@@ -138,6 +138,48 @@ async function searchLocationByName(locationName: string): Promise<LocationData 
 }
 
 /**
+ * Reverse geocode latitude/longitude coordinates to a human-readable LocationData
+ * using Nominatim's /reverse endpoint.
+ *
+ * NOTE: Google Photos REST API does NOT return GPS coordinates in its responses.
+ * This function is useful only for user-provided coordinates or app-stored
+ * LocationEnrichment data that explicitly includes lat/lng.
+ *
+ * @param lat - Latitude coordinate.
+ * @param lng - Longitude coordinate.
+ * @returns A Promise resolving to LocationData or null on error or empty response.
+ */
+export async function reverseGeocode(lat: number, lng: number): Promise<LocationData | null> {
+  try {
+    const response = await nominatimRateLimiter.throttle(async () =>
+      axios.get('https://nominatim.openstreetmap.org/reverse', {
+        params: { lat, lon: lng, format: 'json' },
+        headers: { 'User-Agent': 'Google-Photos-MCP-Server/1.0' },
+      })
+    );
+
+    const r = response.data;
+    if (!r || r.error) {
+      return null;
+    }
+
+    return {
+      latitude: lat,
+      longitude: lng,
+      locationName: r.name || r.display_name?.split(',')[0],
+      formattedAddress: r.display_name,
+      countryName: r.address?.country,
+      city: r.address?.city || r.address?.town || r.address?.village,
+      region: r.address?.state,
+      approximate: false,
+    };
+  } catch (error) {
+    logger.error(`Error reverse geocoding (${lat}, ${lng}): ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
  * Get the approximate location data for a photo by its ID.
  * This combines extraction from photo metadata with optional geocoding lookup.
  *
@@ -150,14 +192,14 @@ export async function getPhotoLocation(
   performGeocoding: boolean = false
 ): Promise<LocationData | null> {
   try {
-    // Try to extract location from photo metadata first
-    const locationData = extractLocationFromPhoto(photo);
-    
-    // If we have a location name but want coordinates, try geocoding
+    // Try to extract location from photo metadata first; fall back to photo.locationData
+    const locationData = extractLocationFromPhoto(photo) ?? photo.locationData ?? null;
+
+    // If we have a location name but want coordinates, try forward geocoding
     if (
-      performGeocoding && 
-      locationData && 
-      locationData.locationName && 
+      performGeocoding &&
+      locationData &&
+      locationData.locationName &&
       (!locationData.latitude || !locationData.longitude)
     ) {
       const searchQuery = [
@@ -165,9 +207,9 @@ export async function getPhotoLocation(
         locationData.city,
         locationData.countryName
       ].filter(Boolean).join(', ');
-      
+
       const geocodedLocation = await searchLocationByName(searchQuery);
-      
+
       if (geocodedLocation) {
         return {
           ...locationData,
@@ -182,7 +224,32 @@ export async function getPhotoLocation(
         };
       }
     }
-    
+
+    // Reverse geocode: if we have coords but no location name, enrich with city/country
+    if (
+      performGeocoding &&
+      locationData &&
+      locationData.latitude &&
+      locationData.longitude &&
+      !locationData.locationName &&
+      !locationData.city &&
+      !locationData.countryName
+    ) {
+      const reverseResult = await reverseGeocode(locationData.latitude, locationData.longitude);
+      if (reverseResult) {
+        return {
+          ...locationData,
+          locationName: reverseResult.locationName,
+          formattedAddress: reverseResult.formattedAddress,
+          city: reverseResult.city,
+          countryName: reverseResult.countryName,
+          region: reverseResult.region,
+          // Keep approximate from original (coords came from metadata, not geocoding)
+          approximate: locationData.approximate,
+        };
+      }
+    }
+
     return locationData;
   } catch (error) {
     logger.error(`Error getting photo location: ${error instanceof Error ? error.message : String(error)}`);

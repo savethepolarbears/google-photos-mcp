@@ -11,6 +11,14 @@ import {
   listAlbumsSchema,
   getAlbumSchema,
   listAlbumPhotosSchema,
+  createAlbumSchema,
+  uploadMediaSchema,
+  addMediaToAlbumSchema,
+  searchMediaByFilterSchema,
+  addEnrichmentSchema,
+  setCoverPhotoSchema,
+  createAlbumWithMediaSchema,
+  describeFilterCapabilitiesSchema,
 } from '../../src/schemas/toolSchemas.js';
 
 describe('searchPhotosSchema', () => {
@@ -144,5 +152,186 @@ describe('listAlbumPhotosSchema', () => {
     expect(() =>
       listAlbumPhotosSchema.parse({ albumId: 'album-1', pageSize: 101 }),
     ).toThrow();
+  });
+});
+
+describe('createAlbumSchema', () => {
+  it('accepts { title: \'My Album\' }', () => {
+    const result = createAlbumSchema.parse({ title: 'My Album' });
+    expect(result.title).toBe('My Album');
+  });
+
+  it('rejects empty title', () => {
+    expect(() => createAlbumSchema.parse({ title: '' })).toThrow();
+  });
+});
+
+describe('uploadMediaSchema', () => {
+  it('accepts { filePath: \'/tmp/photo.jpg\', mimeType: \'image/jpeg\', fileName: \'photo.jpg\' }', () => {
+    const result = uploadMediaSchema.parse({ filePath: '/tmp/photo.jpg', mimeType: 'image/jpeg', fileName: 'photo.jpg' });
+    expect(result.filePath).toBe('/tmp/photo.jpg');
+  });
+
+  it('accepts optional albumId and description', () => {
+    const result = uploadMediaSchema.parse({ filePath: '/tmp/photo.jpg', mimeType: 'image/jpeg', fileName: 'photo.jpg', albumId: 'a1', description: 'desc' });
+    expect(result.albumId).toBe('a1');
+    expect(result.description).toBe('desc');
+  });
+
+  it('rejects missing filePath', () => {
+    expect(() => uploadMediaSchema.parse({ mimeType: 'image/jpeg', fileName: 'photo.jpg' })).toThrow();
+  });
+});
+
+describe('addMediaToAlbumSchema', () => {
+  it('accepts { albumId: \'a1\', mediaItemIds: [\'m1\', \'m2\'] }', () => {
+    const result = addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds: ['m1', 'm2'] });
+    expect(result.albumId).toBe('a1');
+    expect(result.mediaItemIds).toHaveLength(2);
+  });
+
+  it('rejects 0 mediaItemIds (min 1)', () => {
+    expect(() => addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds: [] })).toThrow();
+  });
+
+  it('rejects 51 mediaItemIds (max 50)', () => {
+    const mediaItemIds = Array(51).fill('m');
+    expect(() => addMediaToAlbumSchema.parse({ albumId: 'a1', mediaItemIds })).toThrow();
+  });
+
+  it('rejects missing albumId', () => {
+    expect(() => addMediaToAlbumSchema.parse({ mediaItemIds: ['m1'] })).toThrow();
+  });
+});
+
+// ---- Phase 3 schemas (RED state -- production code not yet written) ----
+
+describe('searchMediaByFilterSchema', () => {
+  const schema = searchMediaByFilterSchema;
+
+  it('accepts valid date filter with content categories', () => {
+    const result = schema.parse({
+      dates: [{ year: 2023, month: 6 }],
+      includedContentCategories: ['LANDSCAPES'],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('accepts valid dateRanges with mediaType', () => {
+    const result = schema.parse({
+      dateRanges: [{ startDate: { year: 2023, month: 1, day: 1 }, endDate: { year: 2023, month: 12, day: 31 } }],
+      mediaTypes: ['PHOTO'],
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('rejects when both dates and dateRanges are set', () => {
+    expect(() =>
+      schema.parse({
+        dates: [{ year: 2023 }],
+        dateRanges: [{ startDate: { year: 2023, month: 1, day: 1 }, endDate: { year: 2023, month: 12, day: 31 } }],
+      })
+    ).toThrow();
+  });
+
+  it('rejects more than 5 dates', () => {
+    const dates = Array(6).fill({ year: 2023 }) as unknown[];
+    expect(() => schema.parse({ dates })).toThrow();
+  });
+
+  it('rejects more than 5 dateRanges', () => {
+    const dateRanges = Array(6).fill({
+      startDate: { year: 2023, month: 1, day: 1 },
+      endDate: { year: 2023, month: 12, day: 31 },
+    }) as unknown[];
+    expect(() => schema.parse({ dateRanges })).toThrow();
+  });
+});
+
+describe('addEnrichmentSchema', () => {
+  const schema = addEnrichmentSchema;
+
+  it('accepts valid TextEnrichment input', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      type: 'TEXT',
+      text: 'Summer vacation memories',
+    });
+    expect(result).toBeDefined();
+  });
+
+  it('accepts valid LocationEnrichment input', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      type: 'LOCATION',
+      locationName: 'Paris, France',
+    });
+    expect(result).toBeDefined();
+  });
+});
+
+describe('setCoverPhotoSchema', () => {
+  const schema = setCoverPhotoSchema;
+
+  it('accepts valid albumId and mediaItemId', () => {
+    const result = schema.parse({
+      albumId: 'album-1',
+      mediaItemId: 'media-item-1',
+    });
+    expect(result).toBeDefined();
+  });
+});
+
+// ---- Phase 4 schemas ----
+
+describe('createAlbumWithMediaSchema', () => {
+  it('accepts valid albumTitle and files array', () => {
+    const result = createAlbumWithMediaSchema.parse({
+      albumTitle: 'Trip',
+      files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+    });
+    expect(result.albumTitle).toBe('Trip');
+    expect(result.files).toHaveLength(1);
+  });
+
+  it('rejects empty files array', () => {
+    expect(() =>
+      createAlbumWithMediaSchema.parse({ albumTitle: 'Trip', files: [] })
+    ).toThrow();
+  });
+
+  it('rejects files array with more than 50 items', () => {
+    const files = Array(51).fill({ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' });
+    expect(() =>
+      createAlbumWithMediaSchema.parse({ albumTitle: 'Trip', files })
+    ).toThrow();
+  });
+
+  it('rejects missing albumTitle', () => {
+    expect(() =>
+      createAlbumWithMediaSchema.parse({
+        files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+      })
+    ).toThrow();
+  });
+
+  it('accepts optional description on file items', () => {
+    const result = createAlbumWithMediaSchema.parse({
+      albumTitle: 'Trip',
+      files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg', description: 'Sunset' }],
+    });
+    expect(result.files[0].description).toBe('Sunset');
+  });
+});
+
+describe('describeFilterCapabilitiesSchema', () => {
+  it('accepts empty object {}', () => {
+    const result = describeFilterCapabilitiesSchema?.parse({});
+    expect(result).toBeDefined();
+  });
+
+  it('accepts undefined (schema is optional)', () => {
+    const result = describeFilterCapabilitiesSchema?.parse(undefined);
+    expect(result).toBeUndefined();
   });
 });

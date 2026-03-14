@@ -3,6 +3,10 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
   McpError,
   CallToolRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -15,10 +19,18 @@ import {
   searchPhotosByLocation,
   listAlbums,
   listAlbumPhotos,
+  listMediaItems,
   getPhoto,
   getPhotoAsBase64,
   getAlbum,
+  createAlbum,
+  uploadMedia,
+  batchAddMediaItemsToAlbum,
+  addEnrichment,
+  patchAlbum,
 } from '../api/photos.js';
+import { searchPhotos } from '../api/repositories/photosRepository.js';
+import type { SearchFilter } from '../api/types.js';
 import logger from '../utils/logger.js';
 import { validateArgs } from '../utils/validation.js';
 import {
@@ -28,6 +40,14 @@ import {
   listAlbumsSchema,
   getAlbumSchema,
   listAlbumPhotosSchema,
+  createAlbumSchema,
+  uploadMediaSchema,
+  addMediaToAlbumSchema,
+  searchMediaByFilterSchema,
+  addEnrichmentSchema,
+  setCoverPhotoSchema,
+  createAlbumWithMediaSchema,
+  contentCategoryEnum,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -92,6 +112,87 @@ export class GooglePhotosMCPCore {
   protected registerHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, this.handleListTools.bind(this));
     this.server.setRequestHandler(CallToolRequestSchema, this.handleCallTool.bind(this));
+    this.server.setRequestHandler(ListResourcesRequestSchema, this.handleListResources.bind(this));
+    this.server.setRequestHandler(ReadResourceRequestSchema, this.handleReadResource.bind(this));
+    this.server.setRequestHandler(ListPromptsRequestSchema, this.handleListPrompts.bind(this));
+    this.server.setRequestHandler(GetPromptRequestSchema, this.handleGetPrompt.bind(this));
+  }
+
+  protected async handleListResources() {
+    return {
+      resources: [
+        {
+          uri: 'google-photos://albums',
+          name: 'Google Photos Albums',
+          description: 'List of all Google Photos albums',
+          mimeType: 'application/json',
+        },
+      ],
+      resourceTemplates: [
+        {
+          uriTemplate: 'google-photos://albums/{albumId}',
+          name: 'Google Photos Album',
+          description: 'A specific Google Photos album by ID',
+          mimeType: 'application/json',
+        },
+        {
+          uriTemplate: 'google-photos://media/{mediaItemId}',
+          name: 'Google Photos Media Item',
+          description: 'A specific Google Photos media item by ID. Note: baseUrl is ephemeral (~60 min); always fetch fresh.',
+          mimeType: 'application/json',
+        },
+      ],
+    };
+  }
+
+  protected async handleReadResource(request: { params: { uri: string } }) {
+    const uri = request.params.uri;
+    const tokens = await getFirstAvailableTokens();
+    if (!tokens) throw new McpError(ErrorCode.InvalidRequest, 'Not authenticated');
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    if (uri === 'google-photos://albums') {
+      quotaManager.checkQuota(false);
+      const data = await listAlbums(oauth2Client);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(data, null, 2),
+        }],
+      };
+    }
+
+    const albumMatch = uri.match(/^google-photos:\/\/albums\/(.+)$/);
+    if (albumMatch) {
+      quotaManager.checkQuota(false);
+      const album = await getAlbum(oauth2Client, albumMatch[1]);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(album, null, 2),
+        }],
+      };
+    }
+
+    const mediaMatch = uri.match(/^google-photos:\/\/media\/(.+)$/);
+    if (mediaMatch) {
+      quotaManager.checkQuota(false);
+      const mediaItem = await getPhoto(oauth2Client, mediaMatch[1], false);
+      quotaManager.recordRequest(false);
+      return {
+        contents: [{
+          uri: request.params.uri,
+          mimeType: 'application/json',
+          text: JSON.stringify(mediaItem, null, 2),
+        }],
+      };
+    }
+
+    throw new McpError(ErrorCode.InvalidParams, `Unknown resource URI: ${uri}`);
   }
 
   /**
@@ -217,6 +318,53 @@ export class GooglePhotosMCPCore {
           },
         },
         {
+          name: 'create_album',
+          description: 'Create a new Google Photos album',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              title: {
+                type: 'string',
+                description: 'Title for the new album (required)',
+              },
+            },
+            required: ['title'],
+          },
+        },
+        {
+          name: 'upload_media',
+          description: 'Upload a local media file to Google Photos. Reads bytes from filePath and creates a new media item.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: { type: 'string', description: 'Absolute path to the local file to upload' },
+              mimeType: { type: 'string', description: 'MIME type (e.g., image/jpeg, video/mp4)' },
+              fileName: { type: 'string', description: 'File name to use in Google Photos' },
+              albumId: { type: 'string', description: 'Optional: album ID to add the media to immediately' },
+              description: { type: 'string', description: 'Optional: description/caption for the media item' },
+            },
+            required: ['filePath', 'mimeType', 'fileName'],
+          },
+        },
+        {
+          name: 'add_media_to_album',
+          description: 'Add existing media items to a Google Photos album. Maximum 50 items per call.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album to add media to' },
+              mediaItemIds: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Array of media item IDs to add (1-50 items)',
+                minItems: 1,
+                maxItems: 50,
+              },
+            },
+            required: ['albumId', 'mediaItemIds'],
+          },
+        },
+        {
           name: 'list_album_photos',
           description: 'List photos in a specific album',
           inputSchema: {
@@ -242,6 +390,127 @@ export class GooglePhotosMCPCore {
               },
             },
             required: ['albumId'],
+          },
+        },
+        {
+          name: 'list_media_items',
+          description: 'List all media items in the library (not filtered by album)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              pageSize: {
+                type: 'number',
+                description: 'Number of results to return (default: 25, max: 100)',
+                default: 25,
+              },
+              pageToken: {
+                type: 'string',
+                description: 'Token for pagination',
+              },
+            },
+          },
+        },
+        {
+          name: 'search_media_by_filter',
+          description: 'Search media items using structured filters (dates, categories, media type, features). Use this for deterministic filter-based retrieval instead of text queries.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              dates: { type: 'array', description: 'Specific dates to filter by (max 5)' },
+              dateRanges: { type: 'array', description: 'Date ranges to filter by (max 5)' },
+              includedCategories: { type: 'array', description: 'Content categories to include' },
+              excludedCategories: { type: 'array', description: 'Content categories to exclude' },
+              mediaType: { type: 'string', enum: ['ALL_MEDIA', 'PHOTO', 'VIDEO'], description: 'Media type filter' },
+              includeFavorites: { type: 'boolean', description: 'Include only favorites' },
+              includeArchived: { type: 'boolean', description: 'Include archived items' },
+              orderBy: { type: 'string', description: 'Order results (requires dateFilter)' },
+              pageSize: { type: 'number', description: 'Number of results (max 100)' },
+              pageToken: { type: 'string', description: 'Token for pagination' },
+            },
+          },
+        },
+        {
+          name: 'share_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
+        },
+        {
+          name: 'unshare_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
+        },
+        {
+          name: 'join_shared_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
+        },
+        {
+          name: 'leave_shared_album',
+          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
+          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
+        },
+        {
+          name: 'add_album_enrichment',
+          description: 'Add a text or location enrichment to a Google Photos album.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album' },
+              type: { type: 'string', enum: ['TEXT', 'LOCATION'], description: 'Enrichment type' },
+              text: { type: 'string', description: 'Text content (required when type is TEXT)' },
+              locationName: { type: 'string', description: 'Location name (required when type is LOCATION)' },
+              latitude: { type: 'number', description: 'Latitude for location enrichment' },
+              longitude: { type: 'number', description: 'Longitude for location enrichment' },
+              position: { type: 'string', enum: ['FIRST_IN_ALBUM', 'LAST_IN_ALBUM'], description: 'Position in album' },
+            },
+            required: ['albumId', 'type'],
+          },
+        },
+        {
+          name: 'set_album_cover',
+          description: 'Set the cover photo of a Google Photos album.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumId: { type: 'string', description: 'ID of the album' },
+              mediaItemId: { type: 'string', description: 'ID of the media item to use as cover' },
+            },
+            required: ['albumId', 'mediaItemId'],
+          },
+        },
+        {
+          name: 'create_album_with_media',
+          description: 'Create a new album and upload multiple local files to it in one step. Handles partial failures — returns per-file results. Max 50 files per call. Note: albums cannot be deleted via the API, so an empty album persists if all uploads fail.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              albumTitle: { type: 'string', description: 'Title for the new album (1-500 chars)' },
+              files: {
+                type: 'array',
+                description: 'Files to upload (1-50 items)',
+                items: {
+                  type: 'object',
+                  properties: {
+                    filePath: { type: 'string', description: 'Absolute path to the local file' },
+                    mimeType: { type: 'string', description: 'MIME type (e.g., image/jpeg)' },
+                    fileName: { type: 'string', description: 'File name to use in Google Photos' },
+                    description: { type: 'string', description: 'Optional caption for the media item' },
+                  },
+                  required: ['filePath', 'mimeType', 'fileName'],
+                },
+                minItems: 1,
+                maxItems: 50,
+              },
+            },
+            required: ['albumTitle', 'files'],
+          },
+        },
+        {
+          name: 'describe_filter_capabilities',
+          description: 'Returns a machine-readable JSON reference of all valid Google Photos search filter options, constraints, and examples. No arguments needed. Use this before constructing search_media_by_filter queries.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
           },
         },
       ],
@@ -291,8 +560,49 @@ export class GooglePhotosMCPCore {
         case 'get_album':
           return await this.handleGetAlbum(request, tokens);
 
+        case 'create_album':
+          return await this.handleCreateAlbum(request, tokens);
+
+        case 'upload_media':
+          return await this.handleUploadMedia(request, tokens);
+
+        case 'add_media_to_album':
+          return await this.handleAddMediaToAlbum(request, tokens);
+
         case 'list_album_photos':
           return await this.handleListAlbumPhotos(request, tokens);
+
+        case 'list_media_items':
+          return await this.handleListMediaItems(request, tokens);
+
+        case 'search_media_by_filter':
+          return await this.handleSearchMediaByFilter(request, tokens);
+
+        case 'share_album':
+        case 'unshare_album':
+        case 'join_shared_album':
+        case 'leave_shared_album':
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({
+                error: 'FEATURE_DEPRECATED',
+                message: 'Google Photos sharing API was permanently removed on March 31, 2025. The photoslibrary.sharing scope is no longer valid. Sharing management is not possible via the Google Photos Library API.',
+              }),
+            }],
+          };
+
+        case 'add_album_enrichment':
+          return await this.handleAddAlbumEnrichment(request, tokens);
+
+        case 'set_album_cover':
+          return await this.handleSetAlbumCover(request, tokens);
+
+        case 'create_album_with_media':
+          return await this.handleCreateAlbumWithMedia(request, tokens);
+
+        case 'describe_filter_capabilities':
+          return this.handleDescribeFilterCapabilities();
 
         default:
           throw new McpError(
@@ -318,7 +628,7 @@ export class GooglePhotosMCPCore {
    * Gets an authenticated OAuth2Client, refreshing tokens if necessary.
    * Uses tokenRefreshManager to prevent concurrent refreshes.
    */
-  private async getAuthenticatedClient(tokens: TokenData) {
+  protected async getAuthenticatedClient(tokens: TokenData) {
     const oauth2Client = setupOAuthClient(tokens);
     const userId = tokens.userId || 'default';
     const freshTokens = await tokenRefreshManager.refreshIfNeeded(oauth2Client, userId, tokens);
@@ -352,6 +662,70 @@ export class GooglePhotosMCPCore {
         })
       }]
     };
+  }
+
+  private enrichPermissionError(error: unknown): never {
+    let msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('PERMISSION_DENIED')) {
+      msg += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+    }
+    throw new Error(msg, { cause: error });
+  }
+
+  private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, createAlbumSchema);
+    quotaManager.checkQuota(false);
+    
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const album = await createAlbum(oauth2Client, args.title);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ album }, null, 2),
+        }],
+      };
+    } catch (error) {
+      this.enrichPermissionError(error);
+    }
+  }
+
+  private async handleUploadMedia(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, uploadMediaSchema);
+    quotaManager.checkQuota(false);
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await uploadMedia(oauth2Client, args.filePath, args.mimeType, args.fileName, args.albumId, args.description);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      this.enrichPermissionError(error);
+    }
+  }
+
+  private async handleAddMediaToAlbum(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, addMediaToAlbumSchema);
+    quotaManager.checkQuota(false);
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      await batchAddMediaItemsToAlbum(oauth2Client, args.albumId, args.mediaItemIds);
+      quotaManager.recordRequest(false);
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            success: true,
+            albumId: args.albumId,
+            addedCount: args.mediaItemIds.length,
+          }, null, 2),
+        }],
+      };
+    } catch (error) {
+      this.enrichPermissionError(error);
+    }
   }
 
   private async handleSearchPhotos(request: CallToolRequest, tokens: TokenData) {
@@ -530,6 +904,307 @@ export class GooglePhotosMCPCore {
         }, null, 2)
       }]
     };
+  }
+
+  // listMediaItems uses listAlbumsSchema — same shape
+  private async handleListMediaItems(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, listAlbumsSchema);
+    quotaManager.checkQuota(false);
+
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const { photos, nextPageToken } = await listMediaItems(
+      oauth2Client,
+      args.pageSize || 25,
+      args.pageToken
+    );
+
+    quotaManager.recordRequest(false);
+
+    const photoItems = photos.map(p => this.formatPhoto(p));
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          count: photoItems.length,
+          nextPageToken,
+          photos: photoItems,
+        }, null, 2)
+      }]
+    };
+  }
+
+  private async handleSearchMediaByFilter(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, searchMediaByFilterSchema);
+    quotaManager.checkQuota(false);
+
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    const filters: SearchFilter = {};
+
+    if (args.dates) {
+      filters.dateFilter = { dates: args.dates };
+    } else if (args.dateRanges) {
+      filters.dateFilter = { ranges: args.dateRanges };
+    }
+
+    if (args.includedCategories || args.excludedCategories) {
+      filters.contentFilter = {
+        includedContentCategories: args.includedCategories,
+        excludedContentCategories: args.excludedCategories,
+      };
+    }
+
+    if (args.mediaType) {
+      filters.mediaTypeFilter = { mediaTypes: [args.mediaType] };
+    }
+
+    const includedFeatures: string[] = [];
+    if (args.includeFavorites) includedFeatures.push('FAVORITES');
+    if (args.includeArchived) includedFeatures.push('INCLUDE_ARCHIVED');
+    if (includedFeatures.length > 0) {
+      filters.featureFilter = { includedFeatures };
+    }
+
+    const { photos, nextPageToken } = await searchPhotos(
+      oauth2Client,
+      {
+        filters,
+        pageSize: args.pageSize,
+        pageToken: args.pageToken,
+      },
+    );
+
+    quotaManager.recordRequest(false);
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          count: photos.length,
+          nextPageToken,
+          photos: photos.map(this.formatPhoto),
+        }, null, 2),
+      }],
+    };
+  }
+
+  private async handleAddAlbumEnrichment(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, addEnrichmentSchema);
+    quotaManager.checkQuota(false);
+
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await addEnrichment(
+        oauth2Client,
+        args.albumId,
+        {
+          type: args.type,
+          text: args.text,
+          locationName: args.locationName,
+          latitude: args.latitude,
+          longitude: args.longitude,
+        },
+        args.position,
+      );
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
+  }
+
+  private async handleCreateAlbumWithMedia(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, createAlbumWithMediaSchema);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+
+    // Create the album first
+    quotaManager.checkQuota(false);
+    const album = await createAlbum(oauth2Client, args.albumTitle);
+    quotaManager.recordRequest(false);
+
+    // Upload each file, collecting per-file results (never abort on failure)
+    const uploadResults: Array<{ fileName: string; success: boolean; mediaItemId?: string; error?: string }> = [];
+    for (const file of args.files) {
+      try {
+        quotaManager.checkQuota(false);
+        const media = await uploadMedia(oauth2Client, file.filePath, file.mimeType, file.fileName, undefined, file.description);
+        quotaManager.recordRequest(false);
+        uploadResults.push({ fileName: file.fileName, success: true, mediaItemId: (media as { id?: string }).id });
+      } catch (err) {
+        uploadResults.push({ fileName: file.fileName, success: false, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+
+    // Batch-add successful uploads to the album
+    const successIds = uploadResults.filter(r => r.success && r.mediaItemId).map(r => r.mediaItemId as string);
+    if (successIds.length > 0) {
+      quotaManager.checkQuota(false);
+      await batchAddMediaItemsToAlbum(oauth2Client, album.id, successIds);
+      quotaManager.recordRequest(false);
+    }
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({ album, uploadResults, addedToAlbum: successIds.length }, null, 2),
+      }],
+    };
+  }
+
+  protected async handleListPrompts() {
+    return {
+      prompts: [
+        {
+          name: 'organize_photos',
+          description: 'Guides you through organizing photos into albums by theme or date range.',
+          arguments: [
+            { name: 'theme', description: 'Theme or subject (e.g., "vacation", "family")', required: false },
+            { name: 'dateRange', description: 'Date range (e.g., "2023", "summer 2022")', required: false },
+          ],
+        },
+        {
+          name: 'batch_upload_workflow',
+          description: 'Step-by-step workflow for uploading multiple local files to a Google Photos album.',
+          arguments: [
+            { name: 'albumName', description: 'Target album name (new or existing)', required: false },
+          ],
+        },
+        {
+          name: 'find_photos_by_criteria',
+          description: 'Constructs a valid Google Photos filter query from a plain-language description.',
+          arguments: [
+            { name: 'criteria', description: 'What you want to find (e.g., "pet photos from last year")', required: true },
+          ],
+        },
+      ],
+    };
+  }
+
+  protected async handleGetPrompt(request: { params: { name: string; arguments?: Record<string, string> } }) {
+    const args = request.params.arguments ?? {};
+    switch (request.params.name) {
+      case 'organize_photos':
+        return {
+          description: 'Workflow for organizing Google Photos into albums.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are organizing Google Photos${args.theme ? ` with theme: "${args.theme}"` : ''}${args.dateRange ? ` for date range: "${args.dateRange}"` : ''}.
+Steps:
+1. Use list_albums to see existing albums.
+2. Use search_media_by_filter or search_photos to find relevant photos.
+3. If needed, use create_album to create a new album.
+4. Use add_media_to_album to add photos. Maximum 50 items per call — paginate if more.
+5. Optionally use set_album_cover to set a representative cover photo.`,
+            },
+          }],
+        };
+      case 'batch_upload_workflow':
+        return {
+          description: 'Step-by-step batch upload workflow.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You are uploading multiple files to Google Photos${args.albumName ? ` into album: "${args.albumName}"` : ''}.
+Preferred approach (single tool call):
+- Use create_album_with_media if you have a file list and album title. Max 50 files per call.
+
+Manual approach:
+1. Use create_album to create the album (if it doesn't exist).
+2. For each file, use upload_media with filePath, mimeType, fileName.
+3. Collect returned mediaItemIds.
+4. Use add_media_to_album with all collected IDs (max 50 per call).
+
+Error handling: If an upload fails, continue with remaining files and report partial results.`,
+            },
+          }],
+        };
+      case 'find_photos_by_criteria':
+        return {
+          description: 'Guide for constructing valid Google Photos filter queries.',
+          messages: [{
+            role: 'user' as const,
+            content: {
+              type: 'text' as const,
+              text: `You need to find photos matching: "${args.criteria ?? 'criteria not specified'}".
+
+Use describe_filter_capabilities to see all valid filter options, then use search_media_by_filter.
+
+Key rules:
+- albumId and filters are MUTUALLY EXCLUSIVE — do not use both.
+- dateFilter.dates (max 5) and dateFilter.dateRanges (max 5) are mutually exclusive — pick one.
+- orderBy requires a dateFilter to be present.
+- For plain-text search, use search_photos instead of filter-based search.`,
+            },
+          }],
+        };
+      default:
+        throw new McpError(ErrorCode.InvalidParams, `Prompt not found: ${request.params.name}`);
+    }
+  }
+
+  private handleDescribeFilterCapabilities() {
+    const capabilities = {
+      mutuallyExclusive: [['albumId', 'filters'], ['dates', 'dateRanges']],
+      dateFilter: {
+        description: 'Filter by specific dates or date ranges (mutually exclusive)',
+        maxDates: 5,
+        maxRanges: 5,
+        dateFields: { year: 'required (2000-2100)', month: 'optional (1-12)', day: 'optional (1-31)' },
+      },
+      contentCategories: contentCategoryEnum.options,
+      mediaTypes: ['ALL_MEDIA', 'PHOTO', 'VIDEO'],
+      featureFilters: {
+        includeFavorites: 'boolean — include only items marked as favorites',
+        includeArchived: 'boolean — include archived items',
+      },
+      orderBy: {
+        values: ['MediaMetadata.creation_time', 'MediaMetadata.creation_time desc'],
+        constraint: 'requires dateFilter (dates or dateRanges) to be set',
+      },
+      examples: [
+        {
+          description: 'All landscape photos from June 2023',
+          args: { dates: [{ year: 2023, month: 6 }], includedCategories: ['LANDSCAPES'], mediaType: 'PHOTO' },
+        },
+        {
+          description: 'Videos from 2022 ordered by newest first',
+          args: { dateRanges: [{ startDate: { year: 2022, month: 1, day: 1 }, endDate: { year: 2022, month: 12, day: 31 } }], mediaType: 'VIDEO', orderBy: 'MediaMetadata.creation_time desc' },
+        },
+      ],
+    };
+    return {
+      content: [{ type: 'text', text: JSON.stringify(capabilities, null, 2) }],
+    };
+  }
+
+  private async handleSetAlbumCover(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, setCoverPhotoSchema);
+    quotaManager.checkQuota(false);
+
+    try {
+      const oauth2Client = await this.getAuthenticatedClient(tokens);
+      const result = await patchAlbum(oauth2Client, args.albumId, { coverPhotoMediaItemId: args.mediaItemId });
+      quotaManager.recordRequest(false);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('PERMISSION_DENIED')) {
+        errorMessage += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+      }
+      throw new Error(errorMessage, { cause: error });
+    }
   }
 
   /**

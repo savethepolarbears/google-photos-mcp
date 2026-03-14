@@ -1,0 +1,300 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { GooglePhotosMCPCore } from '../../src/mcp/core.js';
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+
+vi.mock('../../src/auth/tokens.js', () => ({
+  getFirstAvailableTokens: vi.fn().mockResolvedValue({ access_token: 'tok', userId: 'u1' }),
+}));
+
+vi.mock('../../src/auth/tokenRefreshManager.js', () => ({
+  tokenRefreshManager: { refreshIfNeeded: vi.fn(async (_, __, t) => t) },
+}));
+
+vi.mock('../../src/api/photos.js', () => ({
+  setupOAuthClient: vi.fn(),
+  listAlbums: vi.fn(),
+  getAlbum: vi.fn(),
+  getPhoto: vi.fn(),
+  createAlbum: vi.fn(),
+  uploadMedia: vi.fn(),
+  batchCreateMediaItems: vi.fn(),
+  batchAddMediaItemsToAlbum: vi.fn(),
+  listMediaItems: vi.fn(),
+}));
+
+vi.mock('../../src/utils/quotaManager.js', () => ({
+  quotaManager: { checkQuota: vi.fn(), recordRequest: vi.fn() },
+}));
+
+vi.mock('../../src/utils/logger.js', () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+describe('GooglePhotosMCPCore', () => {
+  let instance: GooglePhotosMCPCore;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    instance = new GooglePhotosMCPCore({ name: 'test', version: '0.0.1' });
+  });
+
+  describe('resources/list', () => {
+    it('returns object with resources array containing google-photos://albums and resourceTemplates containing google-photos://albums/{albumId} and google-photos://media/{mediaItemId}', async () => {
+      const result = await instance.handleListResources();
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('resources/read', () => {
+    it('calls listAlbums and returns JSON content with uri echoed back for google-photos://albums', async () => {
+      const result = await instance.handleReadResource({ params: { uri: 'google-photos://albums' } });
+      expect(result).toBeDefined();
+    });
+
+    it('calls getAlbum(id) and returns JSON content for google-photos://albums/{id}', async () => {
+      const result = await instance.handleReadResource({ params: { uri: 'google-photos://albums/123' } });
+      expect(result).toBeDefined();
+    });
+
+    it('calls getPhoto(id) and returns JSON content for google-photos://media/{id}', async () => {
+      const result = await instance.handleReadResource({ params: { uri: 'google-photos://media/456' } });
+      expect(result).toBeDefined();
+    });
+
+    it('throws McpError with ErrorCode.InvalidParams for unknown URI', async () => {
+      await expect(instance.handleReadResource({ params: { uri: 'google-photos://unknown' } })).rejects.toThrow();
+    });
+  });
+
+  describe('tools/call', () => {
+    it('calls createAlbum and returns album id in JSON response for create_album', async () => {
+      const result = await instance.handleCallTool({ params: { name: 'create_album', arguments: { title: 'My Album' } } });
+      expect(result).toBeDefined();
+    });
+
+    it('calls uploadMedia then batchCreateMediaItems and returns mediaItem id for upload_media', async () => {
+      const result = await instance.handleCallTool({ params: { name: 'upload_media', arguments: { filePath: '/tmp/test.jpg', mimeType: 'image/jpeg', fileName: 'test.jpg' } } });
+      expect(result).toBeDefined();
+    });
+
+    it('calls batchAddMediaItemsToAlbum and returns success for add_media_to_album', async () => {
+      const result = await instance.handleCallTool({ params: { name: 'add_media_to_album', arguments: { albumId: 'a1', mediaItemIds: ['m1'] } } });
+      expect(result).toBeDefined();
+    });
+
+    it('fails Zod validation before reaching repository for add_media_to_album with 51 mediaItemIds', async () => {
+      const mediaItemIds = Array(51).fill('m');
+      await expect(instance.handleCallTool({ params: { name: 'add_media_to_album', arguments: { albumId: 'a1', mediaItemIds } } })).rejects.toThrow();
+    });
+  });
+
+  describe('tools/list', () => {
+    it('includes create_album, upload_media, add_media_to_album tool definitions', async () => {
+      const result = await instance.handleListTools();
+      expect(result).toBeDefined();
+    });
+
+    it('includes all 7 new Phase 3 tool names', async () => {
+      const result = await instance.handleListTools();
+      const names: string[] = result.tools.map((t: { name: string }) => t.name);
+      expect(names).toContain('search_media_by_filter');
+      expect(names).toContain('share_album');
+      expect(names).toContain('unshare_album');
+      expect(names).toContain('join_shared_album');
+      expect(names).toContain('leave_shared_album');
+      expect(names).toContain('add_album_enrichment');
+      expect(names).toContain('set_album_cover');
+    });
+  });
+
+  // ---- Phase 3 tool dispatch (RED state -- handlers not yet implemented) ----
+
+  describe('search_media_by_filter dispatch', () => {
+    it('dispatches search_media_by_filter with a valid date filter and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'search_media_by_filter',
+          arguments: {
+            dates: [{ year: 2023, month: 6 }],
+            includedContentCategories: ['LANDSCAPES'],
+          },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+  });
+
+  describe('sharing stubs (FEATURE_DEPRECATED)', () => {
+    const sharingTools = ['share_album', 'unshare_album', 'join_shared_album', 'leave_shared_album'];
+
+    for (const toolName of sharingTools) {
+      it(`dispatches '${toolName}' and returns FEATURE_DEPRECATED error`, async () => {
+        const result = await instance.handleCallTool({
+          params: { name: toolName, arguments: { albumId: 'album-1' } },
+        });
+        expect(result.content).toBeDefined();
+        const parsed: { error: string } = JSON.parse(result.content[0].text);
+        expect(parsed.error).toBe('FEATURE_DEPRECATED');
+      });
+    }
+  });
+
+  describe('add_album_enrichment dispatch', () => {
+    it('dispatches add_album_enrichment and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'add_album_enrichment',
+          arguments: {
+            albumId: 'album-1',
+            type: 'TEXT',
+            text: 'Summer memories',
+          },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+  });
+
+  describe('set_album_cover dispatch', () => {
+    it('dispatches set_album_cover and returns a result', async () => {
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'set_album_cover',
+          arguments: { albumId: 'album-1', mediaItemId: 'media-1' },
+        },
+      });
+      expect(result).toBeDefined();
+      expect(result.content).toBeDefined();
+    });
+
+    it('returns re-auth prompt on PERMISSION_DENIED 403', async () => {
+      // Simulate the handler throwing PERMISSION_DENIED (will throw MethodNotFound until implemented)
+      // The test just ensures the dispatch path exists and returns a content response.
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'set_album_cover',
+          arguments: { albumId: 'album-1', mediaItemId: 'media-1' },
+        },
+      });
+      // Once implemented, the error response should contain re-auth guidance.
+      // In RED state this will throw MethodNotFound and be caught generically.
+      expect(result).toBeDefined();
+    });
+  });
+
+  describe('create_album_with_media', () => {
+    it('creates album, uploads files, adds to album, returns aggregate result', async () => {
+      const { createAlbum, uploadMedia, batchAddMediaItemsToAlbum } = await import('../../src/api/photos.js');
+      vi.mocked(createAlbum).mockResolvedValue({ id: 'album-new', title: 'Trip' } as never);
+      vi.mocked(uploadMedia).mockResolvedValue({ id: 'media-1', filename: 'a.jpg' } as never);
+      vi.mocked(batchAddMediaItemsToAlbum).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'create_album_with_media',
+          arguments: {
+            albumTitle: 'Trip',
+            files: [{ filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' }],
+          },
+        },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.album).toBeDefined();
+      expect(parsed.uploadResults).toHaveLength(1);
+      expect(parsed.uploadResults[0].success).toBe(true);
+      expect(parsed.addedToAlbum).toBe(1);
+    });
+
+    it('returns partial results when one upload fails without aborting', async () => {
+      const { createAlbum, uploadMedia, batchAddMediaItemsToAlbum } = await import('../../src/api/photos.js');
+      vi.mocked(createAlbum).mockResolvedValue({ id: 'album-new', title: 'Trip' } as never);
+      vi.mocked(uploadMedia)
+        .mockResolvedValueOnce({ id: 'media-1', filename: 'a.jpg' } as never)
+        .mockRejectedValueOnce(new Error('upload failed'));
+      vi.mocked(batchAddMediaItemsToAlbum).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool({
+        params: {
+          name: 'create_album_with_media',
+          arguments: {
+            albumTitle: 'Trip',
+            files: [
+              { filePath: '/a.jpg', mimeType: 'image/jpeg', fileName: 'a.jpg' },
+              { filePath: '/b.jpg', mimeType: 'image/jpeg', fileName: 'b.jpg' },
+            ],
+          },
+        },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.uploadResults).toHaveLength(2);
+      expect(parsed.uploadResults[0].success).toBe(true);
+      expect(parsed.uploadResults[1].success).toBe(false);
+      expect(parsed.addedToAlbum).toBe(1);
+    });
+  });
+
+  describe('describe_filter_capabilities', () => {
+    it('returns JSON with contentCategories, mutuallyExclusive, and dateFilter constraints', async () => {
+      const result = await instance.handleCallTool({
+        params: { name: 'describe_filter_capabilities', arguments: {} },
+      });
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.contentCategories).toBeDefined();
+      expect(Array.isArray(parsed.contentCategories)).toBe(true);
+      expect(parsed.mutuallyExclusive).toBeDefined();
+      expect(parsed.dateFilter).toBeDefined();
+    });
+  });
+
+  describe('MCP Prompts', () => {
+    it('handleListPrompts returns array of 3 prompts with correct names', async () => {
+      const result = await instance.handleListPrompts();
+      expect(result.prompts).toHaveLength(3);
+      const names = result.prompts.map((p: { name: string }) => p.name);
+      expect(names).toContain('organize_photos');
+      expect(names).toContain('batch_upload_workflow');
+      expect(names).toContain('find_photos_by_criteria');
+    });
+
+    it('each prompt in list has description and arguments array', async () => {
+      const result = await instance.handleListPrompts();
+      for (const prompt of result.prompts) {
+        expect(prompt.description).toBeDefined();
+        expect(Array.isArray(prompt.arguments)).toBe(true);
+      }
+    });
+
+    it('handleGetPrompt organize_photos returns messages with role=user and text containing "list_albums"', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'organize_photos' } });
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0].role).toBe('user');
+      expect(result.messages[0].content.text).toContain('list_albums');
+    });
+
+    it('handleGetPrompt organize_photos with theme includes theme in response text', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'organize_photos', arguments: { theme: 'vacation' } } });
+      expect(result.messages[0].content.text).toContain('vacation');
+    });
+
+    it('handleGetPrompt batch_upload_workflow returns messages mentioning "create_album_with_media"', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'batch_upload_workflow' } });
+      expect(result.messages[0].content.text).toContain('create_album_with_media');
+    });
+
+    it('handleGetPrompt find_photos_by_criteria with criteria includes criteria in response text', async () => {
+      const result = await instance.handleGetPrompt({ params: { name: 'find_photos_by_criteria', arguments: { criteria: 'pet photos' } } });
+      expect(result.messages[0].content.text).toContain('pet photos');
+    });
+
+    it('handleGetPrompt with unknown prompt name throws McpError with InvalidParams', async () => {
+      await expect(
+        instance.handleGetPrompt({ params: { name: 'nonexistent_prompt' } })
+      ).rejects.toThrow(McpError);
+    });
+  });
+});

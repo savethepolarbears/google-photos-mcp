@@ -38,13 +38,21 @@ export {
 export {
   listAlbums,
   getAlbum,
+  createAlbum,
+  batchAddMediaItemsToAlbum,
+  addEnrichment,
+  patchAlbum,
 } from './repositories/albumsRepository.js';
+export type { EnrichmentPayload, AlbumPatch } from './repositories/albumsRepository.js';
 
 // Repository exports (Photos)
 export {
   listAlbumPhotos,
   getPhoto,
   getPhotoAsBase64,
+  listMediaItems,
+  uploadMedia,
+  batchCreateMediaItems,
 } from './repositories/photosRepository.js';
 
 // Service exports (High-level)
