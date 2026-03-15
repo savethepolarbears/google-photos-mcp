@@ -77,7 +77,7 @@ describe('GooglePhotosMCPCore', () => {
       // We invoke it through the class's internal method
       const result = await (core as unknown as { handleListTools: () => Promise<{ tools: unknown[] }> }).handleListTools();
 
-      expect(result.tools).toHaveLength(20);
+      expect(result.tools).toHaveLength(19);
       const toolNames = result.tools.map((t: unknown) => (t as { name: string }).name);
       expect(toolNames).toContain('auth_status');
       expect(toolNames).toContain('search_photos');

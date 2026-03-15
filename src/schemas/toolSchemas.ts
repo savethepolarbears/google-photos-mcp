@@ -170,3 +170,12 @@ export const createAlbumWithMediaSchema = z.object({
  */
 export const describeFilterCapabilitiesSchema = z.object({}).optional();
 
+/**
+ * Schema for poll_picker_session tool arguments
+ */
+export const pollPickerSessionSchema = z.object({
+  sessionId: z.string().min(1, 'Session ID is required'),
+  pageSize: z.number().int().min(1).max(100).optional(),
+  pageToken: z.string().optional(),
+});
+

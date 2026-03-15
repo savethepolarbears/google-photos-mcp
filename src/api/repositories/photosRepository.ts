@@ -2,7 +2,7 @@ import { OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
 import { readFile } from 'fs/promises';
 import { PhotoItem, SearchParams, NewMediaItemResult } from '../types.js';
-import { getPhotoClient, toError } from '../client.js';
+import { getPhotoClient, getPickerClient, toError } from '../client.js';
 import { enrichPhotosWithLocation } from '../enrichment/locationEnricher.js';
 import { getPhotoLocation } from '../../utils/location.js';
 import { withRetry } from '../../utils/retry.js';
@@ -37,6 +37,7 @@ export async function searchPhotos(
           pageSize: params.pageSize ?? 25,
           pageToken: params.pageToken,
           filters: params.filters,
+          orderBy: params.orderBy,
         },
       }),
       { maxRetries: 3, initialDelayMs: 1000 },
@@ -260,4 +261,69 @@ export async function batchCreateMediaItems(
     logger.error(`Failed to batch create media items: ${error instanceof Error ? error.message : String(error)}`);
     throw new Error('Failed to batch create media items', { cause: error });
   }
+}
+
+// ── Google Photos Picker API ──────────────────────────────────────────
+
+/**
+ * Creates a new Picker session. Returns the session ID and the `pickerUri`
+ * that the user must visit to select photos from their full library.
+ */
+export async function createPickerSession(
+  oauth2Client: OAuth2Client,
+): Promise<{ id: string; pickerUri: string }> {
+  const client = getPickerClient(oauth2Client);
+  const response = await withRetry(
+    () => client.sessions.create(),
+    { maxRetries: 3, initialDelayMs: 1000 },
+    'create picker session',
+  );
+  return response.data as { id: string; pickerUri: string };
+}
+
+/**
+ * Polls an existing Picker session to check whether the user has completed selection.
+ */
+export async function getPickerSession(
+  oauth2Client: OAuth2Client,
+  sessionId: string,
+): Promise<{ id: string; pickerUri: string; mediaItemsSet: boolean }> {
+  const client = getPickerClient(oauth2Client);
+  const response = await withRetry(
+    () => client.sessions.get(sessionId),
+    { maxRetries: 3, initialDelayMs: 1000 },
+    'get picker session',
+  );
+  return response.data as { id: string; pickerUri: string; mediaItemsSet: boolean };
+}
+
+/**
+ * Lists media items selected by the user in a completed Picker session.
+ * Maps the Picker `mediaFile` schema to this project's `PhotoItem` interface.
+ */
+export async function listPickerSessionMediaItems(
+  oauth2Client: OAuth2Client,
+  sessionId: string,
+  pageSize = 25,
+  pageToken?: string,
+): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
+  const client = getPickerClient(oauth2Client);
+  const response = await withRetry(
+    () => client.sessions.listMediaItems(sessionId, { pageSize, pageToken }),
+    { maxRetries: 3, initialDelayMs: 1000 },
+    'list picker media',
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items: any[] = response.data.mediaItems || [];
+
+  const photos = items.map((item) => ({
+    id: item.mediaFile?.mediaFileId ?? item.id ?? '',
+    filename: item.mediaFile?.filename ?? '',
+    baseUrl: item.mediaFile?.baseUrl ?? '',
+    productUrl: item.mediaFile?.baseUrl ?? '',
+    mimeType: item.mediaFile?.mimeType,
+  })) as PhotoItem[];
+
+  return { photos, nextPageToken: response.data.nextPageToken };
 }

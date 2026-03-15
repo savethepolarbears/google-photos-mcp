@@ -3,9 +3,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ErrorCode,
-  ListResourcesRequestSchema,
-  ListPromptsRequestSchema,
-  ListToolsRequestSchema,
   McpError,
   CallToolRequest,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -41,15 +38,14 @@ class GooglePhotosDXTServer extends GooglePhotosMCPCore {
    * Wraps tool execution with a 30-second timeout to prevent hanging in DXT mode.
    */
   protected registerHandlers(): void {
-    // Register list tools handler from parent
-    this.server.setRequestHandler(ListToolsRequestSchema, this.handleListTools.bind(this));
+    // 1. Inherit all base handlers (Resources, Prompts, Tools) from GooglePhotosMCPCore
+    super.registerHandlers();
 
-    // Register call tool handler with DXT timeout wrapper
+    // 2. Override ONLY the CallToolRequest handler to inject the DXT timeout logic
     this.server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
       const requestId = `${Date.now()}-${Math.random()}`;
 
       try {
-        // Set up timeout for this request
         const timeoutPromise = new Promise<never>((_, reject) => {
           const timeout = setTimeout(() => {
             reject(new McpError(
@@ -60,41 +56,25 @@ class GooglePhotosDXTServer extends GooglePhotosMCPCore {
           this.timeouts.set(requestId, timeout);
         });
 
-        // Execute the tool with timeout protection (using parent's handleCallTool)
-        const resultPromise = this.handleCallTool(request);
+        // Execute the parent's actual tool handler
+        const resultPromise = super.handleCallTool(request);
         const result = await Promise.race([resultPromise, timeoutPromise]);
 
-        // Clean up timeout
         this.clearTimeout(requestId);
-
         return result;
       } catch (error) {
-        // Clean up timeout on error
         this.clearTimeout(requestId);
-
         logger.error(`[DXT Error] Tool: ${request.params.name}`, error);
 
         if (error instanceof McpError) {
           throw error;
         }
-        if (error instanceof Error) {
-          throw new McpError(
-            ErrorCode.InternalError,
-            `Failed to execute tool: ${error.message}`
-          );
-        }
-        throw error;
+        throw new McpError(
+          ErrorCode.InternalError,
+          `Failed to execute tool: ${error instanceof Error ? error.message : String(error)}`
+        );
       }
     });
-
-    // Resource and prompt handlers (required by DXT spec)
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-      resources: []
-    }));
-
-    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-      prompts: []
-    }));
   }
 
   /**

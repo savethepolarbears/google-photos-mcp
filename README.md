@@ -1,570 +1,271 @@
 # Google Photos MCP Server
 
-A Model Context Protocol (MCP) server for Google Photos integration, allowing Claude and other AI assistants to access and work with your Google Photos library.
+A Model Context Protocol (MCP) server for Google Photos integration, enabling Claude, Gemini, and other AI assistants to **read, write, and pick** photos from your Google Photos library.
 
-## ⚠️ CRITICAL LIMITATION: 2025 Google Photos API Changes
+## ✅ Picker API Support (March 2025+)
 
-**As of March 31, 2025, Google Photos API access is limited to app-created content only.**
+This server implements the **Google Photos Picker API**, providing full library access even after the March 31, 2025 deprecation of certain Library API scopes.
 
-**Current Status**:
+| Capability | Status | API |
+| --- | --- | --- |
+| Browse full photo library | ✅ | Picker API |
+| Search photos by text/date/category | ✅ | Library API |
+| Create albums & upload photos | ✅ | Library API |
+| Access app-created content | ✅ | Library API |
 
-- ✅ Authentication works (OAuth flow completes successfully)
-- ❌ API calls fail with `403: insufficient authentication scopes`
-- ❌ Cannot access your existing photo library
-- ✅ Would work only with photos/albums created by this app
+### How the Picker API Works
 
-**Root Cause**: The `photoslibrary.readonly` scope no longer provides full library access. Google now requires using the Photos Picker API for browsing existing photos.
+1. Call `create_picker_session` — returns a URL the user opens in their browser
+2. User selects photos from their full library
+3. Call `poll_picker_session` — when `mediaItemsSet` is true, selected photos are returned
 
-**Impact**: This MCP server is currently **non-functional** for browsing your existing Google Photos library. See `docs/API_LIMITATION.md` for details.
+## 🛡️ Security Notice: CORS Removed
 
-## 🛡️ Security Notice: CORS Removed (December 2025)
+CORS middleware has been removed for security (prevents drive-by attacks on localhost).
 
-**Breaking Change**: CORS middleware has been removed for security reasons (commit 8afc1e2).
-
-**Why**: The previous permissive CORS configuration exposed localhost users to drive-by attacks from malicious websites.
-
-**Impact**:
-
-- ✅ STDIO mode (Claude Desktop): No impact — continues to work normally
-- ✅ SSE mode (Cursor IDE): No impact for same-origin requests
-- ❌ Browser-based clients: Will encounter CORS errors
-
-**Supported Use Cases**:
-
-- Claude Desktop (STDIO transport) — **Recommended**
-- Cursor IDE (SSE transport)
-- Server-to-server MCP clients
-
-**Not Supported**:
-
-- Direct browser AJAX calls from web applications
-- Cross-origin browser requests
-
-For technical details, see `.jules/sentinel.md`.
-
-## ⚡ Performance & Modern Protocol Support
-
-### Streamable HTTP Transport (December 2025)
-
-Upgraded to **Streamable HTTP transport** (2025-06-18 MCP specification):
-
-- ✅ SSE transport deprecated and removed
-- ✅ Modern session-based protocol with proper lifecycle management
-- ✅ Supports incremental results and bidirectional communication
-- ✅ Production-ready for networked MCP deployments
-
-### HTTPS Keep-Alive (December 2025)
-
-The Google Photos API client uses persistent HTTPS connections (Keep-Alive) for performance:
-
-- **Reduces latency** by reusing TCP connections (30-50ms per request)
-- **Connection pooling**: Max 50 concurrent connections, keeps 10 idle connections warm
-- **Particularly beneficial** for operations with multiple API calls (pagination, location enrichment)
-- Automatically managed — no user configuration required
-
-**Technical Details**: Configured with 30s keep-alive probes, 60s idle timeout, optimized for Google Photos API quota limits.
-
-### Port Configuration
-
-**Dynamic port support** via environment variable:
-
-```bash
-# Run on custom port (avoids conflicts with other dev servers)
-PORT=3001 npm start
-
-# Or set in .env file:
-PORT=3001
-```
-
-**Important**: If you change PORT, also update `GOOGLE_REDIRECT_URI` in .env to match:
-
-```bash
-GOOGLE_REDIRECT_URI=http://localhost:3001/auth/callback
-```
-
-**Recommended for Claude Desktop**: Use STDIO mode instead (no port needed):
-
-```bash
-npm run stdio
-```
+- ✅ **STDIO mode** (Claude Desktop): Works normally
+- ✅ **Streamable HTTP** (Cursor, server-to-server): Works normally
+- ❌ **Browser AJAX**: Not supported (by design)
 
 ## Features
 
-- ✅ Search photos by content, date, location
-- ✅ Get location data for photos (approximate, based on descriptions)
-- ✅ Fetch specific photos by ID
-- ✅ List albums and photo collections
-- ✅ Retrieve photo metadata and base64-encoded images
-- ✅ Proper STDIO mode support for Claude Desktop
-- ✅ Enhanced error handling and 2025 API compatibility warnings
-- ✅ Works with Claude Desktop, Cursor IDE, and other MCP-compatible clients
+### Read Operations
 
-### API Limitations (Google Photos API)
+- Search photos by text, date, location, category, favorites
+- Filter by media type (photo/video), date ranges, archived status
+- Get photo details including base64-encoded images
+- List albums and their contents
+- Describe available filter capabilities
 
-**What This MCP CAN Do:**
+### Write Operations
 
-- ✅ Search and browse photos (read-only access)
-- ✅ Get photo details, metadata, and images
-- ✅ List albums and their contents
-- ✅ Extract location information from descriptions
+- Create albums and upload photos
+- Batch upload with `create_album_with_media` (up to 50 files)
+- Add text and location enrichments to albums
+- Set album cover photos
 
-**What This MCP CANNOT Do:**
+### Picker Operations
 
-- ❌ Delete photos or albums (API does not support deletion)
-- ❌ Upload new photos (beyond scope of this MCP)
-- ❌ Modify photo metadata or descriptions
-- ❌ Create or manage albums
-- ❌ Access precise GPS/EXIF coordinates (API limitation)
+- Create picker sessions for full library access
+- Poll sessions and retrieve selected media items
 
-**Why**: The Google Photos Library API provides read-only access. Photo deletion, uploads, and metadata editing must be done through the Google Photos web or mobile app.
+### Infrastructure
 
-### Text search behavior
-
-- Search queries are tokenized on whitespace/`:` and compared against photo filenames, descriptions, timestamps, and any cached
-  location metadata.
-- Tokens that do not appear in any searchable fields are ignored so that queries like `vacation 2023` still surface "vacation"
-  matches even when the year is missing from the metadata.
-- When none of the tokens match, the server falls back to the Google Photos API response instead of returning an empty result
-  set, preserving the original ordering for broad or unmatched queries.
+- ⚡ Streamable HTTP transport (MCP 2025-06-18 spec)
+- 🔗 HTTPS Keep-Alive with connection pooling
+- 🔒 OS keychain token storage
+- 📊 Quota management with automatic tracking
+- 🔄 Automatic token refresh
 
 ## Prerequisites
 
-- Node.js 18 or newer
-- Google account with access to Google Photos
-- Google Cloud project with Photos Library API enabled
+- Node.js 18+
+- Google Cloud project with **Photos Library API** enabled
+- OAuth 2.0 credentials (Web application type)
 
 ## Setup
 
 ### 1. Google Cloud Setup
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Navigate to "APIs & Services" > "Library"
-4. Search for and enable "Photos Library API"
-5. Go to "APIs & Services" > "Credentials"
-6. Click "Create Credentials" > "OAuth client ID"
-7. Select "Web application" as the application type
-8. Add `http://localhost:3000/auth/callback` as an authorized redirect URI
-9. Note your Client ID and Client Secret
+2. Create a new project (or select existing)
+3. Enable **Photos Library API**
+4. Create OAuth 2.0 credentials (Web application)
+5. Add `http://localhost:3000/auth/callback` as an authorized redirect URI
+6. Note your Client ID and Client Secret
 
 ### 2. Installation
 
-1. Clone this repository
-
-   ```bash
-   git clone https://github.com/savethepolarbears/google-photos-mcp.git
-   cd google-photos-mcp
-   ```
-
-2. **Install dependencies** (⚠️ Required before building):
-
-   ```bash
-   npm install
-   ```
-
-   **Note**: This installs TypeScript and other build tools. If you get `tsc: command not found` errors, ensure this step completed successfully.
-
-3. Create a `.env` file with your Google Cloud credentials:
-
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
-
-   ```env
-   GOOGLE_CLIENT_ID=your_client_id_here
-   GOOGLE_CLIENT_SECRET=your_client_secret_here
-   GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
-   PORT=3000
-   NODE_ENV=development
-   ```
-
-4. Build the server:
-
-   ```bash
-   npm run build
-   ```
-
-   This compiles TypeScript to JavaScript in the `dist/` directory.
-
-5. Start the server:
-
-   ```bash
-   npm start
-   ```
-
-6. Authenticate with Google Photos:
-   - Visit `http://localhost:3000` in your browser
-   - Click "Authenticate with Google Photos"
-   - Follow the Google OAuth flow to grant access to your photos
-
-### Important Authentication Notes
-
-⚠️ **Authentication must be done in HTTP mode first!**
-
-Before using this MCP server with Claude Desktop or other STDIO-based clients:
-
-1. First run the server in HTTP mode: `npm start`
-2. Complete the authentication at `http://localhost:3000/auth`
-3. Only after successful authentication, stop the server and switch to STDIO mode for Claude Desktop
-
-The authentication tokens are stored locally and will persist between server restarts.
-
-## Testing with MCP Inspector
-
-The MCP Inspector is an interactive developer tool for testing and debugging MCP servers. It allows you to verify your server's functionality before integrating it with clients like Claude or Cursor.
-
-1. Install and run the MCP Inspector with your server:
-
-   ```bash
-   # For HTTP transport
-   npx @modelcontextprotocol/inspector node dist/index.js
-
-   # For STDIO transport
-   npx @modelcontextprotocol/inspector node dist/index.js --stdio
-   ```
-
-2. The Inspector will open a web interface (typically at `http://localhost:6274`) where you can:
-   - Test all available tools
-   - Verify authentication works correctly
-   - Inspect request/response payloads
-   - Debug any issues with your server
-
-This step is highly recommended before integrating with Claude Desktop or other clients to ensure your server is working correctly.
-
-## Usage with Claude Desktop
-
-To use this MCP server with Claude Desktop:
-
-1. **Ensure you have authenticated first** (see Authentication Notes above)
-
-2. Start the server in STDIO mode:
-
-   ```bash
-   npm run stdio
-   ```
-
-3. In Claude Desktop, add the MCP server:
-   - Go to Settings > MCP Servers
-   - Select "Edit Config"
-   - Add the following configuration:
-
-   ```json
-   {
-     "mcpServers": {
-       "google-photos": {
-         "command": "node",
-         "args": ["/path/to/your/project/dist/index.js", "--stdio"],
-         "env": {
-           "GOOGLE_CLIENT_ID": "your_client_id_here",
-           "GOOGLE_CLIENT_SECRET": "your_client_secret_here",
-           "GOOGLE_REDIRECT_URI": "http://localhost:3000/auth/callback"
-         }
-       }
-     }
-   }
-   ```
-
-4. Save the configuration and restart Claude Desktop
-5. You can now ask Claude to search and fetch photos from your Google Photos account
-
-## Usage with Cursor IDE
-
-To use this MCP server with Cursor IDE:
-
-1. Start the server in HTTP mode:
-
-   ```bash
-   npm start
-   ```
-
-2. In Cursor IDE, configure the MCP server:
-   - Open the MCP panel in Cursor
-   - Click "Add Server"
-   - Choose "Command" as the Type
-   - Enter the following for Command: `node /path/to/your/project/dist/index.js`
-   - Name it "Google Photos"
-   - Click "Save"
-
-Alternatively, for HTTP mode:
-
-- Choose "URL" as the Type
-- Enter the server URL: `http://localhost:3000/mcp`
-- Name it "Google Photos"
-- Click "Save"
-
-## Troubleshooting
-
-### JSON Parsing Errors in STDIO Mode (Issue #2)
-
-**Fixed in latest version!** If you're getting errors like "Unexpected token 'S', 'Server run'..." when using the MCP Inspector:
-
-1. Make sure you're using the latest version of this server
-2. The issue was caused by console output going to stdout instead of stderr in STDIO mode
-3. All logging now properly goes to stderr when using `--stdio` flag
-
-### Authentication Endpoint Not Working (Issue #1)
-
-**Fixed in latest version!** The `/auth` endpoint and HTML page are now properly configured:
-
-1. Start the server in HTTP mode: `npm start`
-2. Visit `http://localhost:3000/auth` in your browser
-3. Follow the Google OAuth flow
-4. After authentication, switch to STDIO mode for Claude Desktop usage
-
-### Limited Photo Access (2025 API Changes)
-
-Due to Google Photos API changes effective March 31, 2025:
-
-1. **Expected behavior**: You may only see limited photos (app-created content)
-2. **This is not a bug**: Google has restricted API access to app-created content only
-3. **Solution**: For full photo library access, Google recommends using the Photos Picker API
-4. **Current workaround**: This server still works but with limited scope
-
-### Permission Denied Errors
-
-If you get 403 PERMISSION_DENIED errors:
-
-1. Check that your Google Cloud project has the Photos Library API enabled
-2. Verify your OAuth credentials are correct in the `.env` file
-3. Make sure you've completed the authentication flow via `/auth`
-4. Note: Due to 2025 API changes, some functionality may be limited
-
-## Integration with Smithery
-
-[Smithery](https://smithery.ai/) is a registry for MCP servers that makes it easy to discover and install various MCP tools. You can register your Google Photos MCP server with Smithery to make it available to the community.
-
-To install the Google Photos MCP server from Smithery:
-
-### For Claude Desktop
-
 ```bash
-npx -y @smithery/cli install google-photos-mcp --client claude
+git clone https://github.com/savethepolarbears/google-photos-mcp.git
+cd google-photos-mcp
+npm install
 ```
 
-### For Cursor IDE
+### 3. Configuration
 
 ```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+
+```env
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_REDIRECT_URI=http://localhost:3000/auth/callback
+PORT=3000
+NODE_ENV=development
+```
+
+### 4. Build & Run
+
+```bash
+npm run build    # Compile TypeScript
+npm start        # HTTP mode (for auth & Cursor)
+npm run stdio    # STDIO mode (for Claude Desktop)
+npm run dev      # Dev mode with live reload
+```
+
+### 5. Authenticate
+
+1. Start in HTTP mode: `npm start`
+2. Visit `http://localhost:3000/auth` in your browser
+3. Complete the Google OAuth flow
+4. Tokens are saved automatically to the OS keychain
+
+> **Note**: Authentication must be completed in HTTP mode first. After that, switch to STDIO mode for Claude Desktop.
+
+### Dynamic Port
+
+```bash
+PORT=3001 npm start
+# Also update GOOGLE_REDIRECT_URI in .env to match
+```
+
+## Client Configuration
+
+### Claude Desktop (STDIO)
+
+```json
+{
+  "mcpServers": {
+    "google-photos": {
+      "command": "node",
+      "args": ["/path/to/google-photos-mcp/dist/index.js", "--stdio"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "your_client_id",
+        "GOOGLE_CLIENT_SECRET": "your_client_secret",
+        "GOOGLE_REDIRECT_URI": "http://localhost:3000/auth/callback"
+      }
+    }
+  }
+}
+```
+
+### Cursor IDE
+
+**STDIO** (recommended):
+
+- Type: Command
+- Command: `node /path/to/google-photos-mcp/dist/index.js --stdio`
+
+**HTTP**:
+
+- Type: URL
+- URL: `http://localhost:3000/mcp`
+
+### Smithery
+
+```bash
+# Claude Desktop
+npx -y @smithery/cli install google-photos-mcp --client claude
+
+# Cursor IDE
 npx -y @smithery/cli install google-photos-mcp --client cursor
 ```
 
-You can also add a `smithery.yaml` file to your repository with the following content to make it discoverable:
+### MCP Inspector
 
-```yaml
-name: google-photos-mcp
-displayName: Google Photos
-description: Access and search your Google Photos library through MCP
-logo: https://raw.githubusercontent.com/savethepolarbears/google-photos-mcp/main/logo.png
-repository: https://github.com/savethepolarbears/google-photos-mcp
-keywords:
-  - google photos
-  - images
-  - albums
-  - photos
-  - search
+```bash
+npx @modelcontextprotocol/inspector node dist/index.js        # HTTP
+npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 ```
 
-## Available Tools
+## Available Tools (19)
 
-### Search Tools
+### Search & Browse
 
-- `search_photos`: Search for photos based on text queries
+| Tool | Description |
+| --- | --- |
+| `search_photos` | Text-based photo search |
+| `search_photos_by_location` | Search by location name |
+| `search_media_by_filter` | Filter by dates, categories, media type, favorites, archived |
+| `get_photo` | Get photo details (optional base64) |
+| `list_albums` | List all albums |
+| `get_album` | Get album details |
+| `list_album_photos` | List photos in an album |
+| `list_media_items` | List all media items |
+| `describe_filter_capabilities` | JSON reference of all filter options |
 
-  ```text
-  Parameters:
-  - query: string (e.g., "vacation 2023", "sunset photos", "cats")
-  - pageSize: number (optional, default: 25)
-  - pageToken: string (optional, for pagination)
-  - includeLocation: boolean (optional, default: true)
-  ```
+### Write & Manage
 
-  Text queries are applied to filenames, descriptions, timestamps, and available location metadata. Tokens that do not appear in
-  any searchable field are ignored so that stop-words or date fragments do not filter out valid items, and if metadata filtering
-  would otherwise remove every item returned by Google Photos the original API response is preserved.
+| Tool | Description |
+| --- | --- |
+| `create_album` | Create a new album |
+| `upload_media` | Upload a local file |
+| `add_media_to_album` | Add existing items to an album (max 50) |
+| `create_album_with_media` | Create album + upload files in one call (max 50) |
+| `add_album_enrichment` | Add text or location enrichment |
+| `set_album_cover` | Set album cover photo |
 
-- `search_photos_by_location`: Search for photos based on location
+### Picker API
 
-  ```text
-  Parameters:
-  - locationName: string (e.g., "Paris", "Central Park", "Mount Everest")
-  - pageSize: number (optional, default: 25)
-  - pageToken: string (optional, for pagination)
-  ```
+| Tool | Description |
+| --- | --- |
+| `create_picker_session` | Start a Picker session for full library access |
+| `poll_picker_session` | Check session status and retrieve selected photos |
 
-### Photo Tools
+### Auth
 
-- `get_photo`: Get a specific photo by ID
+| Tool | Description |
+| --- | --- |
+| `auth_status` | Check authentication status |
+| `start_auth` | Start OAuth flow via temporary local server |
 
-  ```text
-  Parameters:
-  - photoId: string
-  - includeBase64: boolean (optional, default: false)
-  - includeLocation: boolean (optional, default: true)
-  ```
+## Example Queries
 
-- `get_photo_url`: Get a specific photo URL with size options
+```text
+"Show me photos from my trip to Paris"
+"Find photos of my dog from 2024"
+"List my photo albums"
+"Upload these vacation photos to a new album called 'Summer 2025'"
+"Search for landscape photos from last year, ordered newest first"
+"Let me pick some photos from my library" (triggers Picker API)
+```
 
-  ```text
-  Parameters:
-  - photoId: string
-  - size: "s" | "m" | "l" | "d" (small, medium, large, original)
-  ```
+## Location Data
 
-### Album Tools
-
-- `list_albums`: List all albums
-
-  ```text
-  Parameters:
-  - pageSize: number (optional, default: 20)
-  - pageToken: string (optional, for pagination)
-  ```
-
-- `get_album`: Get a specific album by ID
-
-  ```text
-  Parameters:
-  - albumId: string
-  ```
-
-- `list_album_photos`: List photos in a specific album
-
-  ```text
-  Parameters:
-  - albumId: string
-  - pageSize: number (optional, default: 25)
-  - pageToken: string (optional, for pagination)
-  - includeLocation: boolean (optional, default: true)
-  ```
-
-## Example Queries for Claude
-
-Once your MCP server is set up and connected to Claude, you can ask queries like:
-
-- "Show me photos from my trip to Paris"
-- "Find photos of my dog"
-- "Show me photos from last summer"
-- "Get photos from my 'Family' album"
-- "Show me landscape photos from 2023"
-- "Find photos taken in Yellowstone National Park"
-
-## Location Data Support
-
-The Google Photos API doesn't provide exact geolocation coordinates directly. This implementation attempts to extract location information from photo descriptions and uses geocoding to provide approximate location data when possible. Location features include:
-
-- Extracting location information from photo descriptions
-- Geocoding location names to obtain coordinates (using OpenStreetMap/Nominatim)
-- Searching photos by location name
-- Including location data in search results (when available)
-
-Note that location data is approximate and may not be available for all photos.
-
-## Additional Troubleshooting
-
-If you encounter issues:
-
-1. Verify your API credentials are correct in the `.env` file
-2. Check the MCP server logs for error messages
-3. Use the MCP Inspector to test the server directly
-4. Ensure you've authorized the application with Google Photos
-5. Try restarting the server and client application
+Location data is approximate, extracted from photo descriptions using OpenStreetMap/Nominatim geocoding. When available, includes latitude/longitude, city, region, country.
 
 ## Development
 
-### Building
-
-To build the project, run:
-
-```bash
-npm run build
-```
-
-### Linting
-
-To check for linting errors, run:
-
-```bash
-npm run lint
-```
-
-### Documentation
-
-## Developer Guide
-
-If you are a new developer looking to contribute or understand the codebase, here is a quick overview:
-
 ### Project Structure
 
-- **`src/index.ts`**: The main entry point. Sets up the Express server for HTTP mode and registers MCP routes.
-- **`src/dxt-server.ts`**: The DXT server implementation for STDIO mode.
-- **`src/mcp/core.ts`**: The core MCP implementation containing all tool handlers and logic.
-- **`src/api/`**: Contains all Google Photos API interaction logic, including clients, repositories, search logic, and type definitions.
-- **`src/auth/`**: Handles OAuth 2.0 flows, token management, and secure token storage using the OS keychain.
-- **`src/utils/`**: Shared utilities for configuration, health checking, location enrichment, logging, and retries.
-- **`src/schemas/`**: Zod schemas for validating tool arguments.
-- **`src/views/`**: Contains HTML templates for the authentication success and logout pages.
-
-### Building and Running
-
-To build the project:
-
-```bash
-npm run build
-```
-
-To run in HTTP mode (for authentication and Cursor):
-
-```bash
-npm start
-```
-
-To run in STDIO mode (for Claude Desktop):
-
-```bash
-npm run stdio
-```
-
-### Linting and Formatting
-
-The project uses ESLint and Prettier to maintain code quality.
-
-To check for linting errors:
-
-```bash
-npm run lint
-```
-
-To automatically format the codebase:
-
-```bash
-npm run format
+```text
+src/
+├── index.ts              # HTTP entry point
+├── dxt-server.ts         # STDIO/DXT entry point
+├── mcp/core.ts           # All tool handlers (19 tools)
+├── api/
+│   ├── client.ts         # REST client (Library + Picker)
+│   ├── photos.ts         # Facade module (re-exports)
+│   ├── types.ts          # TypeScript interfaces
+│   └── repositories/     # Low-level API calls
+├── auth/                 # OAuth, tokens, keychain
+├── schemas/              # Zod validation schemas
+├── utils/                # Config, logging, quota, retry
+└── views/                # HTML templates
 ```
 
 ### Testing
 
-The project uses Vitest for testing. Tests are located in the `test/` directory.
-
-To run all tests:
-
 ```bash
-npm test
+npm test              # All tests (Vitest)
+npm run test:watch    # Interactive TDD
+npm run test:coverage # Coverage report
+npm run test:security # Security suite only
 ```
 
-To run only security-focused tests:
+### Quality Checks
+
+All three must pass before merge:
 
 ```bash
-npm run test:security
+npx tsc --noEmit   # Type check
+npm run lint        # ESLint
+npm test            # Tests
 ```
-
-For interactive TDD:
-
-```bash
-npm run test:watch
-```
-
-### Code Documentation
-
-The codebase is thoroughly documented using JSDoc/TSDoc comments. Every public function, method, and class includes detailed docstrings explaining its purpose, parameters, and return values. You can review the source code in `src/` to understand the internal workings of the server.
 
 ## License
 

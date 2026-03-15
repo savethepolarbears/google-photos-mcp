@@ -51,7 +51,7 @@ describe('listAlbums', () => {
         }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     const result = await listAlbums(mockOAuth2Client, 50);
 
@@ -66,7 +66,7 @@ describe('listAlbums', () => {
         list: vi.fn().mockResolvedValue({ data: {} }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     const result = await listAlbums(mockOAuth2Client);
 
@@ -80,7 +80,7 @@ describe('listAlbums', () => {
         list: vi.fn().mockRejectedValue(new Error('API failure')),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     await expect(listAlbums(mockOAuth2Client)).rejects.toThrow('Failed to list albums');
   });
@@ -99,7 +99,7 @@ describe('getAlbum', () => {
         }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     const result = await getAlbum(mockOAuth2Client, 'a1');
 
@@ -113,7 +113,7 @@ describe('getAlbum', () => {
         get: vi.fn().mockResolvedValue({ data: null }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     await expect(getAlbum(mockOAuth2Client, 'nonexistent')).rejects.toThrow();
   });
@@ -124,7 +124,7 @@ describe('getAlbum', () => {
         get: vi.fn().mockRejectedValue(new Error('Not found')),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
 
     await expect(getAlbum(mockOAuth2Client, 'bad-id')).rejects.toThrow('Failed to get album');
   });

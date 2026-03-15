@@ -94,7 +94,15 @@ export async function getFirstAvailableTokens(): Promise<TokenData | null> {
       parsed = rows
         .map((row) => {
           try {
-            return JSON.parse(row.value) as TokenData;
+            // Keyv stores values as {"value": "{...}"} — need to unwrap
+            const keyvWrapper = JSON.parse(row.value);
+            const innerValue = typeof keyvWrapper === 'object' && keyvWrapper?.value
+              ? keyvWrapper.value
+              : row.value;
+            const tokenData = typeof innerValue === 'string'
+              ? JSON.parse(innerValue) as TokenData
+              : innerValue as TokenData;
+            return tokenData;
           } catch {
             return null;
           }

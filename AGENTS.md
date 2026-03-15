@@ -1,36 +1,89 @@
 # Repository Guidelines
 
+## Project Overview
+
+MCP server exposing the Google Photos Library API and the Google Photos Picker API as tools for AI assistants (Claude, Gemini, Codex). Supports **read, write, and picker** operations over STDIO and Streamable HTTP transports.
+
 ## Project Structure & Module Organization
 
-Source lives under `src/`, with `src/index.ts` registering the MCP server and wiring routes. Feature logic is grouped by responsibility: `src/api/photos.ts` for Google Photos queries, `src/auth/` for OAuth helpers, `src/utils/` for shared helpers, and `src/views/` for response shaping. Generated JavaScript is emitted to `dist/` after builds. The `test-mcp/` directory contains a lightweight client harness you can use to exercise the server locally.
+Source lives under `src/`, with `src/index.ts` as the HTTP entry point and `src/dxt-server.ts` as the DXT/STDIO entry point. Both delegate to `src/mcp/core.ts` which contains all tool handlers.
+
+| Directory | Responsibility |
+| --- | --- |
+| `src/api/` | Google Photos API clients, repositories, types, search logic |
+| `src/api/repositories/` | Low-level API calls (Library API + Picker API) |
+| `src/auth/` | OAuth 2.0 flows, token storage (OS keychain), refresh management |
+| `src/mcp/` | MCP core: tool definitions, handler dispatch, prompts, resources |
+| `src/schemas/` | Zod schemas for tool argument validation |
+| `src/utils/` | Config, logging, quota management, retry, location enrichment |
+| `src/views/` | HTML templates (auth success/logout pages) |
+| `test/` | Vitest tests: `unit/`, `integration/`, `security/` |
+| `dist/` | Compiled JavaScript output (gitignored) |
 
 ## Build, Test, and Development Commands
 
-Install dependencies once with `npm install`. During authoring, run `npm run dev` to launch the TypeScript entrypoint through `ts-node` with live reload. `npm run build` transpiles to `dist/`, and `npm start` executes the compiled server. Lint the codebase via `npm run lint`, and format targeted files with `npm run format`. Run the full test suite with `npm test` (Vitest). Use `npm run test:watch` for interactive TDD and `npm run test:coverage` for coverage reports.
+```bash
+npm install          # Install dependencies (required before first build)
+npm run dev          # Dev mode with ts-node and live reload
+npm run build        # Compile TypeScript → dist/
+npm start            # Run compiled HTTP server
+npm run stdio        # Run compiled STDIO server
+npm run lint         # ESLint check
+npm run format       # Prettier format
+npm test             # Run all tests (Vitest)
+npm run test:watch   # Interactive TDD mode
+npm run test:coverage # Coverage report
+npm run test:security # Security tests only
+npx tsc --noEmit     # Type-check without emitting
+```
+
+**All three checks must pass before merge**: `npx tsc --noEmit`, `npm run lint`, `npm test`.
 
 ## Coding Style & Naming Conventions
 
-The project targets modern Node.js with ECMAScript modules and strict TypeScript types. Follow Prettier defaults (two-space indentation, single quotes) and run the formatter before sending a PR. ESLint extends `eslint:recommended` and `@typescript-eslint/recommended`; prefer explicit return types and keep `any` usage intentional. Name files and directories with kebab-case, exported classes in PascalCase, and internal utilities in camelCase. Keep environment variables in `.env` files mirroring keys from `.env.example`.
+- **Module system**: ESM (`"type": "module"` in package.json), strict TypeScript
+- **Formatting**: Prettier defaults — two-space indent, single quotes, trailing commas
+- **Linting**: `eslint:recommended` + `@typescript-eslint/recommended`; prefer explicit return types
+- **Files/directories**: kebab-case (`photo-repository.ts`)
+- **Classes**: PascalCase (`GooglePhotosMCPCore`)
+- **Functions/variables**: camelCase (`createPickerSession`)
+- **Environment**: `.env` files mirroring `.env.example` keys
 
 ## Testing Guidelines
 
-The project uses Vitest as its test runner. Tests live in the `test/` directory using `*.test.ts` suffix:
+Vitest test runner. Tests live in `test/` with `*.test.ts` suffix:
 
-- **Unit Tests**: `src/api/__tests__/photos.test.ts` and `test/photos.test.ts` — token matching and search logic
-- **Security Tests**: `test/security/` — CORS, DNS rebinding, CSRF, JWT verification, file permissions
+- **Unit tests**: `test/unit/` — individual function behavior, Zod schema validation
+- **Integration tests**: `test/integration/` — full tool request → response flow with mocked externals
+- **Security tests**: `test/security/` — CORS, DNS rebinding, CSRF, JWT, file permissions
 
-Run tests with `npm test` (all tests) or `npm run test:security` (security suite only). When adding tests, colocate them in `test/` directory. Keep assertions focused on behavior verification, not implementation details. New API features should include:
+New features must include:
 
 - Input validation tests (Zod schema compliance)
 - Error handling tests (API failures, auth errors)
 - Security tests for sensitive operations
 
-All tests must pass before merge (`npm test`). TypeScript compilation (`npx tsc --noEmit`) and linting (`npm run lint`) must also be clean.
+## Architecture Decisions
+
+- **Entry points never override base class handlers**. `dxt-server.ts` and `index.ts` call `super.registerHandlers()` and must not override `ListResourcesRequestSchema` or `ListPromptsRequestSchema`.
+- **`uploadMedia` receives `albumId` directly** — items are added to the album at creation time. No separate `batchAddMediaItemsToAlbum` call needed in `create_album_with_media`.
+- **`includeArchivedMedia` is a root-level filter boolean**, not a feature filter entry. The API rejects `INCLUDE_ARCHIVED` in `featureFilter`.
+- **Picker API** (`create_picker_session` / `poll_picker_session`) uses a separate OAuth scope and REST endpoint (`photospicker.mediaitems.readonly`).
 
 ## Commit & Pull Request Guidelines
 
-Follow the existing history by writing concise, imperative commit subjects (for example, `Fix album listing pagination`). Group related changes together and avoid mixing refactors with feature work. Pull requests should outline the intent, list functional changes, mention any new environment variables, and describe manual verification steps. Attach screenshots or sample JSON when the change affects response payloads, and link relevant issues for traceability.
+Concise, imperative commit subjects (e.g., `Fix album listing pagination`). Group related changes; avoid mixing refactors with features. PRs should outline intent, list changes, mention new env vars, and describe verification steps.
 
-## Security & Configuration Tips
+## Security & Configuration
 
-Never commit `.env`, OAuth credentials, or token files—`.gitignore` already covers them, but double-check before pushing. When testing locally, request minimal Google Photos scopes and revoke stale credentials from the Google Cloud Console. Rotate `tokens.json` entries if you hit permission errors, and document any new scopes or callbacks in `README.md` so downstream agents stay in sync.
+- **Never commit** `.env`, OAuth credentials, or token files
+- Request minimal Google Photos scopes when testing locally
+- Rotate `tokens.json` entries on permission errors
+- Document new scopes or callbacks in `README.md`
+
+## Do-Not Rules
+
+- ❌ Do not add CORS middleware (removed for security; see `.jules/sentinel.md`)
+- ❌ Do not use `console.log` in STDIO mode — all output goes to stderr via the logger
+- ❌ Do not add `any` types without an explanatory comment
+- ❌ Do not bypass Zod validation for tool arguments

@@ -46,6 +46,9 @@ export {
   getPhotoAsBase64,
   listMediaItems,
   uploadMedia,
+  createPickerSession,
+  getPickerSession,
+  listPickerSessionMediaItems,
 } from "./repositories/photosRepository.js";
 
 // Service exports (High-level)

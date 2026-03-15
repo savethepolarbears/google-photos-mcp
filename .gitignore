@@ -49,4 +49,5 @@ coverage/
 **/.claude/settings.local.json
 .mcp.json
 .agent/
+docs/
 .planning/
