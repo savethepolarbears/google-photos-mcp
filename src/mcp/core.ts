@@ -1,4 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+import http from 'http';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -14,6 +16,7 @@ import { PhotoItem } from '../api/photos.js';
 import { getFirstAvailableTokens, TokenData } from '../auth/tokens.js';
 import { tokenRefreshManager } from '../auth/tokenRefreshManager.js';
 import {
+  createOAuthClient,
   setupOAuthClient,
   searchPhotosByText,
   searchPhotosByLocation,
@@ -28,6 +31,9 @@ import {
   batchAddMediaItemsToAlbum,
   addEnrichment,
   patchAlbum,
+  createPickerSession,
+  getPickerSession,
+  listPickerSessionMediaItems,
 } from '../api/photos.js';
 import { searchPhotos } from '../api/repositories/photosRepository.js';
 import type { SearchFilter } from '../api/types.js';
@@ -48,6 +54,7 @@ import {
   setCoverPhotoSchema,
   createAlbumWithMediaSchema,
   contentCategoryEnum,
+  pollPickerSessionSchema,
 } from '../schemas/toolSchemas.js';
 import { quotaManager } from '../utils/quotaManager.js';
 
@@ -92,6 +99,9 @@ interface FormattedAlbum {
  */
 export class GooglePhotosMCPCore {
   protected server: Server;
+  /** Track the running auth server so repeated start_auth calls clean up properly */
+  private _authServer: http.Server | null = null;
+  private _authTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(serverInfo: { name: string; version: string }) {
     this.server = new Server(serverInfo, {
@@ -429,26 +439,7 @@ export class GooglePhotosMCPCore {
             },
           },
         },
-        {
-          name: 'share_album',
-          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
-          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
-        },
-        {
-          name: 'unshare_album',
-          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
-          inputSchema: { type: 'object', properties: { albumId: { type: 'string' } }, required: ['albumId'] },
-        },
-        {
-          name: 'join_shared_album',
-          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
-          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
-        },
-        {
-          name: 'leave_shared_album',
-          description: '[DEPRECATED] Google Photos sharing API was permanently removed March 31, 2025.',
-          inputSchema: { type: 'object', properties: { shareToken: { type: 'string' } }, required: ['shareToken'] },
-        },
+
         {
           name: 'add_album_enrichment',
           description: 'Add a text or location enrichment to a Google Photos album.',
@@ -513,6 +504,35 @@ export class GooglePhotosMCPCore {
             properties: {},
           },
         },
+        {
+          name: 'create_picker_session',
+          description: 'Create a Google Photos Picker session. Returns a pickerUri the user must open in their browser to select photos from their FULL library (not just app-created data). After the user selects photos, use poll_picker_session to retrieve them.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'poll_picker_session',
+          description: 'Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items. Call repeatedly until mediaItemsSet is true.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              sessionId: { type: 'string', description: 'The Picker session ID from create_picker_session' },
+              pageSize: { type: 'number', description: 'Number of results per page (max 100)', default: 25 },
+              pageToken: { type: 'string', description: 'Token for pagination' },
+            },
+            required: ['sessionId'],
+          },
+        },
+        {
+          name: 'start_auth',
+          description: 'Start Google OAuth authentication flow. Spins up a temporary local server, returns a URL to visit in your browser. After you authenticate, tokens are saved automatically and the temp server shuts down.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
       ],
     };
   }
@@ -527,7 +547,11 @@ export class GooglePhotosMCPCore {
     const tokens = await getFirstAvailableTokens();
 
     if (request.params.name === 'auth_status') {
-      return await this.handleAuthStatus(tokens);
+      return this.handleAuthStatus(tokens);
+    }
+
+    if (request.params.name === 'start_auth') {
+      return await this.handleStartAuth();
     }
 
     if (!tokens) {
@@ -578,19 +602,6 @@ export class GooglePhotosMCPCore {
         case 'search_media_by_filter':
           return await this.handleSearchMediaByFilter(request, tokens);
 
-        case 'share_album':
-        case 'unshare_album':
-        case 'join_shared_album':
-        case 'leave_shared_album':
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                error: 'FEATURE_DEPRECATED',
-                message: 'Google Photos sharing API was permanently removed on March 31, 2025. The photoslibrary.sharing scope is no longer valid. Sharing management is not possible via the Google Photos Library API.',
-              }),
-            }],
-          };
 
         case 'add_album_enrichment':
           return await this.handleAddAlbumEnrichment(request, tokens);
@@ -603,6 +614,12 @@ export class GooglePhotosMCPCore {
 
         case 'describe_filter_capabilities':
           return this.handleDescribeFilterCapabilities();
+
+        case 'create_picker_session':
+          return await this.handleCreatePickerSession(tokens);
+
+        case 'poll_picker_session':
+          return await this.handlePollPickerSession(request, tokens);
 
         default:
           throw new McpError(
@@ -658,7 +675,7 @@ export class GooglePhotosMCPCore {
           userId: tokens?.userId,
           message: tokens
             ? "Authenticated with Google Photos"
-            : "Not authenticated. Please visit http://localhost:3000/auth to authenticate."
+            : "Not authenticated. Use the start_auth tool to begin authentication."
         })
       }]
     };
@@ -667,9 +684,202 @@ export class GooglePhotosMCPCore {
   private enrichPermissionError(error: unknown): never {
     let msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('PERMISSION_DENIED')) {
-      msg += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+      msg += '\n\nUse the start_auth tool to re-authenticate and grant write permissions (appendonly scope required).';
     }
     throw new Error(msg, { cause: error });
+  }
+
+  /**
+   * Starts a temporary local HTTP server for Google OAuth authentication.
+   * Returns the auth URL immediately. The server runs in the background
+   * and auto-shuts down after successful auth or a 5-minute timeout.
+   * After authenticating, call auth_status to verify.
+   */
+  private async handleStartAuth() {
+    const config = (await import('../utils/config.js')).default;
+
+    // Parse the configured redirect URI to extract port and path
+    // This must match what's registered in Google Cloud Console
+    const configuredRedirectUri = config.google.redirectUri;
+    const parsedUri = new URL(configuredRedirectUri);
+    const port = parseInt(parsedUri.port, 10) || 3000;
+    const redirectUri = configuredRedirectUri;
+
+    const { randomBytes } = await import('crypto');
+    const { saveTokens } = await import('../auth/tokens.js');
+    const { parseIdToken, resolveUserIdentity } = await import('../utils/googleUser.js');
+    const express = (await import('express')).default;
+
+    const app = express();
+    const authStates = new Map<string, { expires: number }>();
+
+    // Auth start route — redirects browser to Google consent screen
+    app.get('/auth', (_req: import('express').Request, res: import('express').Response) => {
+      try {
+        const oauth2Client = createOAuthClient();
+        const state = randomBytes(20).toString('hex');
+        authStates.set(state, { expires: Date.now() + 10 * 60 * 1000 });
+
+        const authUrl = oauth2Client.generateAuthUrl({
+          access_type: 'offline',
+          scope: config.google.scopes,
+          state,
+          prompt: 'consent',
+          redirect_uri: redirectUri,
+        });
+        res.redirect(authUrl);
+      } catch (error) {
+        logger.error(`Auth error: ${error instanceof Error ? error.message : String(error)}`);
+        res.status(500).send('Authentication error');
+      }
+    });
+
+    // Callback route — exchanges code for tokens, saves them, shuts down
+    app.get('/auth/callback', async (req: import('express').Request, res: import('express').Response) => {
+      try {
+        const { code, state } = req.query;
+
+        if (!state || !authStates.has(state as string)) {
+          res.status(400).send('Invalid state parameter');
+          return;
+        }
+        authStates.delete(state as string);
+
+        if (!code) {
+          res.status(400).send('No authorization code received');
+          return;
+        }
+
+        const oauth2Client = createOAuthClient();
+        const { tokens } = await oauth2Client.getToken({
+          code: code as string,
+          redirect_uri: redirectUri,
+        });
+
+        if (!tokens.access_token || !tokens.refresh_token) {
+          res.status(500).send('Failed to get required tokens');
+          return;
+        }
+
+        const verifiedPayload = await parseIdToken(tokens.id_token, oauth2Client);
+        const identity = resolveUserIdentity(verifiedPayload);
+
+        await saveTokens(identity.userId, {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expiry_date: tokens.expiry_date || 0,
+          userEmail: identity.email,
+          userId: identity.userId,
+          retrievedAt: Date.now(),
+        });
+
+        logger.info(`Authentication successful for user ID: ${identity.userId}${identity.email ? ` (${identity.email})` : ''}`);
+
+        res.send(`
+          <html>
+            <head><title>Authentication Successful</title></head>
+            <body style="font-family: sans-serif; max-width: 500px; margin: 40px auto; text-align: center;">
+              <h1>✅ Authentication Successful</h1>
+              <p>You can close this tab. The MCP server is now authenticated with Google Photos.</p>
+            </body>
+          </html>
+        `);
+
+        // Auto-shutdown after response
+        setTimeout(() => httpServer?.close(), 1000);
+      } catch (error) {
+        logger.error(`Callback error: ${error instanceof Error ? error.message : String(error)}`);
+        res.status(500).send('Authentication callback error');
+      }
+    });
+
+    // Shut down any previously running auth server (same-process)
+    if (this._authServer) {
+      try {
+        this._authServer.close();
+        logger.info('Shut down previous auth server');
+      } catch { /* ignore */ }
+      this._authServer = null;
+    }
+    if (this._authTimeout) {
+      clearTimeout(this._authTimeout);
+      this._authTimeout = null;
+    }
+
+    // Kill any orphaned process on the port (cross-process cleanup)
+    // This handles the case where the MCP server restarted but the old
+    // auth server process survived as an orphan.
+    try {
+      const { execSync } = await import('child_process');
+      const pids = execSync(`lsof -i :${port} -P -n -t 2>/dev/null`, { encoding: 'utf8' })
+        .trim()
+        .split('\n')
+        .filter(Boolean);
+      if (pids.length > 0) {
+        for (const pid of pids) {
+          try {
+            process.kill(parseInt(pid, 10), 'SIGTERM');
+          } catch { /* process may have already exited */ }
+        }
+        // Brief wait for port to be released
+        await new Promise(resolve => setTimeout(resolve, 500));
+        logger.info(`Killed ${pids.length} orphaned process(es) on port ${port}`);
+      }
+    } catch {
+      // lsof not available or no process found — proceed normally
+    }
+
+    // Start the server and wait for it to be ready (catches EADDRINUSE)
+    const httpServer = await new Promise<http.Server>((resolve, reject) => {
+      const server: http.Server = app.listen(port, () => {
+        logger.info(`Temporary auth server started on port ${port}`);
+        resolve(server);
+      });
+      server.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'EADDRINUSE') {
+          reject(new Error(`Port ${port} is already in use. Please close any other servers on port ${port} and try again.`));
+        } else {
+          reject(err);
+        }
+      });
+    });
+
+    this._authServer = httpServer;
+
+    // Auto-shutdown after 5 minutes if no callback received
+    this._authTimeout = setTimeout(() => {
+      logger.warn('Auth server timed out after 5 minutes, shutting down');
+      httpServer.close();
+      this._authServer = null;
+      this._authTimeout = null;
+    }, 5 * 60 * 1000);
+    this._authTimeout.unref(); // Don't keep process alive just for this timer
+
+    httpServer.on('close', () => {
+      if (this._authTimeout) clearTimeout(this._authTimeout);
+      this._authServer = null;
+      this._authTimeout = null;
+      logger.info('Temporary auth server shut down');
+    });
+
+    const authUrl = `http://localhost:${port}/auth`;
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          message: 'Authentication server started. Open the URL below in your browser to authenticate with Google Photos.',
+          authUrl,
+          instructions: [
+            `1. Open this URL in your browser: ${authUrl}`,
+            '2. Sign in with your Google account and grant permissions',
+            '3. After success, close the browser tab',
+            '4. Call auth_status to verify authentication',
+          ],
+          note: 'The temporary server will auto-shutdown after 5 minutes or after successful authentication.',
+        }, null, 2),
+      }],
+    };
   }
 
   private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
@@ -959,12 +1169,14 @@ export class GooglePhotosMCPCore {
       filters.mediaTypeFilter = { mediaTypes: [args.mediaType] };
     }
 
-    const includedFeatures: string[] = [];
-    if (args.includeFavorites) includedFeatures.push('FAVORITES');
-    if (args.includeArchived) includedFeatures.push('INCLUDE_ARCHIVED');
-    if (includedFeatures.length > 0) {
-      filters.featureFilter = { includedFeatures };
+    // Feature filter — only FAVORITES goes into featureFilter
+    if (args.includeFavorites) {
+      filters.featureFilter = { includedFeatures: ['FAVORITES'] };
     }
+
+    // includeArchivedMedia is a requestBody root-level boolean per Google API spec,
+    // NOT a property inside filters — the API rejects it there.
+    const includeArchivedMedia = args.includeArchived ? true : undefined;
 
     const { photos, nextPageToken } = await searchPhotos(
       oauth2Client,
@@ -972,6 +1184,8 @@ export class GooglePhotosMCPCore {
         filters,
         pageSize: args.pageSize,
         pageToken: args.pageToken,
+        orderBy: args.orderBy,
+        includeArchivedMedia,
       },
     );
 
@@ -1014,7 +1228,7 @@ export class GooglePhotosMCPCore {
     } catch (error) {
       let errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('PERMISSION_DENIED')) {
-        errorMessage += '\n\nRe-authenticate at http://localhost:3000/auth to grant write permissions (appendonly scope required).';
+        errorMessage += '\n\nUse the start_auth tool to re-authenticate and grant write permissions (appendonly scope required).';
       }
       throw new Error(errorMessage, { cause: error });
     }
@@ -1029,31 +1243,28 @@ export class GooglePhotosMCPCore {
     const album = await createAlbum(oauth2Client, args.albumTitle);
     quotaManager.recordRequest(false);
 
-    // Upload each file, collecting per-file results (never abort on failure)
+    // Upload each file directly to the album (pass album.id), collecting per-file results
     const uploadResults: Array<{ fileName: string; success: boolean; mediaItemId?: string; error?: string }> = [];
     for (const file of args.files) {
       try {
         quotaManager.checkQuota(false);
-        const media = await uploadMedia(oauth2Client, file.filePath, file.mimeType, file.fileName, undefined, file.description);
+        // Pass album.id so Google adds the item to the album upon creation
+        const media = await uploadMedia(oauth2Client, file.filePath, file.mimeType, file.fileName, album.id, file.description);
         quotaManager.recordRequest(false);
-        uploadResults.push({ fileName: file.fileName, success: true, mediaItemId: (media as { id?: string }).id });
+        // uploadMedia returns { mediaItemId, uploadToken } — use the correct property
+        uploadResults.push({ fileName: file.fileName, success: true, mediaItemId: (media as { mediaItemId?: string }).mediaItemId });
       } catch (err) {
         uploadResults.push({ fileName: file.fileName, success: false, error: err instanceof Error ? err.message : String(err) });
       }
     }
 
-    // Batch-add successful uploads to the album
-    const successIds = uploadResults.filter(r => r.success && r.mediaItemId).map(r => r.mediaItemId as string);
-    if (successIds.length > 0) {
-      quotaManager.checkQuota(false);
-      await batchAddMediaItemsToAlbum(oauth2Client, album.id, successIds);
-      quotaManager.recordRequest(false);
-    }
+    // No need for batchAddMediaItemsToAlbum — album.id was passed to uploadMedia
+    const addedCount = uploadResults.filter(r => r.success && r.mediaItemId).length;
 
     return {
       content: [{
         type: 'text',
-        text: JSON.stringify({ album, uploadResults, addedToAlbum: successIds.length }, null, 2),
+        text: JSON.stringify({ album, uploadResults, addedToAlbum: addedCount }, null, 2),
       }],
     };
   }
@@ -1205,6 +1416,78 @@ Key rules:
       }
       throw new Error(errorMessage, { cause: error });
     }
+  }
+
+  /**
+   * Creates a new Picker session so the user can select photos from their full library.
+   */
+  private async handleCreatePickerSession(tokens: TokenData) {
+    quotaManager.checkQuota(false);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const session = await createPickerSession(oauth2Client);
+    quotaManager.recordRequest(false);
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          sessionId: session.id,
+          pickerUri: session.pickerUri,
+          instructions: [
+            '1. Open the pickerUri in a browser to select photos from your library.',
+            '2. After selecting, call poll_picker_session with the sessionId to check completion.',
+            '3. Once mediaItemsSet is true, poll_picker_session returns the selected items.',
+          ],
+        }, null, 2),
+      }],
+    };
+  }
+
+  /**
+   * Polls a Picker session, returning status or selected media items once ready.
+   */
+  private async handlePollPickerSession(request: CallToolRequest, tokens: TokenData) {
+    const args = validateArgs(request.params.arguments, pollPickerSessionSchema);
+    quotaManager.checkQuota(false);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const session = await getPickerSession(oauth2Client, args.sessionId);
+    quotaManager.recordRequest(false);
+
+    if (!session.mediaItemsSet) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            sessionId: session.id,
+            pickerUri: session.pickerUri,
+            mediaItemsSet: false,
+            message: 'User has not finished selecting photos yet. Call again after the user completes selection.',
+          }, null, 2),
+        }],
+      };
+    }
+
+    // Selection complete — fetch items
+    quotaManager.checkQuota(false);
+    const { photos, nextPageToken } = await listPickerSessionMediaItems(
+      oauth2Client,
+      args.sessionId,
+      args.pageSize ?? 25,
+      args.pageToken,
+    );
+    quotaManager.recordRequest(false);
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          sessionId: session.id,
+          mediaItemsSet: true,
+          count: photos.length,
+          nextPageToken,
+          photos: photos.map(this.formatPhoto),
+        }, null, 2),
+      }],
+    };
   }
 
   /**

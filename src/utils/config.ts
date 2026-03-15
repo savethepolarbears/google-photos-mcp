@@ -1,8 +1,15 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // Load environment variables
 dotenv.config();
+
+// Derive project root from this file's location (src/utils/config.ts or dist/utils/config.js -> ../../)
+// This is stable regardless of process.cwd(), which varies depending on how the MCP client launches the server.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 
 /**
  * Validates and sanitizes the token storage path to prevent path traversal attacks.
@@ -13,9 +20,8 @@ dotenv.config();
  * @throws Error if path escapes project directory
  */
 function validateTokenStoragePath(inputPath: string): string {
-  const projectRoot = process.cwd();
-  const resolvedPath = path.resolve(projectRoot, inputPath);
-  const relativePath = path.relative(projectRoot, resolvedPath);
+  const resolvedPath = path.resolve(PROJECT_ROOT, inputPath);
+  const relativePath = path.relative(PROJECT_ROOT, resolvedPath);
 
   // Prevent path traversal outside project directory
   if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
@@ -55,13 +61,14 @@ const config = {
      * Note: Access may be limited to app-created content after March 31, 2025 due to API changes.
      */
     scopes: [
-      // Note: As of March 31, 2025, photoslibrary.readonly scope is deprecated
-      // This will only allow access to app-created photos and albums
-      // For full library access, users should use the Google Photos Picker API
-      'https://www.googleapis.com/auth/photoslibrary.readonly',
-      // Alternative scope for 2025+ (requires app-created content only)
+      // Post-March 31, 2025: Only these three scopes remain valid for Library API.
+      // The deprecated photoslibrary, photoslibrary.readonly, and photoslibrary.sharing
+      // scopes have been removed and will return 403 PERMISSION_DENIED.
       'https://www.googleapis.com/auth/photoslibrary.appendonly',
+      'https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata',
       'https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata',
+      // Picker API: Required to let users select existing photos from their full library
+      'https://www.googleapis.com/auth/photospicker.mediaitems.readonly',
     ],
   },
 
@@ -101,7 +108,7 @@ const config = {
   tokens: {
     /** SQLite database file path for keyv token storage (validated to prevent path traversal) */
     dbPath: validateTokenStoragePath(
-      process.env.TOKEN_STORAGE_PATH || path.join(process.cwd(), 'tokens.db')
+      process.env.TOKEN_STORAGE_PATH || path.join(PROJECT_ROOT, 'tokens.db')
     ),
   },
 };

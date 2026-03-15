@@ -117,7 +117,7 @@ export interface SearchFilter {
   mediaTypeFilter?: {
     mediaTypes?: string[];
   };
-  /** Feature filter (favorites, archived, etc.) */
+  /** Feature filter (favorites) */
   featureFilter?: {
     includedFeatures?: string[];
   };
@@ -135,4 +135,8 @@ export interface SearchParams {
   pageSize?: number;
   /** Page token for pagination */
   pageToken?: string;
+  /** Order by field (requires dateFilter) */
+  orderBy?: string;
+  /** Whether to include archived media items (requestBody root-level per Google API spec) */
+  includeArchivedMedia?: boolean;
 }

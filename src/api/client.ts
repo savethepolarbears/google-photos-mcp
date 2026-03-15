@@ -201,6 +201,8 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           pageSize?: number;
           pageToken?: string;
           filters?: SearchFilter;
+          orderBy?: string;
+          includeArchivedMedia?: boolean;
         };
       }) => {
         try {
@@ -250,4 +252,53 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
  */
 export function getPhotoClient(auth: OAuth2Client) {
   return createPhotosLibraryClient(auth);
+}
+
+/**
+ * Axios instance configured for Google Photos Picker API
+ */
+const pickerApi = axios.create({
+  baseURL: 'https://photospicker.googleapis.com/v1',
+  timeout: 15000,
+});
+
+/**
+ * Creates a wrapper around the Google Photos Picker API.
+ * Provides methods for session management and media item retrieval.
+ *
+ * @param auth - The authenticated OAuth2 client (must have photospicker.mediaitems.readonly scope).
+ * @returns An object with methods for Picker API sessions.
+ */
+export function getPickerClient(auth: OAuth2Client) {
+  return {
+    sessions: {
+      create: async () => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await pickerApi.post('/sessions', {}, { headers });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'picker.sessions.create');
+        }
+      },
+      get: async (sessionId: string) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await pickerApi.get(`/sessions/${sessionId}`, { headers });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'picker.sessions.get');
+        }
+      },
+      listMediaItems: async (sessionId: string, params: { pageSize?: number; pageToken?: string } = {}) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await pickerApi.get(`/sessions/${sessionId}/mediaItems`, { params, headers });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, 'picker.sessions.listMediaItems');
+        }
+      },
+    },
+  };
 }

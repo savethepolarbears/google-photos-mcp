@@ -4,8 +4,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { randomUUID } from 'crypto';
 import {
-  ListResourcesRequestSchema,
-  ListPromptsRequestSchema,
   isInitializeRequest,
 } from '@modelcontextprotocol/sdk/types.js';
 import dotenv from 'dotenv';
@@ -16,8 +14,8 @@ import { quotaManager } from './utils/quotaManager.js';
 import { healthChecker } from './utils/healthCheck.js';
 import { GooglePhotosMCPCore } from './mcp/core.js';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables (quiet: true suppresses stdout messages that break STDIO MCP transport)
+dotenv.config({ quiet: true });
 
 /**
  * HTTP server implementation for Google Photos MCP.
@@ -223,22 +221,7 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     });
   }
 
-  /**
-   * Overrides parent to add resource and prompt handlers (required by HTTP mode)
-   */
-  protected registerHandlers(): void {
-    // Call parent to register tool handlers
-    super.registerHandlers();
 
-    // Add resource and prompt handlers (required by spec)
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-      resources: []
-    }));
-
-    this.server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-      prompts: []
-    }));
-  }
 
   /**
    * Starts the HTTP server
@@ -290,11 +273,8 @@ async function main() {
       if (!tokens) {
         logger.warn('=================================================================');
         logger.warn('WARNING: No authentication tokens found.');
-        logger.warn('To authenticate:');
-        logger.warn('1. Start the server in HTTP mode: npm start');
-        logger.warn('2. Visit http://localhost:3000/auth in your browser');
-        logger.warn('3. Follow the Google OAuth authentication flow');
-        logger.warn('4. After authenticating, restart the server in STDIO mode');
+        logger.warn('To authenticate, use the start_auth tool from your MCP client.');
+        logger.warn('It will provide a Google OAuth URL to complete authentication.');
         logger.warn('=================================================================');
       } else {
         logger.info('Found valid authentication tokens.');
@@ -308,15 +288,6 @@ async function main() {
       name: "google-photos-mcp",
       version: "0.1.0",
     });
-
-    // Register resource and prompt handlers
-    core.getServer().setRequestHandler(ListResourcesRequestSchema, async () => ({
-      resources: []
-    }));
-
-    core.getServer().setRequestHandler(ListPromptsRequestSchema, async () => ({
-      prompts: []
-    }));
 
     const transport = new StdioServerTransport();
     await core.getServer().connect(transport);
