@@ -202,6 +202,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           pageToken?: string;
           filters?: SearchFilter;
           orderBy?: string;
+          includeArchivedMedia?: boolean;
         };
       }) => {
         try {

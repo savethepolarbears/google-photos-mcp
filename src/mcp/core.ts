@@ -1174,10 +1174,9 @@ export class GooglePhotosMCPCore {
       filters.featureFilter = { includedFeatures: ['FAVORITES'] };
     }
 
-    // includeArchivedMedia is a root-level boolean per Google API spec, NOT a feature
-    if (args.includeArchived) {
-      filters.includeArchivedMedia = true;
-    }
+    // includeArchivedMedia is a requestBody root-level boolean per Google API spec,
+    // NOT a property inside filters — the API rejects it there.
+    const includeArchivedMedia = args.includeArchived ? true : undefined;
 
     const { photos, nextPageToken } = await searchPhotos(
       oauth2Client,
@@ -1186,6 +1185,7 @@ export class GooglePhotosMCPCore {
         pageSize: args.pageSize,
         pageToken: args.pageToken,
         orderBy: args.orderBy,
+        includeArchivedMedia,
       },
     );
 

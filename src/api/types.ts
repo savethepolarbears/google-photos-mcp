@@ -121,8 +121,6 @@ export interface SearchFilter {
   featureFilter?: {
     includedFeatures?: string[];
   };
-  /** Whether to include archived media items (root-level boolean per Google API spec) */
-  includeArchivedMedia?: boolean;
 }
 
 /**
@@ -139,4 +137,6 @@ export interface SearchParams {
   pageToken?: string;
   /** Order by field (requires dateFilter) */
   orderBy?: string;
+  /** Whether to include archived media items (requestBody root-level per Google API spec) */
+  includeArchivedMedia?: boolean;
 }

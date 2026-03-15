@@ -38,6 +38,7 @@ export async function searchPhotos(
           pageToken: params.pageToken,
           filters: params.filters,
           orderBy: params.orderBy,
+          includeArchivedMedia: params.includeArchivedMedia,
         },
       }),
       { maxRetries: 3, initialDelayMs: 1000 },
