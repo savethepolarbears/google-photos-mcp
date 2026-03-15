@@ -16,8 +16,8 @@ import { quotaManager } from './utils/quotaManager.js';
 import { healthChecker } from './utils/healthCheck.js';
 import { GooglePhotosMCPCore } from './mcp/core.js';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables (quiet: true suppresses stdout messages that break STDIO MCP transport)
+dotenv.config({ quiet: true });
 
 /**
  * HTTP server implementation for Google Photos MCP.
