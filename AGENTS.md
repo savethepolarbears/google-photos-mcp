@@ -36,6 +36,7 @@ npm run test:security # Security tests only
 **Google Photos MCP Server** is a Model Context Protocol (MCP) server exposing the Google Photos Library API and the Google Photos Picker API as tools for AI assistants (Claude, Gemini, etc.).
 
 ### Architecture Rules
+
 1. **Transport Layers**: The server supports both STDIO (for Claude Desktop) and Streamable HTTP (for Cursor and other clients).
 2. **Entry Points**: `src/index.ts` (HTTP) and `src/dxt-server.ts` (STDIO/DXT).
    - **Crucial Rule**: Entry points call `super.registerHandlers()` and **must not override** `ListResourcesRequestSchema` or `ListPromptsRequestSchema`.
@@ -51,11 +52,11 @@ npm run test:security # Security tests only
 
 ## 🛠️ Tech Stack & Details
 
-* **Language**: TypeScript 5.9+ (Strict Mode)
-* **Runtime**: Node.js 22.22+
-* **Package Manager**: npm 11.11+
-* **Frameworks/Libs**: Express 5.2+, @modelcontextprotocol/sdk 1.27+, Zod 3.25+, Vitest 3.2+
-* **Module System**: ESM (`"type": "module"` in package.json)
+- **Language**: TypeScript 5.9+ (Strict Mode)
+- **Runtime**: Node.js 22.22+
+- **Package Manager**: npm 11.11+
+- **Frameworks/Libs**: Express 5.2+, @modelcontextprotocol/sdk 1.27+, Zod 3.25+, Vitest 3.2+
+- **Module System**: ESM (`"type": "module"` in package.json)
 
 ---
 
@@ -113,7 +114,6 @@ npm run test:security # Security tests only
 
 ## 💡 Environment Gotchas & Notes
 
-* **Auth Dependency**: Authentication must be completed in HTTP mode first (`npm start`). Switch to STDIO mode (`npm run stdio`) only after tokens are acquired.
-* **Quota Management**: The project tracks Google Photos API quotas. Respect the `quotaManager` limits.
-* **Tokens**: Stored securely via OS keychain (`keytar` dependency via `src/auth/secureTokenStorage.ts`).
-
+- **Auth Dependency**: Authentication must be completed in HTTP mode first (`npm start`). Switch to STDIO mode (`npm run stdio`) only after tokens are acquired.
+- **Quota Management**: The project tracks Google Photos API quotas. Respect the `quotaManager` limits.
+- **Tokens**: Stored securely via OS keychain (`keytar` dependency via `src/auth/secureTokenStorage.ts`).

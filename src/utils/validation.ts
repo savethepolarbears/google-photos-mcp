@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import { z } from "zod";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Validates arguments against a Zod schema and converts validation errors to MCP errors.
@@ -15,23 +15,20 @@ import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
  * // args is now type-safe with SearchPhotosArgs type
  * ```
  */
-export function validateArgs<T>(
-  args: unknown,
-  schema: z.ZodSchema<T>
-): T {
+export function validateArgs<T>(args: unknown, schema: z.ZodSchema<T>): T {
   try {
     return schema.parse(args);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const issues = error.issues
-        .map(e => `${e.path.join('.')}: ${e.message}`)
-        .join(', ');
+        .map((e) => `${e.path.join(".")}: ${e.message}`)
+        .join(", ");
 
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${issues}`
+        `Invalid parameters: ${issues}`,
       );
     }
-    throw new McpError(ErrorCode.InvalidParams, 'Invalid parameters');
+    throw new McpError(ErrorCode.InvalidParams, "Invalid parameters");
   }
 }

@@ -1,7 +1,7 @@
-import { google } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
-import config from '../utils/config.js';
-import { TokenData } from '../auth/tokens.js';
+import { google } from "googleapis";
+import { OAuth2Client } from "google-auth-library";
+import config from "../utils/config.js";
+import { TokenData } from "../auth/tokens.js";
 
 /**
  * OAuth2 client management for Google Photos API
@@ -43,7 +43,9 @@ export function setupOAuthClient(tokens: TokenData): OAuth2Client {
  * @returns A Promise resolving to the headers object.
  * @throws Error if authorization fails.
  */
-export async function getAuthorizedHeaders(auth: OAuth2Client): Promise<Record<string, string>> {
+export async function getAuthorizedHeaders(
+  auth: OAuth2Client,
+): Promise<Record<string, string>> {
   try {
     const headers = await auth.getRequestHeaders();
     // google-auth-library v10 returns Headers object; convert to plain record

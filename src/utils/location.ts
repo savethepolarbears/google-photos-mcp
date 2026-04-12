@@ -1,6 +1,6 @@
-import axios from 'axios';
-import logger from './logger.js';
-import { nominatimRateLimiter } from './nominatimRateLimiter.js';
+import axios from "axios";
+import logger from "./logger.js";
+import { nominatimRateLimiter } from "./nominatimRateLimiter.js";
 
 /**
  * Minimal photo interface for location processing.
@@ -46,10 +46,12 @@ interface LocationData {
  * @param photo - The photo object from the Google Photos API.
  * @returns The extracted LocationData or null if no location info found.
  */
-function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null {
+function extractLocationFromPhoto(
+  photo: PhotoForLocation,
+): LocationData | null {
   try {
     if (
-      !photo || 
+      !photo ||
       !photo.mediaMetadata ||
       !photo.mediaMetadata.photo ||
       !photo.description
@@ -60,34 +62,46 @@ function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null 
     // The Google Photos API doesn't directly provide location coordinates
     // But sometimes the description may contain location information that we can extract
     // This is a fallback approach, not guaranteed to work for all photos
-    
+
     const locationData: LocationData = {
       approximate: true,
     };
 
     // Check description for potential location information
-    const description = photo.description || '';
-    
+    const description = photo.description || "";
+
     // Look for common location patterns in the description
     // This is very basic and won't work for many cases
-    const locationMatch = description.match(/Location:\s*([^,]+),?\s*([^,]+),?\s*([^,]+)/i);
+    const locationMatch = description.match(
+      /Location:\s*([^,]+),?\s*([^,]+),?\s*([^,]+)/i,
+    );
     if (locationMatch) {
       locationData.locationName = locationMatch[1].trim();
       locationData.city = locationMatch[2]?.trim();
       locationData.countryName = locationMatch[3]?.trim();
-      locationData.formattedAddress = [locationData.locationName, locationData.city, locationData.countryName]
+      locationData.formattedAddress = [
+        locationData.locationName,
+        locationData.city,
+        locationData.countryName,
+      ]
         .filter(Boolean)
-        .join(', ');
+        .join(", ");
     }
 
     // If we couldn't extract anything meaningful, return null
-    if (!locationData.locationName && !locationData.city && !locationData.countryName) {
+    if (
+      !locationData.locationName &&
+      !locationData.city &&
+      !locationData.countryName
+    ) {
       return null;
     }
 
     return locationData;
   } catch (error) {
-    logger.error(`Error extracting location data: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Error extracting location data: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
@@ -99,7 +113,9 @@ function extractLocationFromPhoto(photo: PhotoForLocation): LocationData | null 
  * @param locationName - The name of the location to search for (e.g., "Paris").
  * @returns A Promise resolving to LocationData or null if not found.
  */
-async function searchLocationByName(locationName: string): Promise<LocationData | null> {
+async function searchLocationByName(
+  locationName: string,
+): Promise<LocationData | null> {
   try {
     // Use a free geocoding API (Nominatim/OpenStreetMap)
     // Rate limited to 1 req/sec per Nominatim usage policy
@@ -107,13 +123,13 @@ async function searchLocationByName(locationName: string): Promise<LocationData 
       axios.get(`https://nominatim.openstreetmap.org/search`, {
         params: {
           q: locationName,
-          format: 'json',
-          limit: 1
+          format: "json",
+          limit: 1,
         },
         headers: {
-          'User-Agent': 'Google-Photos-MCP-Server/1.0'
-        }
-      })
+          "User-Agent": "Google-Photos-MCP-Server/1.0",
+        },
+      }),
     );
 
     if (response.data && response.data.length > 0) {
@@ -121,18 +137,23 @@ async function searchLocationByName(locationName: string): Promise<LocationData 
       return {
         latitude: parseFloat(result.lat),
         longitude: parseFloat(result.lon),
-        locationName: result.display_name.split(',')[0],
+        locationName: result.display_name.split(",")[0],
         formattedAddress: result.display_name,
         countryName: result.address?.country,
-        city: result.address?.city || result.address?.town || result.address?.village,
+        city:
+          result.address?.city ||
+          result.address?.town ||
+          result.address?.village,
         region: result.address?.state,
-        approximate: true
+        approximate: true,
       };
     }
 
     return null;
   } catch (error) {
-    logger.error(`Error searching location by name: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Error searching location by name: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
@@ -149,13 +170,16 @@ async function searchLocationByName(locationName: string): Promise<LocationData 
  * @param lng - Longitude coordinate.
  * @returns A Promise resolving to LocationData or null on error or empty response.
  */
-export async function reverseGeocode(lat: number, lng: number): Promise<LocationData | null> {
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<LocationData | null> {
   try {
     const response = await nominatimRateLimiter.throttle(async () =>
-      axios.get('https://nominatim.openstreetmap.org/reverse', {
-        params: { lat, lon: lng, format: 'json' },
-        headers: { 'User-Agent': 'Google-Photos-MCP-Server/1.0' },
-      })
+      axios.get("https://nominatim.openstreetmap.org/reverse", {
+        params: { lat, lon: lng, format: "json" },
+        headers: { "User-Agent": "Google-Photos-MCP-Server/1.0" },
+      }),
     );
 
     const r = response.data;
@@ -166,7 +190,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<Location
     return {
       latitude: lat,
       longitude: lng,
-      locationName: r.name || r.display_name?.split(',')[0],
+      locationName: r.name || r.display_name?.split(",")[0],
       formattedAddress: r.display_name,
       countryName: r.address?.country,
       city: r.address?.city || r.address?.town || r.address?.village,
@@ -174,7 +198,9 @@ export async function reverseGeocode(lat: number, lng: number): Promise<Location
       approximate: false,
     };
   } catch (error) {
-    logger.error(`Error reverse geocoding (${lat}, ${lng}): ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Error reverse geocoding (${lat}, ${lng}): ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
@@ -189,11 +215,12 @@ export async function reverseGeocode(lat: number, lng: number): Promise<Location
  */
 export async function getPhotoLocation(
   photo: PhotoForLocation,
-  performGeocoding: boolean = false
+  performGeocoding: boolean = false,
 ): Promise<LocationData | null> {
   try {
     // Try to extract location from photo metadata first; fall back to photo.locationData
-    const locationData = extractLocationFromPhoto(photo) ?? photo.locationData ?? null;
+    const locationData =
+      extractLocationFromPhoto(photo) ?? photo.locationData ?? null;
 
     // If we have a location name but want coordinates, try forward geocoding
     if (
@@ -205,8 +232,10 @@ export async function getPhotoLocation(
       const searchQuery = [
         locationData.locationName,
         locationData.city,
-        locationData.countryName
-      ].filter(Boolean).join(', ');
+        locationData.countryName,
+      ]
+        .filter(Boolean)
+        .join(", ");
 
       const geocodedLocation = await searchLocationByName(searchQuery);
 
@@ -220,7 +249,7 @@ export async function getPhotoLocation(
           countryName: locationData.countryName || geocodedLocation.countryName,
           region: locationData.region || geocodedLocation.region,
           // Always mark as approximate
-          approximate: true
+          approximate: true,
         };
       }
     }
@@ -235,7 +264,10 @@ export async function getPhotoLocation(
       !locationData.city &&
       !locationData.countryName
     ) {
-      const reverseResult = await reverseGeocode(locationData.latitude, locationData.longitude);
+      const reverseResult = await reverseGeocode(
+        locationData.latitude,
+        locationData.longitude,
+      );
       if (reverseResult) {
         return {
           ...locationData,
@@ -252,7 +284,9 @@ export async function getPhotoLocation(
 
     return locationData;
   } catch (error) {
-    logger.error(`Error getting photo location: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(
+      `Error getting photo location: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }

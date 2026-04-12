@@ -1,4 +1,4 @@
-import { PhotoItem } from '../types.js';
+import { PhotoItem } from "../types.js";
 
 /**
  * Search token matching logic for client-side photo filtering
@@ -15,7 +15,7 @@ export function buildSearchTokens(query: string): string[] {
   return query
     .toLowerCase()
     .split(/\s+/)
-    .flatMap((token) => token.split(':'))
+    .flatMap((token) => token.split(":"))
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
 }
@@ -28,7 +28,10 @@ export function buildSearchTokens(query: string): string[] {
  * @param tokens - The search tokens.
  * @returns True if at least one token matches, false otherwise.
  */
-export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean {
+export function matchesSearchTokens(
+  photo: PhotoItem,
+  tokens: string[],
+): boolean {
   if (tokens.length === 0) {
     return true;
   }
@@ -81,7 +84,10 @@ export function matchesSearchTokens(photo: PhotoItem, tokens: string[]): boolean
  * @param tokens - The search tokens.
  * @returns The filtered list of photos, or original list if no matches found.
  */
-export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): PhotoItem[] {
+export function filterPhotosByTokens(
+  photos: PhotoItem[],
+  tokens: string[],
+): PhotoItem[] {
   if (tokens.length === 0) {
     return photos;
   }
@@ -103,7 +109,10 @@ export function filterPhotosByTokens(photos: PhotoItem[], tokens: string[]): Pho
  * @param locationQuery - The location string to search for.
  * @returns True if the photo's location data matches the query, false otherwise.
  */
-export function matchesLocationQuery(photo: PhotoItem, locationQuery: string): boolean {
+export function matchesLocationQuery(
+  photo: PhotoItem,
+  locationQuery: string,
+): boolean {
   if (!locationQuery) {
     return true;
   }

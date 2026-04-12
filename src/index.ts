@@ -1,18 +1,16 @@
 #!/usr/bin/env node
-import express, { Express } from 'express';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { randomUUID } from 'crypto';
-import {
-  isInitializeRequest,
-} from '@modelcontextprotocol/sdk/types.js';
-import dotenv from 'dotenv';
-import { setupAuthRoutes } from './auth/routes.js';
-import { getFirstAvailableTokens } from './auth/tokens.js';
-import logger from './utils/logger.js';
-import { quotaManager } from './utils/quotaManager.js';
-import { healthChecker } from './utils/healthCheck.js';
-import { GooglePhotosMCPCore } from './mcp/core.js';
+import express, { Express } from "express";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { randomUUID } from "crypto";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import dotenv from "dotenv";
+import { setupAuthRoutes } from "./auth/routes.js";
+import { getFirstAvailableTokens } from "./auth/tokens.js";
+import logger from "./utils/logger.js";
+import { quotaManager } from "./utils/quotaManager.js";
+import { healthChecker } from "./utils/healthCheck.js";
+import { GooglePhotosMCPCore } from "./mcp/core.js";
 
 // Load environment variables (quiet: true suppresses stdout messages that break STDIO MCP transport)
 dotenv.config({ quiet: true });
@@ -47,20 +45,20 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     // DNS rebinding protection (MCP security requirement)
     // Validates Host header to prevent malicious websites from accessing local server
     this.app.use((req, res, next) => {
-      const host = req.get('host');
-      const port = process.env.PORT || '3000';
+      const host = req.get("host");
+      const port = process.env.PORT || "3000";
       const allowedHosts = [
         `localhost:${port}`,
         `127.0.0.1:${port}`,
         `[::1]:${port}`,
-        'localhost',
-        '127.0.0.1',
-        '[::1]'
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
       ];
 
       if (host && !allowedHosts.includes(host)) {
         logger.warn(`Rejected request with invalid Host header: ${host}`);
-        return res.status(403).send('Forbidden: Invalid Host header');
+        return res.status(403).send("Forbidden: Invalid Host header");
       }
 
       next();
@@ -75,7 +73,7 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     this.authCleanup = setupAuthRoutes(this.app);
 
     // Home page
-    this.app.get('/', (req, res) => {
+    this.app.get("/", (req, res) => {
       res.send(`
         <html>
           <head>
@@ -125,9 +123,9 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
     });
 
     // Streamable HTTP endpoint for MCP communication (2025-06-18 spec)
-    this.app.post('/mcp', async (req, res) => {
+    this.app.post("/mcp", async (req, res) => {
       try {
-        const sessionId = req.headers['mcp-session-id'] as string | undefined;
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
         let transport: StreamableHTTPServerTransport | undefined;
 
         if (sessionId) {
@@ -147,7 +145,7 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
             onsessionclosed: (id) => {
               this.transports.delete(id);
               logger.info(`MCP session closed: ${id}`);
-            }
+            },
           });
 
           newTransport.onclose = () => {
@@ -160,9 +158,12 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
           transport = newTransport;
         } else {
           return res.status(400).json({
-            jsonrpc: '2.0',
-            error: { code: -32000, message: 'Invalid session or missing initialize request' },
-            id: null
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "Invalid session or missing initialize request",
+            },
+            id: null,
           });
         }
 
@@ -170,58 +171,58 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
           await transport.handleRequest(req, res, req.body);
         }
       } catch (error) {
-        logger.error(`Error handling MCP request: ${error instanceof Error ? error.message : String(error)}`);
+        logger.error(
+          `Error handling MCP request: ${error instanceof Error ? error.message : String(error)}`,
+        );
         if (!res.headersSent) {
-          res.status(500).send('Internal server error');
+          res.status(500).send("Internal server error");
         }
       }
     });
 
     // GET endpoint for Streamable HTTP (required by spec)
-    this.app.get('/mcp', async (req, res) => {
-      const sessionId = req.headers['mcp-session-id'] as string;
+    this.app.get("/mcp", async (req, res) => {
+      const sessionId = req.headers["mcp-session-id"] as string;
       const transport = this.transports.get(sessionId);
 
       if (transport) {
         await transport.handleRequest(req, res);
       } else {
-        res.status(400).send('Invalid or missing session ID');
+        res.status(400).send("Invalid or missing session ID");
       }
     });
 
     // DELETE endpoint for session cleanup (required by spec)
-    this.app.delete('/mcp', async (req, res) => {
-      const sessionId = req.headers['mcp-session-id'] as string;
+    this.app.delete("/mcp", async (req, res) => {
+      const sessionId = req.headers["mcp-session-id"] as string;
       const transport = this.transports.get(sessionId);
 
       if (transport) {
         await transport.handleRequest(req, res);
       } else {
-        res.status(400).send('Invalid or missing session ID');
+        res.status(400).send("Invalid or missing session ID");
       }
     });
 
     // Health check endpoints
-    this.app.get('/health', async (req, res) => {
+    this.app.get("/health", async (req, res) => {
       const health = await healthChecker.check({ detailed: false });
-      const statusCode = health.status === 'healthy' ? 200 : 503;
+      const statusCode = health.status === "healthy" ? 200 : 503;
       res.status(statusCode).json({ status: health.status });
     });
 
-    this.app.get('/health/detailed', async (req, res) => {
+    this.app.get("/health/detailed", async (req, res) => {
       const health = await healthChecker.check({ detailed: true });
       res.json(health);
     });
 
-    this.app.get('/metrics', (req, res) => {
+    this.app.get("/metrics", (req, res) => {
       res.json({
         timestamp: new Date().toISOString(),
         quota: quotaManager.getStats(),
       });
     });
   }
-
-
 
   /**
    * Starts the HTTP server
@@ -235,7 +236,9 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
         logger.info(`HTTP server running on port ${port}`);
         logger.info(`MCP endpoint available at: http://localhost:${port}/mcp`);
         logger.info(`Visit http://localhost:${port} for the home page`);
-        logger.info(`Visit http://localhost:${port}/auth to authenticate with Google Photos`);
+        logger.info(
+          `Visit http://localhost:${port}/auth to authenticate with Google Photos`,
+        );
         resolve();
       });
     });
@@ -260,27 +263,35 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
  * @returns A promise indicating completion of setup
  */
 async function main() {
-  const useStdio = process.argv.includes('--stdio');
+  const useStdio = process.argv.includes("--stdio");
 
   if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)
     // In STDIO mode, all logging must go to stderr to avoid breaking the MCP protocol
-    logger.info('Starting Google Photos MCP server in STDIO mode');
+    logger.info("Starting Google Photos MCP server in STDIO mode");
 
     // Check token existence
     try {
       const tokens = await getFirstAvailableTokens();
       if (!tokens) {
-        logger.warn('=================================================================');
-        logger.warn('WARNING: No authentication tokens found.');
-        logger.warn('To authenticate, use the start_auth tool from your MCP client.');
-        logger.warn('It will provide a Google OAuth URL to complete authentication.');
-        logger.warn('=================================================================');
+        logger.warn(
+          "=================================================================",
+        );
+        logger.warn("WARNING: No authentication tokens found.");
+        logger.warn(
+          "To authenticate, use the start_auth tool from your MCP client.",
+        );
+        logger.warn(
+          "It will provide a Google OAuth URL to complete authentication.",
+        );
+        logger.warn(
+          "=================================================================",
+        );
       } else {
-        logger.info('Found valid authentication tokens.');
+        logger.info("Found valid authentication tokens.");
       }
     } catch (error) {
-      logger.error('Error checking tokens:', error);
+      logger.error("Error checking tokens:", error);
     }
 
     // Use the base GooglePhotosMCPCore for STDIO mode
@@ -291,30 +302,30 @@ async function main() {
 
     const transport = new StdioServerTransport();
     await core.getServer().connect(transport);
-    logger.info('Google Photos MCP server connected via STDIO');
+    logger.info("Google Photos MCP server connected via STDIO");
   } else {
     // Run in HTTP mode
     const httpServer = new GooglePhotosHTTPServer();
 
     // Handle graceful shutdown
-    process.on('SIGTERM', () => {
+    process.on("SIGTERM", () => {
       httpServer.shutdown();
       process.exit(0);
     });
 
-    const port = parseInt(process.env.PORT || '3000', 10);
+    const port = parseInt(process.env.PORT || "3000", 10);
     await httpServer.start(port);
   }
 }
 
 // Handle errors
-process.on('uncaughtException', (error) => {
+process.on("uncaughtException", (error) => {
   logger.error(`Uncaught exception: ${error.message}`);
-  logger.error(error.stack || '');
+  logger.error(error.stack || "");
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on("unhandledRejection", (reason) => {
   logger.error(`Unhandled rejection: ${reason}`);
   process.exit(1);
 });

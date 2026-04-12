@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ErrorCode,
   McpError,
   CallToolRequest,
-} from '@modelcontextprotocol/sdk/types.js';
-import dotenv from 'dotenv';
-import logger from './utils/logger.js';
-import { GooglePhotosMCPCore } from './mcp/core.js';
+} from "@modelcontextprotocol/sdk/types.js";
+import dotenv from "dotenv";
+import logger from "./utils/logger.js";
+import { GooglePhotosMCPCore } from "./mcp/core.js";
 
 dotenv.config();
 
@@ -42,39 +42,44 @@ class GooglePhotosDXTServer extends GooglePhotosMCPCore {
     super.registerHandlers();
 
     // 2. Override ONLY the CallToolRequest handler to inject the DXT timeout logic
-    this.server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
-      const requestId = `${Date.now()}-${Math.random()}`;
+    this.server.setRequestHandler(
+      CallToolRequestSchema,
+      async (request: CallToolRequest) => {
+        const requestId = `${Date.now()}-${Math.random()}`;
 
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          const timeout = setTimeout(() => {
-            reject(new McpError(
-              ErrorCode.InternalError,
-              `Tool execution timeout after ${DXT_TIMEOUT}ms`
-            ));
-          }, DXT_TIMEOUT);
-          this.timeouts.set(requestId, timeout);
-        });
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            const timeout = setTimeout(() => {
+              reject(
+                new McpError(
+                  ErrorCode.InternalError,
+                  `Tool execution timeout after ${DXT_TIMEOUT}ms`,
+                ),
+              );
+            }, DXT_TIMEOUT);
+            this.timeouts.set(requestId, timeout);
+          });
 
-        // Execute the parent's actual tool handler
-        const resultPromise = super.handleCallTool(request);
-        const result = await Promise.race([resultPromise, timeoutPromise]);
+          // Execute the parent's actual tool handler
+          const resultPromise = super.handleCallTool(request);
+          const result = await Promise.race([resultPromise, timeoutPromise]);
 
-        this.clearTimeout(requestId);
-        return result;
-      } catch (error) {
-        this.clearTimeout(requestId);
-        logger.error(`[DXT Error] Tool: ${request.params.name}`, error);
+          this.clearTimeout(requestId);
+          return result;
+        } catch (error) {
+          this.clearTimeout(requestId);
+          logger.error(`[DXT Error] Tool: ${request.params.name}`, error);
 
-        if (error instanceof McpError) {
-          throw error;
+          if (error instanceof McpError) {
+            throw error;
+          }
+          throw new McpError(
+            ErrorCode.InternalError,
+            `Failed to execute tool: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
-        throw new McpError(
-          ErrorCode.InternalError,
-          `Failed to execute tool: ${error instanceof Error ? error.message : String(error)}`
-        );
-      }
-    });
+      },
+    );
   }
 
   /**
@@ -98,26 +103,26 @@ class GooglePhotosDXTServer extends GooglePhotosMCPCore {
    */
   async start(): Promise<void> {
     try {
-      logger.info('[DXT] Starting Google Photos MCP Server in STDIO mode');
+      logger.info("[DXT] Starting Google Photos MCP Server in STDIO mode");
 
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
-      logger.info('[DXT] Google Photos MCP server running on stdio');
+      logger.info("[DXT] Google Photos MCP server running on stdio");
     } catch (error) {
-      logger.error('[DXT] Failed to start server:', error);
+      logger.error("[DXT] Failed to start server:", error);
       throw error;
     }
   }
 }
 
 // Error handling
-process.on('uncaughtException', (error) => {
+process.on("uncaughtException", (error) => {
   logger.error(`[DXT] Uncaught exception: ${error.message}`);
-  logger.error(error.stack || '');
+  logger.error(error.stack || "");
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on("unhandledRejection", (reason) => {
   logger.error(`[DXT] Unhandled rejection: ${reason}`);
   process.exit(1);
 });
@@ -134,5 +139,3 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   });
 }
-
-

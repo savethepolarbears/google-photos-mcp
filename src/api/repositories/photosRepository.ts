@@ -1,12 +1,12 @@
-import { OAuth2Client } from 'google-auth-library';
-import axios from 'axios';
-import { readFile } from 'fs/promises';
-import { PhotoItem, SearchParams, NewMediaItemResult } from '../types.js';
-import { getPhotoClient, getPickerClient, toError } from '../client.js';
-import { enrichPhotosWithLocation } from '../enrichment/locationEnricher.js';
-import { getPhotoLocation } from '../../utils/location.js';
-import { withRetry } from '../../utils/retry.js';
-import logger from '../../utils/logger.js';
+import { OAuth2Client } from "google-auth-library";
+import axios from "axios";
+import { readFile } from "fs/promises";
+import { PhotoItem, SearchParams, NewMediaItemResult } from "../types.js";
+import { getPhotoClient, getPickerClient, toError } from "../client.js";
+import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
+import { getPhotoLocation } from "../../utils/location.js";
+import { withRetry } from "../../utils/retry.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Photo repository for CRUD operations
@@ -31,18 +31,19 @@ export async function searchPhotos(
 
     // Apply retry logic per Google Photos API best practices
     const response = await withRetry(
-      async () => await photosClient.mediaItems.search({
-        requestBody: {
-          albumId: params.albumId,
-          pageSize: params.pageSize ?? 25,
-          pageToken: params.pageToken,
-          filters: params.filters,
-          orderBy: params.orderBy,
-          includeArchivedMedia: params.includeArchivedMedia,
-        },
-      }),
+      async () =>
+        await photosClient.mediaItems.search({
+          requestBody: {
+            albumId: params.albumId,
+            pageSize: params.pageSize ?? 25,
+            pageToken: params.pageToken,
+            filters: params.filters,
+            orderBy: params.orderBy,
+            includeArchivedMedia: params.includeArchivedMedia,
+          },
+        }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'search photos'
+      "search photos",
     );
 
     const photos = (response.data.mediaItems ?? []) as PhotoItem[];
@@ -53,9 +54,9 @@ export async function searchPhotos(
       nextPageToken: response.data.nextPageToken,
     };
   } catch (error) {
-    const message = toError(error, 'search photos').message;
+    const message = toError(error, "search photos").message;
     logger.error(`Failed to search photos: ${message}`);
-    throw new Error('Failed to search photos', { cause: error });
+    throw new Error("Failed to search photos", { cause: error });
   }
 }
 
@@ -88,9 +89,9 @@ export async function listAlbumPhotos(
       includeLocation,
     );
   } catch (error) {
-    const message = toError(error, 'list album photos').message;
+    const message = toError(error, "list album photos").message;
     logger.error(`Failed to list album photos: ${message}`);
-    throw new Error('Failed to list album photos', { cause: error });
+    throw new Error("Failed to list album photos", { cause: error });
   }
 }
 
@@ -113,16 +114,16 @@ export async function listMediaItems(
     const response = await withRetry(
       async () => await photosClient.mediaItems.list({ pageSize, pageToken }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'list media items'
+      "list media items",
     );
     return {
       photos: (response.data.mediaItems ?? []) as PhotoItem[],
       nextPageToken: response.data.nextPageToken,
     };
   } catch (error) {
-    const message = toError(error, 'list media items').message;
+    const message = toError(error, "list media items").message;
     logger.error(`Failed to list media items: ${message}`);
-    throw new Error('Failed to list media items', { cause: error });
+    throw new Error("Failed to list media items", { cause: error });
   }
 }
 
@@ -145,15 +146,16 @@ export async function getPhoto(
 
     // Apply retry logic per Google Photos API best practices
     const response = await withRetry(
-      async () => await photosClient.mediaItems.get({
-        mediaItemId: photoId,
-      }),
+      async () =>
+        await photosClient.mediaItems.get({
+          mediaItemId: photoId,
+        }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'get photo'
+      "get photo",
     );
 
     if (!response.data) {
-      throw new Error('Photo not found');
+      throw new Error("Photo not found");
     }
 
     const photo = response.data as PhotoItem;
@@ -173,9 +175,9 @@ export async function getPhoto(
 
     return photo;
   } catch (error) {
-    const message = toError(error, 'get photo').message;
+    const message = toError(error, "get photo").message;
     logger.error(`Failed to get photo: ${message}`);
-    throw new Error('Failed to get photo', { cause: error });
+    throw new Error("Failed to get photo", { cause: error });
   }
 }
 
@@ -188,17 +190,21 @@ export async function getPhoto(
  */
 export async function getPhotoAsBase64(url: string): Promise<string> {
   if (!url) {
-    throw new Error('Invalid photo URL');
+    throw new Error("Invalid photo URL");
   }
 
   try {
     const fullResUrl = `${url}=d`;
-    const response = await axios.get<ArrayBuffer>(fullResUrl, { responseType: 'arraybuffer' });
+    const response = await axios.get<ArrayBuffer>(fullResUrl, {
+      responseType: "arraybuffer",
+    });
     const buffer = Buffer.from(response.data);
-    return buffer.toString('base64');
+    return buffer.toString("base64");
   } catch (error) {
-    logger.error(`Failed to download photo: ${error instanceof Error ? error.message : String(error)}`);
-    throw new Error('Failed to download photo', { cause: error });
+    logger.error(
+      `Failed to download photo: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw new Error("Failed to download photo", { cause: error });
   }
 }
 
@@ -219,9 +225,10 @@ export async function uploadMedia(
     const photosClient = getPhotoClient(oauth2Client);
 
     const { uploadToken } = await withRetry(
-      async () => await photosClient.uploads.upload({ bytes, mimeType, fileName }),
+      async () =>
+        await photosClient.uploads.upload({ bytes, mimeType, fileName }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'upload media bytes'
+      "upload media bytes",
     );
 
     const result = await photosClient.mediaItems.batchCreate({
@@ -231,12 +238,14 @@ export async function uploadMedia(
 
     const mediaItemResult = result.data.newMediaItemResults?.[0];
     return {
-      mediaItemId: mediaItemResult?.mediaItem?.id ?? '',
+      mediaItemId: mediaItemResult?.mediaItem?.id ?? "",
       uploadToken,
     };
   } catch (error) {
-    logger.error(`Failed to upload media: ${error instanceof Error ? error.message : String(error)}`);
-    throw new Error('Failed to upload media', { cause: error });
+    logger.error(
+      `Failed to upload media: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw new Error("Failed to upload media", { cause: error });
   }
 }
 
@@ -245,22 +254,29 @@ export async function uploadMedia(
  */
 export async function batchCreateMediaItems(
   oauth2Client: OAuth2Client,
-  newMediaItems: Array<{ uploadToken: string; fileName?: string; description?: string }>,
+  newMediaItems: Array<{
+    uploadToken: string;
+    fileName?: string;
+    description?: string;
+  }>,
   albumId?: string,
 ): Promise<{ mediaItems: NewMediaItemResult[] }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
     const response = await withRetry(
-      async () => await photosClient.mediaItems.batchCreate({ newMediaItems, albumId }),
+      async () =>
+        await photosClient.mediaItems.batchCreate({ newMediaItems, albumId }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'batch create media items'
+      "batch create media items",
     );
 
     return { mediaItems: response.data.newMediaItemResults || [] };
   } catch (error) {
-    logger.error(`Failed to batch create media items: ${error instanceof Error ? error.message : String(error)}`);
-    throw new Error('Failed to batch create media items', { cause: error });
+    logger.error(
+      `Failed to batch create media items: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    throw new Error("Failed to batch create media items", { cause: error });
   }
 }
 
@@ -277,7 +293,7 @@ export async function createPickerSession(
   const response = await withRetry(
     () => client.sessions.create(),
     { maxRetries: 3, initialDelayMs: 1000 },
-    'create picker session',
+    "create picker session",
   );
   return response.data as { id: string; pickerUri: string };
 }
@@ -293,9 +309,13 @@ export async function getPickerSession(
   const response = await withRetry(
     () => client.sessions.get(sessionId),
     { maxRetries: 3, initialDelayMs: 1000 },
-    'get picker session',
+    "get picker session",
   );
-  return response.data as { id: string; pickerUri: string; mediaItemsSet: boolean };
+  return response.data as {
+    id: string;
+    pickerUri: string;
+    mediaItemsSet: boolean;
+  };
 }
 
 /**
@@ -312,17 +332,17 @@ export async function listPickerSessionMediaItems(
   const response = await withRetry(
     () => client.sessions.listMediaItems(sessionId, { pageSize, pageToken }),
     { maxRetries: 3, initialDelayMs: 1000 },
-    'list picker media',
+    "list picker media",
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const items: any[] = response.data.mediaItems || [];
 
   const photos = items.map((item) => ({
-    id: item.mediaFile?.mediaFileId ?? item.id ?? '',
-    filename: item.mediaFile?.filename ?? '',
-    baseUrl: item.mediaFile?.baseUrl ?? '',
-    productUrl: item.mediaFile?.baseUrl ?? '',
+    id: item.mediaFile?.mediaFileId ?? item.id ?? "",
+    filename: item.mediaFile?.filename ?? "",
+    baseUrl: item.mediaFile?.baseUrl ?? "",
+    productUrl: item.mediaFile?.baseUrl ?? "",
     mimeType: item.mediaFile?.mimeType,
   })) as PhotoItem[];
 

@@ -1,4 +1,4 @@
-import { SearchFilter } from '../types.js';
+import { SearchFilter } from "../types.js";
 
 /**
  * Builds search filters from natural language queries
@@ -14,27 +14,27 @@ import { SearchFilter } from '../types.js';
 export function buildFiltersFromQuery(query: string): SearchFilter {
   const filters: SearchFilter = {};
   const categoriesMap: Record<string, string> = {
-    landscapes: 'LANDSCAPES',
-    selfie: 'SELFIES',
-    selfies: 'SELFIES',
-    portrait: 'PORTRAITS',
-    portraits: 'PORTRAITS',
-    animal: 'ANIMALS',
-    animals: 'ANIMALS',
-    pet: 'PETS',
-    pets: 'PETS',
-    flower: 'FLOWERS',
-    flowers: 'FLOWERS',
-    food: 'FOOD',
-    travel: 'TRAVEL',
-    city: 'CITYSCAPES',
-    cityscape: 'CITYSCAPES',
-    landmark: 'LANDMARKS',
-    document: 'DOCUMENTS',
-    documents: 'DOCUMENTS',
-    screenshot: 'SCREENSHOTS',
-    screenshots: 'SCREENSHOTS',
-    utility: 'UTILITY',
+    landscapes: "LANDSCAPES",
+    selfie: "SELFIES",
+    selfies: "SELFIES",
+    portrait: "PORTRAITS",
+    portraits: "PORTRAITS",
+    animal: "ANIMALS",
+    animals: "ANIMALS",
+    pet: "PETS",
+    pets: "PETS",
+    flower: "FLOWERS",
+    flowers: "FLOWERS",
+    food: "FOOD",
+    travel: "TRAVEL",
+    city: "CITYSCAPES",
+    cityscape: "CITYSCAPES",
+    landmark: "LANDMARKS",
+    document: "DOCUMENTS",
+    documents: "DOCUMENTS",
+    screenshot: "SCREENSHOTS",
+    screenshots: "SCREENSHOTS",
+    utility: "UTILITY",
   };
 
   const includedCategories = new Set<string>();
@@ -54,7 +54,8 @@ export function buildFiltersFromQuery(query: string): SearchFilter {
   // Date parsing
   const yearRegex = /\b(20\d{2})\b/g;
   const yearMonthRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])\b/g;
-  const dateRegex = /\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])\b/g;
+  const dateRegex =
+    /\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12][0-9]|3[01])\b/g;
 
   const dates: Array<{ year: number; month?: number; day?: number }> = [];
   const fullDateMatches = [...query.matchAll(dateRegex)];
@@ -92,12 +93,12 @@ export function buildFiltersFromQuery(query: string): SearchFilter {
   }
 
   // Media type parsing
-  const mediaTypes = new Set<'ALL_MEDIA' | 'VIDEO' | 'PHOTO'>();
-  if (lowerQuery.includes('video')) {
-    mediaTypes.add('VIDEO');
+  const mediaTypes = new Set<"ALL_MEDIA" | "VIDEO" | "PHOTO">();
+  if (lowerQuery.includes("video")) {
+    mediaTypes.add("VIDEO");
   }
-  if (lowerQuery.includes('photo') || lowerQuery.includes('image')) {
-    mediaTypes.add('PHOTO');
+  if (lowerQuery.includes("photo") || lowerQuery.includes("image")) {
+    mediaTypes.add("PHOTO");
   }
 
   if (mediaTypes.size > 0) {
@@ -106,8 +107,8 @@ export function buildFiltersFromQuery(query: string): SearchFilter {
 
   // Feature parsing
   const includedFeatures: string[] = [];
-  if (lowerQuery.includes('favorite')) {
-    includedFeatures.push('FAVORITES');
+  if (lowerQuery.includes("favorite")) {
+    includedFeatures.push("FAVORITES");
   }
   if (includedFeatures.length > 0) {
     filters.featureFilter = { includedFeatures };
@@ -120,7 +121,7 @@ export function buildFiltersFromQuery(query: string): SearchFilter {
     !filters.mediaTypeFilter &&
     !filters.featureFilter
   ) {
-    filters.mediaTypeFilter = { mediaTypes: ['ALL_MEDIA'] };
+    filters.mediaTypeFilter = { mediaTypes: ["ALL_MEDIA"] };
   }
 
   return filters;

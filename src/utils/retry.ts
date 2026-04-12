@@ -1,5 +1,5 @@
-import logger from './logger.js';
-import { AxiosError } from 'axios';
+import logger from "./logger.js";
+import { AxiosError } from "axios";
 
 /**
  * Retry configuration options
@@ -21,19 +21,19 @@ interface RetryConfig {
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
  * Determines if an error is retryable based on Google Photos API best practices
  */
 function isRetryableError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
+  if (!error || typeof error !== "object") {
     return false;
   }
 
   // Check if it's an Axios error
-  if ('isAxiosError' in error && error.isAxiosError) {
+  if ("isAxiosError" in error && error.isAxiosError) {
     const axiosError = error as AxiosError;
     const status = axiosError.response?.status;
 
@@ -48,7 +48,7 @@ function isRetryableError(error: unknown): boolean {
     }
 
     // Retry network errors (no response received)
-    if (!axiosError.response && axiosError.code !== 'ECONNABORTED') {
+    if (!axiosError.response && axiosError.code !== "ECONNABORTED") {
       return true;
     }
   }
@@ -64,14 +64,22 @@ function isRetryableError(error: unknown): boolean {
  * @param is429 - Whether this is a rate limit (429) error
  * @returns Delay in milliseconds
  */
-function calculateDelay(attempt: number, config: Required<RetryConfig>, is429: boolean): number {
+function calculateDelay(
+  attempt: number,
+  config: Required<RetryConfig>,
+  is429: boolean,
+): number {
   // For rate limit errors, use minimum 30s delay
   if (is429) {
-    return Math.max(config.rateLimitDelayMs, config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt));
+    return Math.max(
+      config.rateLimitDelayMs,
+      config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt),
+    );
   }
 
   // Exponential backoff: initialDelay * (multiplier ^ attempt)
-  const delay = config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt);
+  const delay =
+    config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt);
 
   // Cap at maximum delay
   return Math.min(delay, config.maxDelayMs);
@@ -104,7 +112,7 @@ function calculateDelay(attempt: number, config: Required<RetryConfig>, is429: b
 export async function withRetry<T>(
   fn: () => Promise<T>,
   config: RetryConfig = {},
-  context: string = 'operation'
+  context: string = "operation",
 ): Promise<T> {
   const finalConfig: Required<RetryConfig> = {
     maxRetries: config.maxRetries ?? 3,
@@ -122,7 +130,9 @@ export async function withRetry<T>(
 
       // Log successful retry
       if (attempt > 0) {
-        logger.info(`${context} succeeded after ${attempt} ${attempt === 1 ? 'retry' : 'retries'}`);
+        logger.info(
+          `${context} succeeded after ${attempt} ${attempt === 1 ? "retry" : "retries"}`,
+        );
       }
 
       return result;
@@ -137,34 +147,35 @@ export async function withRetry<T>(
 
       // Check if we have retries left
       if (attempt === finalConfig.maxRetries) {
-        logger.error(`${context} failed after ${finalConfig.maxRetries} retries`);
+        logger.error(
+          `${context} failed after ${finalConfig.maxRetries} retries`,
+        );
         throw error;
       }
 
       // Determine if this is a rate limit error
       const is429: boolean =
         error !== null &&
-        typeof error === 'object' &&
-        'isAxiosError' in error &&
+        typeof error === "object" &&
+        "isAxiosError" in error &&
         (error as AxiosError).response?.status === 429;
 
       // Calculate delay
       const delayMs = calculateDelay(attempt, finalConfig, is429);
 
       // Log retry attempt
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const statusCode =
-        error &&
-        typeof error === 'object' &&
-        'isAxiosError' in error
+        error && typeof error === "object" && "isAxiosError" in error
           ? (error as AxiosError).response?.status
           : undefined;
 
       logger.warn(
         `${context} failed (attempt ${attempt + 1}/${finalConfig.maxRetries + 1})${
-          statusCode ? ` with status ${statusCode}` : ''
+          statusCode ? ` with status ${statusCode}` : ""
         }. Retrying in ${delayMs}ms...`,
-        { error: errorMessage }
+        { error: errorMessage },
       );
 
       // Wait before retrying

@@ -1,11 +1,11 @@
-import winston from 'winston';
-import config from './config.js';
+import winston from "winston";
+import config from "./config.js";
 
 /**
  * Flag indicating if the application is running in STDIO mode.
  * This is determined by checking the command line arguments for '--stdio'.
  */
-const useStdio = process.argv.includes('--stdio');
+const useStdio = process.argv.includes("--stdio");
 
 /**
  * Custom log format combining timestamp and message.
@@ -15,14 +15,15 @@ const logFormat = winston.format.combine(
   winston.format.timestamp(),
   winston.format.printf(({ level, message, timestamp }) => {
     return `${timestamp} [${level.toUpperCase()}]: ${message}`;
-  })
+  }),
 );
 
 /**
  * Flag indicating if running in test mode (Vitest / Jest).
  * When true, file transports are suppressed to avoid creating log files during tests.
  */
-const isTestMode = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
+const isTestMode =
+  process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
 /**
  * List of Winston transports (outputs) for the logger.
@@ -37,16 +38,18 @@ const transports: winston.transport[] = [];
 
 if (!isTestMode) {
   transports.push(
-    new winston.transports.File({ filename: 'error.log', level: 'error' }),
-    new winston.transports.File({ filename: 'combined.log' }),
+    new winston.transports.File({ filename: "error.log", level: "error" }),
+    new winston.transports.File({ filename: "combined.log" }),
   );
 }
 
 // In STDIO mode, send console output to stderr to avoid interfering with MCP protocol
 if (useStdio) {
-  transports.push(new winston.transports.Console({
-    stderrLevels: ['error', 'warn', 'info', 'debug', 'verbose', 'silly']
-  }));
+  transports.push(
+    new winston.transports.Console({
+      stderrLevels: ["error", "warn", "info", "debug", "verbose", "silly"],
+    }),
+  );
 } else {
   // In HTTP mode, use normal console output
   transports.push(new winston.transports.Console());

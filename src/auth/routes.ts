@@ -1,10 +1,10 @@
-import express from 'express';
-import { randomBytes } from 'crypto';
-import { createOAuthClient } from '../api/photos.js';
-import { saveTokens } from './tokens.js';
-import config from '../utils/config.js';
-import logger from '../utils/logger.js';
-import { parseIdToken, resolveUserIdentity } from '../utils/googleUser.js';
+import express from "express";
+import { randomBytes } from "crypto";
+import { createOAuthClient } from "../api/photos.js";
+import { saveTokens } from "./tokens.js";
+import config from "../utils/config.js";
+import logger from "../utils/logger.js";
+import { parseIdToken, resolveUserIdentity } from "../utils/googleUser.js";
 
 /**
  * Sets up the authentication routes for the Express application.
@@ -28,73 +28,78 @@ export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
   const authStates = new Map<string, { expires: number }>();
 
   // Clean up expired state tokens every 15 minutes
-  const cleanupInterval = setInterval(() => {
-    const now = Date.now();
-    for (const [state, data] of authStates.entries()) {
-      if (data.expires < now) {
-        authStates.delete(state);
+  const cleanupInterval = setInterval(
+    () => {
+      const now = Date.now();
+      for (const [state, data] of authStates.entries()) {
+        if (data.expires < now) {
+          authStates.delete(state);
+        }
       }
-    }
-  }, 15 * 60 * 1000);
+    },
+    15 * 60 * 1000,
+  );
 
   // Don't keep process alive just for cleanup timer
   cleanupInterval.unref();
-  
+
   // Main auth route - redirects to Google's OAuth page
-  app.get('/auth', (req, res) => {
+  app.get("/auth", (req, res) => {
     try {
       const oauth2Client = createOAuthClient();
-      
+
       // Generate a random state token
-      const state = randomBytes(20).toString('hex');
-      
+      const state = randomBytes(20).toString("hex");
+
       // Store the state token with a 10-minute expiration
       authStates.set(state, {
         expires: Date.now() + 10 * 60 * 1000, // 10 minutes
       });
-      
+
       // Generate the auth URL
       const authUrl = oauth2Client.generateAuthUrl({
-        access_type: 'offline',
+        access_type: "offline",
         scope: config.google.scopes,
         state,
         // Force approval to get a refresh token every time
-        prompt: 'consent',
+        prompt: "consent",
       });
-      
+
       res.redirect(authUrl);
     } catch (error) {
-      logger.error(`Auth error: ${error instanceof Error ? error.message : String(error)}`);
-      res.status(500).send('Authentication error');
+      logger.error(
+        `Auth error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      res.status(500).send("Authentication error");
     }
   });
-  
+
   // OAuth callback route
-  app.get('/auth/callback', async (req, res) => {
+  app.get("/auth/callback", async (req, res) => {
     try {
       const { code, state } = req.query;
-      
+
       // Validate state token to prevent CSRF attacks
       if (!state || !authStates.has(state as string)) {
         logger.warn(`Invalid state token: ${state}`);
-        return res.status(400).send('Invalid state parameter');
+        return res.status(400).send("Invalid state parameter");
       }
-      
+
       // Delete the used state token
       authStates.delete(state as string);
-      
+
       if (!code) {
-        logger.warn('No authorization code received');
-        return res.status(400).send('No authorization code received');
+        logger.warn("No authorization code received");
+        return res.status(400).send("No authorization code received");
       }
-      
+
       // Exchange the code for tokens
       const oauth2Client = createOAuthClient();
       const { tokens } = await oauth2Client.getToken(code as string);
 
       if (!tokens.access_token || !tokens.refresh_token) {
-        logger.error('Did not receive all required tokens');
-        return res.status(500).send('Failed to get required tokens');
+        logger.error("Did not receive all required tokens");
+        return res.status(500).send("Failed to get required tokens");
       }
 
       // Verify JWT signature before trusting the payload (CRITICAL security)
@@ -102,7 +107,9 @@ export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
       const identity = resolveUserIdentity(verifiedPayload);
 
       if (!identity.userId) {
-        logger.warn('Could not resolve user identity from ID token, generating fallback ID');
+        logger.warn(
+          "Could not resolve user identity from ID token, generating fallback ID",
+        );
       }
 
       // Save the tokens
@@ -115,8 +122,10 @@ export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
         retrievedAt: Date.now(),
       });
 
-      logger.info(`Authentication successful for user ID: ${identity.userId}${identity.email ? ` (${identity.email})` : ''}`);
-      
+      logger.info(
+        `Authentication successful for user ID: ${identity.userId}${identity.email ? ` (${identity.email})` : ""}`,
+      );
+
       // Success page
       res.send(`
         <html>
@@ -138,13 +147,15 @@ export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
         </html>
       `);
     } catch (error) {
-      logger.error(`Callback error: ${error instanceof Error ? error.message : String(error)}`);
-      res.status(500).send('Authentication callback error');
+      logger.error(
+        `Callback error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      res.status(500).send("Authentication callback error");
     }
   });
-  
+
   // Logout/disconnect route
-  app.get('/auth/logout', (req, res) => {
+  app.get("/auth/logout", (req, res) => {
     // Simple logout page with instructions
     res.send(`
       <html>
