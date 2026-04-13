@@ -1,5 +1,5 @@
-import logger from './logger.js';
-import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
+import logger from "./logger.js";
+import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 /**
  * Manages Google Photos API quota tracking.
@@ -43,7 +43,7 @@ class QuotaManager {
   private checkReset(): void {
     const now = Date.now();
     if (now >= this.resetTime) {
-      logger.info('Resetting API quota counters', {
+      logger.info("Resetting API quota counters", {
         previousRequests: this.requestCount,
         previousMediaBytes: this.mediaByteCount,
       });
@@ -65,7 +65,7 @@ class QuotaManager {
 
     if (this.requestCount >= this.maxRequests) {
       const resetDate = new Date(this.resetTime).toISOString();
-      logger.error('API quota exceeded', {
+      logger.error("API quota exceeded", {
         requestCount: this.requestCount,
         maxRequests: this.maxRequests,
         resetTime: resetDate,
@@ -74,13 +74,13 @@ class QuotaManager {
       throw new McpError(
         ErrorCode.InternalError,
         `Google Photos API quota exceeded (${this.requestCount}/${this.maxRequests} requests). ` +
-        `Quota resets at ${resetDate}. Please try again later.`
+          `Quota resets at ${resetDate}. Please try again later.`,
       );
     }
 
     if (isMediaRequest && this.mediaByteCount >= this.maxMediaBytes) {
       const resetDate = new Date(this.resetTime).toISOString();
-      logger.error('Media byte quota exceeded', {
+      logger.error("Media byte quota exceeded", {
         mediaByteCount: this.mediaByteCount,
         maxMediaBytes: this.maxMediaBytes,
         resetTime: resetDate,
@@ -89,7 +89,7 @@ class QuotaManager {
       throw new McpError(
         ErrorCode.InternalError,
         `Google Photos media byte quota exceeded (${this.mediaByteCount}/${this.maxMediaBytes} requests). ` +
-        `Quota resets at ${resetDate}. Please try again later.`
+          `Quota resets at ${resetDate}. Please try again later.`,
       );
     }
   }
@@ -108,15 +108,18 @@ class QuotaManager {
 
     // Log warning at 80% quota
     if (this.requestCount === Math.floor(this.maxRequests * 0.8)) {
-      logger.warn('API quota at 80%', {
+      logger.warn("API quota at 80%", {
         requestCount: this.requestCount,
         maxRequests: this.maxRequests,
         remaining: this.maxRequests - this.requestCount,
       });
     }
 
-    if (isMediaRequest && this.mediaByteCount === Math.floor(this.maxMediaBytes * 0.8)) {
-      logger.warn('Media byte quota at 80%', {
+    if (
+      isMediaRequest &&
+      this.mediaByteCount === Math.floor(this.maxMediaBytes * 0.8)
+    ) {
+      logger.warn("Media byte quota at 80%", {
         mediaByteCount: this.mediaByteCount,
         maxMediaBytes: this.maxMediaBytes,
         remaining: this.maxMediaBytes - this.mediaByteCount,
@@ -130,8 +133,18 @@ class QuotaManager {
    * @returns Object containing requests, mediaBytes statistics and reset time string
    */
   getStats(): {
-    requests: { used: number; max: number; remaining: number; utilizationPercent: number };
-    mediaBytes: { used: number; max: number; remaining: number; utilizationPercent: number };
+    requests: {
+      used: number;
+      max: number;
+      remaining: number;
+      utilizationPercent: number;
+    };
+    mediaBytes: {
+      used: number;
+      max: number;
+      remaining: number;
+      utilizationPercent: number;
+    };
     resetTime: string;
   } {
     this.checkReset();

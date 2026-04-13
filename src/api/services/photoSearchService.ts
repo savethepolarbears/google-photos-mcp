@@ -1,10 +1,14 @@
-import { OAuth2Client } from 'google-auth-library';
-import { PhotoItem } from '../types.js';
-import { searchPhotos } from '../repositories/photosRepository.js';
-import { buildSearchTokens, filterPhotosByTokens, matchesLocationQuery } from '../search/tokenMatcher.js';
-import { buildFiltersFromQuery } from '../search/filterBuilder.js';
-import { toError } from '../client.js';
-import logger from '../../utils/logger.js';
+import { OAuth2Client } from "google-auth-library";
+import { PhotoItem } from "../types.js";
+import { searchPhotos } from "../repositories/photosRepository.js";
+import {
+  buildSearchTokens,
+  filterPhotosByTokens,
+  matchesLocationQuery,
+} from "../search/tokenMatcher.js";
+import { buildFiltersFromQuery } from "../search/filterBuilder.js";
+import { toError } from "../client.js";
+import logger from "../../utils/logger.js";
 
 /**
  * High-level photo search service with orchestration logic
@@ -57,9 +61,9 @@ export async function searchPhotosByText(
       nextPageToken,
     };
   } catch (error) {
-    const message = toError(error, 'search photos by text').message;
+    const message = toError(error, "search photos by text").message;
     logger.error(`Failed to search photos by text: ${message}`);
-    throw new Error('Failed to search photos by text', { cause: error });
+    throw new Error("Failed to search photos by text", { cause: error });
   }
 }
 
@@ -86,21 +90,23 @@ export async function searchPhotosByLocation(
       {
         pageSize,
         pageToken,
-        filters: { mediaTypeFilter: { mediaTypes: ['ALL_MEDIA'] } },
+        filters: { mediaTypeFilter: { mediaTypes: ["ALL_MEDIA"] } },
       },
       true, // Always include location for location searches
     );
 
     // Filter photos that match the location query
-    const filtered = photos.filter((photo) => matchesLocationQuery(photo, normalizedLocation));
+    const filtered = photos.filter((photo) =>
+      matchesLocationQuery(photo, normalizedLocation),
+    );
 
     return {
       photos: filtered,
       nextPageToken,
     };
   } catch (error) {
-    const message = toError(error, 'search photos by location').message;
+    const message = toError(error, "search photos by location").message;
     logger.error(`Failed to search photos by location: ${message}`);
-    throw new Error('Failed to search photos by location', { cause: error });
+    throw new Error("Failed to search photos by location", { cause: error });
   }
 }

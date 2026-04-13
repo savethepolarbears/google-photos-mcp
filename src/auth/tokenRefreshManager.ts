@@ -1,6 +1,6 @@
-import { OAuth2Client } from 'google-auth-library';
-import logger from '../utils/logger.js';
-import { TokenData, saveTokens } from './tokens.js';
+import { OAuth2Client } from "google-auth-library";
+import logger from "../utils/logger.js";
+import { TokenData, saveTokens } from "./tokens.js";
 
 /**
  * Manages token refresh operations with mutex to prevent concurrent refreshes.
@@ -29,24 +29,32 @@ class TokenRefreshManager {
   async refreshIfNeeded(
     oauth2Client: OAuth2Client,
     userId: string,
-    currentTokens: TokenData
+    currentTokens: TokenData,
   ): Promise<TokenData> {
     // Check if refresh is already in progress for this user
     const existingRefresh = this.refreshPromises.get(userId);
     if (existingRefresh) {
-      logger.debug(`Token refresh already in progress for user ${userId}, waiting...`);
+      logger.debug(
+        `Token refresh already in progress for user ${userId}, waiting...`,
+      );
       return existingRefresh;
     }
 
     // Check if token is actually expired (5 min buffer for safety)
     const expiryBuffer = 5 * 60 * 1000; // 5 minutes
     if (currentTokens.expiry_date > Date.now() + expiryBuffer) {
-      logger.debug(`Token for user ${userId} is still valid, no refresh needed`);
+      logger.debug(
+        `Token for user ${userId} is still valid, no refresh needed`,
+      );
       return currentTokens; // Still valid
     }
 
     // Start refresh and cache the promise to prevent concurrent refreshes
-    const refreshPromise = this.performRefresh(oauth2Client, userId, currentTokens);
+    const refreshPromise = this.performRefresh(
+      oauth2Client,
+      userId,
+      currentTokens,
+    );
     this.refreshPromises.set(userId, refreshPromise);
 
     try {
@@ -63,7 +71,7 @@ class TokenRefreshManager {
   private async performRefresh(
     oauth2Client: OAuth2Client,
     userId: string,
-    currentTokens: TokenData
+    currentTokens: TokenData,
   ): Promise<TokenData> {
     try {
       logger.info(`Refreshing access token for user ${userId}`);
@@ -71,7 +79,7 @@ class TokenRefreshManager {
       const { credentials } = await oauth2Client.refreshAccessToken();
 
       if (!credentials.access_token) {
-        throw new Error('Token refresh did not return a new access token.');
+        throw new Error("Token refresh did not return a new access token.");
       }
 
       const newTokens: TokenData = {
@@ -90,7 +98,7 @@ class TokenRefreshManager {
       return newTokens;
     } catch (error) {
       logger.error(
-        `Failed to refresh token for user ${userId}: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to refresh token for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw error;
     }

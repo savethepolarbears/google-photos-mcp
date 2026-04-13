@@ -1,9 +1,9 @@
-import { OAuth2Client } from 'google-auth-library';
-import { Album } from '../types.js';
-import { getPhotoClient } from '../client.js';
-import { toError } from '../client.js';
-import { withRetry } from '../../utils/retry.js';
-import logger from '../../utils/logger.js';
+import { OAuth2Client } from "google-auth-library";
+import { Album } from "../types.js";
+import { getPhotoClient } from "../client.js";
+import { toError } from "../client.js";
+import { withRetry } from "../../utils/retry.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Album repository for CRUD operations
@@ -28,12 +28,13 @@ export async function listAlbums(
 
     // Apply retry logic per Google Photos API best practices
     const response = await withRetry(
-      async () => await photosClient.albums.list({
-        pageSize,
-        pageToken,
-      }),
+      async () =>
+        await photosClient.albums.list({
+          pageSize,
+          pageToken,
+        }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'list albums'
+      "list albums",
     );
 
     return {
@@ -41,9 +42,9 @@ export async function listAlbums(
       nextPageToken: response.data.nextPageToken,
     };
   } catch (error) {
-    const message = toError(error, 'list albums').message;
+    const message = toError(error, "list albums").message;
     logger.error(`Failed to list albums: ${message}`);
-    throw new Error('Failed to list albums', { cause: error });
+    throw new Error("Failed to list albums", { cause: error });
   }
 }
 
@@ -55,28 +56,32 @@ export async function listAlbums(
  * @returns A Promise resolving to the Album object.
  * @throws Error if the album is not found or the request fails.
  */
-export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Promise<Album> {
+export async function getAlbum(
+  oauth2Client: OAuth2Client,
+  albumId: string,
+): Promise<Album> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
     // Apply retry logic per Google Photos API best practices
     const response = await withRetry(
-      async () => await photosClient.albums.get({
-        albumId,
-      }),
+      async () =>
+        await photosClient.albums.get({
+          albumId,
+        }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'get album'
+      "get album",
     );
 
     if (!response.data) {
-      throw new Error('Album not found');
+      throw new Error("Album not found");
     }
 
     return response.data as Album;
   } catch (error) {
-    const message = toError(error, 'get album').message;
+    const message = toError(error, "get album").message;
     logger.error(`Failed to get album: ${message}`);
-    throw new Error('Failed to get album', { cause: error });
+    throw new Error("Failed to get album", { cause: error });
   }
 }
 
@@ -88,26 +93,29 @@ export async function getAlbum(oauth2Client: OAuth2Client, albumId: string): Pro
  * @returns A Promise resolving to the created Album object.
  * @throws Error if creating the album fails.
  */
-export async function createAlbum(oauth2Client: OAuth2Client, title: string): Promise<Album> {
+export async function createAlbum(
+  oauth2Client: OAuth2Client,
+  title: string,
+): Promise<Album> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
     const response = await withRetry(
       async () => await photosClient.albums.create({ title }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'create album'
+      "create album",
     );
 
     return response.data as Album;
   } catch (error) {
-    const message = toError(error, 'create album').message;
+    const message = toError(error, "create album").message;
     logger.error(`Failed to create album: ${message}`);
-    throw new Error('Failed to create album', { cause: error });
+    throw new Error("Failed to create album", { cause: error });
   }
 }
 
 interface EnrichmentPayload {
-  type: 'TEXT' | 'LOCATION';
+  type: "TEXT" | "LOCATION";
   text?: string;
   locationName?: string;
   latitude?: number;
@@ -127,13 +135,13 @@ export async function addEnrichment(
   oauth2Client: OAuth2Client,
   albumId: string,
   enrichment: EnrichmentPayload,
-  position?: 'FIRST_IN_ALBUM' | 'LAST_IN_ALBUM',
+  position?: "FIRST_IN_ALBUM" | "LAST_IN_ALBUM",
 ): Promise<{ enrichmentItem: { id: string } }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
     const albumEnrichment =
-      enrichment.type === 'TEXT'
+      enrichment.type === "TEXT"
         ? { textEnrichment: { text: enrichment.text } }
         : {
             locationEnrichment: {
@@ -141,7 +149,10 @@ export async function addEnrichment(
                 locationName: enrichment.locationName,
                 latlng:
                   enrichment.latitude != null && enrichment.longitude != null
-                    ? { latitude: enrichment.latitude, longitude: enrichment.longitude }
+                    ? {
+                        latitude: enrichment.latitude,
+                        longitude: enrichment.longitude,
+                      }
                     : undefined,
               },
             },
@@ -151,18 +162,18 @@ export async function addEnrichment(
       async () =>
         await photosClient.albums.addEnrichment({
           albumId,
-          albumPosition: { position: position ?? 'LAST_IN_ALBUM' },
+          albumPosition: { position: position ?? "LAST_IN_ALBUM" },
           newEnrichmentItem: albumEnrichment,
         }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'add enrichment',
+      "add enrichment",
     );
 
     return response.data as { enrichmentItem: { id: string } };
   } catch (error) {
-    const message = toError(error, 'add enrichment').message;
+    const message = toError(error, "add enrichment").message;
     logger.error(`Failed to add enrichment: ${message}`);
-    throw new Error('Failed to add enrichment', { cause: error });
+    throw new Error("Failed to add enrichment", { cause: error });
   }
 }
 
@@ -188,7 +199,7 @@ export async function patchAlbum(
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
-    const updateMask = Object.keys(patch).join(',');
+    const updateMask = Object.keys(patch).join(",");
 
     const response = await withRetry(
       async () =>
@@ -198,14 +209,14 @@ export async function patchAlbum(
           requestBody: patch as Record<string, unknown>,
         }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'patch album',
+      "patch album",
     );
 
     return response.data as Album;
   } catch (error) {
-    const message = toError(error, 'patch album').message;
+    const message = toError(error, "patch album").message;
     logger.error(`Failed to patch album: ${message}`);
-    throw new Error('Failed to patch album', { cause: error });
+    throw new Error("Failed to patch album", { cause: error });
   }
 }
 
@@ -220,19 +231,20 @@ export async function patchAlbum(
 export async function batchAddMediaItemsToAlbum(
   oauth2Client: OAuth2Client,
   albumId: string,
-  mediaItemIds: string[]
+  mediaItemIds: string[],
 ): Promise<void> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
     await withRetry(
-      async () => await photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }),
+      async () =>
+        await photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }),
       { maxRetries: 3, initialDelayMs: 1000 },
-      'batch add media items to album'
+      "batch add media items to album",
     );
   } catch (error) {
-    const message = toError(error, 'batch add media items to album').message;
+    const message = toError(error, "batch add media items to album").message;
     logger.error(`Failed to add media items to album: ${message}`);
-    throw new Error('Failed to add media items to album', { cause: error });
+    throw new Error("Failed to add media items to album", { cause: error });
   }
 }

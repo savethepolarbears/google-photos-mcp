@@ -1,6 +1,6 @@
-import { PhotoItem } from '../types.js';
-import { getPhotoLocation } from '../../utils/location.js';
-import logger from '../../utils/logger.js';
+import { PhotoItem } from "../types.js";
+import { getPhotoLocation } from "../../utils/location.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Location data enrichment for photos
@@ -19,7 +19,7 @@ import logger from '../../utils/logger.js';
 export async function enrichPhotosWithLocation(
   photos: PhotoItem[],
   includeLocation: boolean,
-  performGeocoding: boolean
+  performGeocoding: boolean,
 ): Promise<PhotoItem[]> {
   if (!includeLocation || photos.length === 0) {
     return photos;

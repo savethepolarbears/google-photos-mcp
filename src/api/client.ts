@@ -1,7 +1,7 @@
-import { OAuth2Client } from 'google-auth-library';
-import axios, { AxiosError } from 'axios';
-import https from 'https';
-import { getAuthorizedHeaders } from './oauth.js';
+import { OAuth2Client } from "google-auth-library";
+import axios, { AxiosError } from "axios";
+import https from "https";
+import { getAuthorizedHeaders } from "./oauth.js";
 import {
   Album,
   AlbumsListResponse,
@@ -9,21 +9,21 @@ import {
   MediaItemResponse,
   SearchFilter,
   BatchCreateResponse,
-} from './types.js';
+} from "./types.js";
 
 /**
  * Axios instance configured for Google Photos API
  */
 const photosApi = axios.create({
-  baseURL: 'https://photoslibrary.googleapis.com/v1',
+  baseURL: "https://photoslibrary.googleapis.com/v1",
   timeout: 15000,
   // Optimization: Enable keep-alive to reuse TCP connections for better performance
   httpsAgent: new https.Agent({
     keepAlive: true,
-    keepAliveMsecs: 30000,    // Send keep-alive packets every 30s
-    maxSockets: 50,           // Max concurrent connections per host
-    maxFreeSockets: 10,       // Max idle connections to keep open
-    timeout: 60000,           // Socket idle timeout (60s)
+    keepAliveMsecs: 30000, // Send keep-alive packets every 30s
+    maxSockets: 50, // Max concurrent connections per host
+    maxFreeSockets: 10, // Max idle connections to keep open
+    timeout: 60000, // Socket idle timeout (60s)
   }),
 });
 
@@ -45,15 +45,17 @@ export function toError(error: unknown, context: string): Error {
       axiosError.message;
 
     // Check for 2025 API scope deprecation errors
-    if (status === 403 && message?.includes('PERMISSION_DENIED')) {
+    if (status === 403 && message?.includes("PERMISSION_DENIED")) {
       return new Error(
         `Google Photos API ${context} failed (${status}): ${message}. ` +
-        'NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. ' +
-        'For full photo library access, please use the Google Photos Picker API.'
+          "NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. " +
+          "For full photo library access, please use the Google Photos Picker API.",
       );
     }
 
-    return new Error(`Google Photos API ${context} failed${status ? ` (${status})` : ''}: ${message}`);
+    return new Error(
+      `Google Photos API ${context} failed${status ? ` (${status})` : ""}: ${message}`,
+    );
   }
 
   if (error instanceof Error) {
@@ -73,21 +75,29 @@ export function toError(error: unknown, context: string): Error {
 function createPhotosLibraryClient(auth: OAuth2Client) {
   return {
     uploads: {
-      upload: async (params: { bytes: Buffer; mimeType: string; fileName: string }) => {
+      upload: async (params: {
+        bytes: Buffer;
+        mimeType: string;
+        fileName: string;
+      }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.post<string>('/uploads', params.bytes, {
-            headers: {
-              ...headers,
-              'Content-type': 'application/octet-stream',
-              'X-Goog-Upload-Content-Type': params.mimeType,
-              'X-Goog-Upload-Protocol': 'raw',
+          const response = await photosApi.post<string>(
+            "/uploads",
+            params.bytes,
+            {
+              headers: {
+                ...headers,
+                "Content-type": "application/octet-stream",
+                "X-Goog-Upload-Content-Type": params.mimeType,
+                "X-Goog-Upload-Protocol": "raw",
+              },
+              responseType: "text",
             },
-            responseType: 'text',
-          });
+          );
           return { uploadToken: response.data as string };
         } catch (error) {
-          throw toError(error, 'uploads.upload');
+          throw toError(error, "uploads.upload");
         }
       },
     },
@@ -95,46 +105,56 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
       list: async (params: { pageSize?: number; pageToken?: string }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.get<AlbumsListResponse>('/albums', {
+          const response = await photosApi.get<AlbumsListResponse>("/albums", {
             params,
             headers,
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.list');
+          throw toError(error, "albums.list");
         }
       },
       get: async (params: { albumId: string }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.get<Album>(`/albums/${params.albumId}`, {
-            headers,
-          });
+          const response = await photosApi.get<Album>(
+            `/albums/${params.albumId}`,
+            {
+              headers,
+            },
+          );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.get');
+          throw toError(error, "albums.get");
         }
       },
       create: async (params: { title: string }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.post<Album>('/albums', { album: { title: params.title } }, { headers });
+          const response = await photosApi.post<Album>(
+            "/albums",
+            { album: { title: params.title } },
+            { headers },
+          );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.create');
+          throw toError(error, "albums.create");
         }
       },
-      batchAddMediaItems: async (params: { albumId: string; mediaItemIds: string[] }) => {
+      batchAddMediaItems: async (params: {
+        albumId: string;
+        mediaItemIds: string[];
+      }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
           const response = await photosApi.post(
             `/albums/${params.albumId}:batchAddMediaItems`,
             { mediaItemIds: params.mediaItemIds },
-            { headers }
+            { headers },
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.batchAddMediaItems');
+          throw toError(error, "albums.batchAddMediaItems");
         }
       },
       addEnrichment: async (params: {
@@ -146,12 +166,15 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           const headers = await getAuthorizedHeaders(auth);
           const response = await photosApi.post(
             `/albums/${params.albumId}:addEnrichment`,
-            { newEnrichmentItem: params.newEnrichmentItem, albumPosition: params.albumPosition },
+            {
+              newEnrichmentItem: params.newEnrichmentItem,
+              albumPosition: params.albumPosition,
+            },
             { headers },
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.addEnrichment');
+          throw toError(error, "albums.addEnrichment");
         }
       },
       patch: async (params: {
@@ -168,31 +191,38 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'albums.patch');
+          throw toError(error, "albums.patch");
         }
       },
     },
     mediaItems: {
       batchCreate: async (params: {
         albumId?: string;
-        newMediaItems: Array<{ uploadToken: string; fileName?: string; description?: string }>;
+        newMediaItems: Array<{
+          uploadToken: string;
+          fileName?: string;
+          description?: string;
+        }>;
       }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
           const response = await photosApi.post<BatchCreateResponse>(
-            '/mediaItems:batchCreate',
+            "/mediaItems:batchCreate",
             {
               albumId: params.albumId,
-              newMediaItems: params.newMediaItems.map(item => ({
+              newMediaItems: params.newMediaItems.map((item) => ({
                 description: item.description,
-                simpleMediaItem: { uploadToken: item.uploadToken, fileName: item.fileName },
+                simpleMediaItem: {
+                  uploadToken: item.uploadToken,
+                  fileName: item.fileName,
+                },
               })),
             },
             { headers },
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'mediaItems.batchCreate');
+          throw toError(error, "mediaItems.batchCreate");
         }
       },
       search: async (params: {
@@ -208,36 +238,42 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
         try {
           const headers = await getAuthorizedHeaders(auth);
           const response = await photosApi.post<MediaItemsSearchResponse>(
-            '/mediaItems:search',
+            "/mediaItems:search",
             params.requestBody,
             { headers },
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'mediaItems.search');
+          throw toError(error, "mediaItems.search");
         }
       },
       get: async (params: { mediaItemId: string }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.get<MediaItemResponse>(`/mediaItems/${params.mediaItemId}`, {
-            headers,
-          });
+          const response = await photosApi.get<MediaItemResponse>(
+            `/mediaItems/${params.mediaItemId}`,
+            {
+              headers,
+            },
+          );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'mediaItems.get');
+          throw toError(error, "mediaItems.get");
         }
       },
       list: async (params: { pageSize?: number; pageToken?: string }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await photosApi.get<MediaItemsSearchResponse>('/mediaItems', {
-            params,
-            headers,
-          });
+          const response = await photosApi.get<MediaItemsSearchResponse>(
+            "/mediaItems",
+            {
+              params,
+              headers,
+            },
+          );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'mediaItems.list');
+          throw toError(error, "mediaItems.list");
         }
       },
     },
@@ -258,7 +294,7 @@ export function getPhotoClient(auth: OAuth2Client) {
  * Axios instance configured for Google Photos Picker API
  */
 const pickerApi = axios.create({
-  baseURL: 'https://photospicker.googleapis.com/v1',
+  baseURL: "https://photospicker.googleapis.com/v1",
   timeout: 15000,
 });
 
@@ -275,28 +311,36 @@ export function getPickerClient(auth: OAuth2Client) {
       create: async () => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.post('/sessions', {}, { headers });
+          const response = await pickerApi.post("/sessions", {}, { headers });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'picker.sessions.create');
+          throw toError(error, "picker.sessions.create");
         }
       },
       get: async (sessionId: string) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.get(`/sessions/${sessionId}`, { headers });
+          const response = await pickerApi.get(`/sessions/${sessionId}`, {
+            headers,
+          });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'picker.sessions.get');
+          throw toError(error, "picker.sessions.get");
         }
       },
-      listMediaItems: async (sessionId: string, params: { pageSize?: number; pageToken?: string } = {}) => {
+      listMediaItems: async (
+        sessionId: string,
+        params: { pageSize?: number; pageToken?: string } = {},
+      ) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.get(`/sessions/${sessionId}/mediaItems`, { params, headers });
+          const response = await pickerApi.get(
+            `/sessions/${sessionId}/mediaItems`,
+            { params, headers },
+          );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, 'picker.sessions.listMediaItems');
+          throw toError(error, "picker.sessions.listMediaItems");
         }
       },
     },

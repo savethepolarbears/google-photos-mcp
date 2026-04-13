@@ -1,13 +1,13 @@
-import { getFirstAvailableTokens } from '../auth/tokens.js';
-import { setupOAuthClient, listAlbums } from '../api/photos.js';
-import fs from 'fs/promises';
-import config from './config.js';
+import { getFirstAvailableTokens } from "../auth/tokens.js";
+import { setupOAuthClient, listAlbums } from "../api/photos.js";
+import fs from "fs/promises";
+import config from "./config.js";
 
 /**
  * Health status for individual checks
  */
 interface HealthStatus {
-  status: 'pass' | 'fail';
+  status: "pass" | "fail";
   message?: string;
   responseTime?: number;
 }
@@ -16,7 +16,7 @@ interface HealthStatus {
  * Overall health check result
  */
 interface HealthCheckResult {
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  status: "healthy" | "degraded" | "unhealthy";
   timestamp: string;
   checks: {
     authentication: HealthStatus;
@@ -41,18 +41,24 @@ class HealthChecker {
    * @param options - Health check options
    * @returns Health check result with status and component checks
    */
-  async check(options: { detailed?: boolean } = {}): Promise<HealthCheckResult> {
+  async check(
+    options: { detailed?: boolean } = {},
+  ): Promise<HealthCheckResult> {
     const [authentication, googleAPI, storage] = await Promise.all([
       this.checkAuthentication(),
       this.checkGoogleAPI(),
       this.checkStorage(),
     ]);
 
-    const allPassing = [authentication, googleAPI, storage].every(c => c.status === 'pass');
-    const anyFailing = [authentication, googleAPI, storage].some(c => c.status === 'fail');
+    const allPassing = [authentication, googleAPI, storage].every(
+      (c) => c.status === "pass",
+    );
+    const anyFailing = [authentication, googleAPI, storage].some(
+      (c) => c.status === "fail",
+    );
 
     const result: HealthCheckResult = {
-      status: anyFailing ? 'unhealthy' : allPassing ? 'healthy' : 'degraded',
+      status: anyFailing ? "unhealthy" : allPassing ? "healthy" : "degraded",
       timestamp: new Date().toISOString(),
       checks: { authentication, googleAPI, storage },
     };
@@ -79,8 +85,8 @@ class HealthChecker {
 
       if (!tokens) {
         return {
-          status: 'fail',
-          message: 'No authentication tokens available',
+          status: "fail",
+          message: "No authentication tokens available",
           responseTime,
         };
       }
@@ -88,20 +94,20 @@ class HealthChecker {
       // Check if tokens are expired
       if (tokens.expiry_date < Date.now()) {
         return {
-          status: 'fail',
-          message: 'Authentication tokens expired',
+          status: "fail",
+          message: "Authentication tokens expired",
           responseTime,
         };
       }
 
       return {
-        status: 'pass',
-        message: 'Authentication tokens valid',
+        status: "pass",
+        message: "Authentication tokens valid",
         responseTime,
       };
     } catch (error) {
       return {
-        status: 'fail',
+        status: "fail",
         message: `Authentication check failed: ${error instanceof Error ? error.message : String(error)}`,
         responseTime: Date.now() - start,
       };
@@ -119,8 +125,8 @@ class HealthChecker {
 
       if (!tokens) {
         return {
-          status: 'fail',
-          message: 'Cannot check Google API: no tokens',
+          status: "fail",
+          message: "Cannot check Google API: no tokens",
           responseTime: Date.now() - start,
         };
       }
@@ -130,13 +136,13 @@ class HealthChecker {
       await listAlbums(oauth2Client, 1);
 
       return {
-        status: 'pass',
-        message: 'Google Photos API accessible',
+        status: "pass",
+        message: "Google Photos API accessible",
         responseTime: Date.now() - start,
       };
     } catch (error) {
       return {
-        status: 'fail',
+        status: "fail",
         message: `Google API check failed: ${error instanceof Error ? error.message : String(error)}`,
         responseTime: Date.now() - start,
       };
@@ -151,16 +157,19 @@ class HealthChecker {
 
     try {
       // Check if tokens file is accessible
-      await fs.access(config.tokens.dbPath, fs.constants.R_OK | fs.constants.W_OK);
+      await fs.access(
+        config.tokens.dbPath,
+        fs.constants.R_OK | fs.constants.W_OK,
+      );
 
       return {
-        status: 'pass',
-        message: 'Token storage accessible',
+        status: "pass",
+        message: "Token storage accessible",
         responseTime: Date.now() - start,
       };
     } catch (error) {
       return {
-        status: 'fail',
+        status: "fail",
         message: `Storage check failed: ${error instanceof Error ? error.message : String(error)}`,
         responseTime: Date.now() - start,
       };

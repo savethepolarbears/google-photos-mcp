@@ -1,6 +1,6 @@
-import logger from './logger.js';
-import { OAuth2Client } from 'google-auth-library';
-import config from './config.js';
+import logger from "./logger.js";
+import { OAuth2Client } from "google-auth-library";
+import config from "./config.js";
 
 /**
  * Interface representing the payload of a Google ID Token.
@@ -33,7 +33,7 @@ interface GoogleIdTokenPayload {
  */
 export async function parseIdToken(
   idToken: string | null | undefined,
-  oauth2Client: OAuth2Client
+  oauth2Client: OAuth2Client,
 ): Promise<GoogleIdTokenPayload | null> {
   if (!idToken) {
     return null;
@@ -48,14 +48,14 @@ export async function parseIdToken(
 
     const payload = ticket.getPayload();
     if (!payload) {
-      logger.warn('JWT verification succeeded but payload is empty');
+      logger.warn("JWT verification succeeded but payload is empty");
       return null;
     }
 
     // Verify issuer is Google
     if (
-      payload.iss !== 'https://accounts.google.com' &&
-      payload.iss !== 'accounts.google.com'
+      payload.iss !== "https://accounts.google.com" &&
+      payload.iss !== "accounts.google.com"
     ) {
       logger.warn(`Invalid JWT issuer: ${payload.iss}`);
       return null;
@@ -71,7 +71,7 @@ export async function parseIdToken(
     };
   } catch (error) {
     logger.error(
-      `JWT verification failed: ${error instanceof Error ? error.message : String(error)}`
+      `JWT verification failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     return null;
   }

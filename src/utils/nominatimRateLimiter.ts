@@ -1,4 +1,4 @@
-import logger from './logger.js';
+import logger from "./logger.js";
 
 /**
  * Rate limiter for Nominatim OpenStreetMap API.
@@ -19,7 +19,7 @@ class NominatimRateLimiter {
    */
   constructor(requestsPerSecond: number = 1) {
     // Add 100ms buffer to be safe (1100ms instead of 1000ms)
-    this.minIntervalMs = (1000 / requestsPerSecond) + 100;
+    this.minIntervalMs = 1000 / requestsPerSecond + 100;
   }
 
   /**
@@ -65,7 +65,9 @@ class NominatimRateLimiter {
       // Wait if we haven't waited long enough since the last request
       if (timeSinceLastRequest < this.minIntervalMs) {
         const delayMs = this.minIntervalMs - timeSinceLastRequest;
-        logger.debug(`Nominatim rate limiter: waiting ${delayMs}ms before next request`);
+        logger.debug(
+          `Nominatim rate limiter: waiting ${delayMs}ms before next request`,
+        );
         await this.sleep(delayMs);
       }
 
@@ -80,7 +82,7 @@ class NominatimRateLimiter {
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
