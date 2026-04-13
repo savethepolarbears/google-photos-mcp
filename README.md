@@ -13,7 +13,7 @@ This server implements the **Google Photos Picker API**, providing full library 
 | Create albums & upload photos | ✅ | Library API |
 | Access app-created content | ✅ | Library API |
 
-### How the Picker API Works
+### How the Picker API works
 
 1. Call `create_picker_session` — returns a URL the user opens in their browser
 2. User selects photos from their full library
@@ -29,7 +29,7 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 ## Features
 
-### Read Operations
+### Read operations
 
 - Search photos by text, date, location, category, favorites
 - Filter by media type (photo/video), date ranges, archived status
@@ -37,14 +37,14 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 - List albums and their contents
 - Describe available filter capabilities
 
-### Write Operations
+### Write operations
 
 - Create albums and upload photos
 - Batch upload with `create_album_with_media` (up to 50 files)
 - Add text and location enrichments to albums
 - Set album cover photos
 
-### Picker Operations
+### Picker operations
 
 - Create picker sessions for full library access
 - Poll sessions and retrieve selected media items
@@ -59,13 +59,13 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 22.22+
 - Google Cloud project with **Photos Library API** enabled
 - OAuth 2.0 credentials (Web application type)
 
 ## Setup
 
-### 1. Google Cloud Setup
+### 1. Google Cloud setup
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or select existing)
@@ -98,7 +98,7 @@ PORT=3000
 NODE_ENV=development
 ```
 
-### 4. Build & Run
+### 4. Build & run
 
 ```bash
 npm run build    # Compile TypeScript
@@ -116,14 +116,14 @@ npm run dev      # Dev mode with live reload
 
 > **Note**: Authentication must be completed in HTTP mode first. After that, switch to STDIO mode for Claude Desktop.
 
-### Dynamic Port
+### Dynamic port
 
 ```bash
 PORT=3001 npm start
 # Also update GOOGLE_REDIRECT_URI in .env to match
 ```
 
-## Client Configuration
+## Client configuration
 
 ### Claude Desktop (STDIO)
 
@@ -172,9 +172,9 @@ npx @modelcontextprotocol/inspector node dist/index.js        # HTTP
 npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 ```
 
-## Available Tools (19)
+## Available tools (19)
 
-### Search & Browse
+### Search & browse
 
 | Tool | Description |
 | --- | --- |
@@ -188,7 +188,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | `list_media_items` | List all media items |
 | `describe_filter_capabilities` | JSON reference of all filter options |
 
-### Write & Manage
+### Write & manage
 
 | Tool | Description |
 | --- | --- |
@@ -213,7 +213,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | `auth_status` | Check authentication status |
 | `start_auth` | Start OAuth flow via temporary local server |
 
-## Example Queries
+## Example queries
 
 ```text
 "Show me photos from my trip to Paris"
@@ -224,13 +224,24 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 "Let me pick some photos from my library" (triggers Picker API)
 ```
 
-## Location Data
+## Location data
 
 Location data is approximate, extracted from photo descriptions using OpenStreetMap/Nominatim geocoding. When available, includes latitude/longitude, city, region, country.
 
+## Deployment / release
+
+This project is a Model Context Protocol (MCP) server intended to be run locally alongside AI clients like Claude Desktop or Cursor. There is no remote deployment or release process required beyond keeping your local checkout or NPM installation up to date.
+
+## Troubleshooting
+
+- **Node Version**: Ensure you are using Node.js 22.22+ as older versions are not supported.
+- **Authentication**: If you encounter `GOOGLE_CLIENT_ID is not set` errors or authentication fails, verify your `.env` file is present in the root directory and contains your correct Google Cloud credentials. Remember to run `npm start` (HTTP mode) to authenticate before switching to STDIO mode.
+- **Quota Issues**: Google Photos API limits apply. Ensure you aren't hitting the 10,000 requests/day quota limit. The server tracks this via `quotaManager`.
+- **CORS Errors**: The server intentionally disables CORS to prevent drive-by attacks. Do not attempt to call the server directly from browser AJAX requests.
+
 ## Development
 
-### Project Structure
+### Project structure
 
 ```text
 src/
@@ -257,7 +268,7 @@ npm run test:coverage # Coverage report
 npm run test:security # Security suite only
 ```
 
-### Quality Checks
+### Quality checks
 
 All three must pass before merge:
 
