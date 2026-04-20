@@ -3,19 +3,19 @@
  * Tests album CRUD operations with mocked API client.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock dependencies before importing the module under test
-vi.mock('../../src/api/client.js', () => ({
+vi.mock("../../src/api/client.js", () => ({
   getPhotoClient: vi.fn(),
   toError: vi.fn((err: unknown, ctx: string) => new Error(`${ctx}: ${err}`)),
 }));
 
-vi.mock('../../src/utils/retry.js', () => ({
+vi.mock("../../src/utils/retry.js", () => ({
   withRetry: vi.fn(async (fn: () => Promise<unknown>) => fn()),
 }));
 
-vi.mock('../../src/utils/logger.js', () => ({
+vi.mock("../../src/utils/logger.js", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -26,47 +26,59 @@ import {
   batchAddMediaItemsToAlbum,
   addEnrichment,
   patchAlbum,
-} from '../../src/api/repositories/albumsRepository.js';
-import { getPhotoClient } from '../../src/api/client.js';
-import type { OAuth2Client } from 'google-auth-library';
+} from "../../src/api/repositories/albumsRepository.js";
+import { getPhotoClient } from "../../src/api/client.js";
+import type { OAuth2Client } from "google-auth-library";
 
 const mockOAuth2Client = {} as OAuth2Client;
 
-describe('listAlbums', () => {
+describe("listAlbums", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns albums array with pagination token', async () => {
+  it("returns albums array with pagination token", async () => {
     const mockClient = {
       albums: {
         list: vi.fn().mockResolvedValue({
           data: {
             albums: [
-              { id: 'a1', title: 'Vacation', productUrl: 'https://photos.google.com/a1' },
-              { id: 'a2', title: 'Family', productUrl: 'https://photos.google.com/a2' },
+              {
+                id: "a1",
+                title: "Vacation",
+                productUrl: "https://photos.google.com/a1",
+              },
+              {
+                id: "a2",
+                title: "Family",
+                productUrl: "https://photos.google.com/a2",
+              },
             ],
-            nextPageToken: 'next-page',
+            nextPageToken: "next-page",
           },
         }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
     const result = await listAlbums(mockOAuth2Client, 50);
 
     expect(result.albums).toHaveLength(2);
-    expect(result.albums[0].title).toBe('Vacation');
-    expect(result.nextPageToken).toBe('next-page');
+    expect(result.albums[0].title).toBe("Vacation");
+    expect(result.nextPageToken).toBe("next-page");
   });
 
-  it('returns empty array when no albums exist', async () => {
+  it("returns empty array when no albums exist", async () => {
     const mockClient = {
       albums: {
         list: vi.fn().mockResolvedValue({ data: {} }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
     const result = await listAlbums(mockOAuth2Client);
 
@@ -74,222 +86,294 @@ describe('listAlbums', () => {
     expect(result.nextPageToken).toBeUndefined();
   });
 
-  it('throws descriptive error on API failure', async () => {
+  it("throws descriptive error on API failure", async () => {
     const mockClient = {
       albums: {
-        list: vi.fn().mockRejectedValue(new Error('API failure')),
+        list: vi.fn().mockRejectedValue(new Error("API failure")),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-    await expect(listAlbums(mockOAuth2Client)).rejects.toThrow('Failed to list albums');
+    await expect(listAlbums(mockOAuth2Client)).rejects.toThrow(
+      "Failed to list albums",
+    );
   });
 });
 
-describe('getAlbum', () => {
+describe("getAlbum", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('returns a single album by ID', async () => {
+  it("returns a single album by ID", async () => {
     const mockClient = {
       albums: {
         get: vi.fn().mockResolvedValue({
-          data: { id: 'a1', title: 'My Album', productUrl: 'https://photos.google.com/a1' },
+          data: {
+            id: "a1",
+            title: "My Album",
+            productUrl: "https://photos.google.com/a1",
+          },
         }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-    const result = await getAlbum(mockOAuth2Client, 'a1');
+    const result = await getAlbum(mockOAuth2Client, "a1");
 
-    expect(result.id).toBe('a1');
-    expect(result.title).toBe('My Album');
+    expect(result.id).toBe("a1");
+    expect(result.title).toBe("My Album");
   });
 
-  it('throws when album not found (null data)', async () => {
+  it("throws when album not found (null data)", async () => {
     const mockClient = {
       albums: {
         get: vi.fn().mockResolvedValue({ data: null }),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-    await expect(getAlbum(mockOAuth2Client, 'nonexistent')).rejects.toThrow();
+    await expect(getAlbum(mockOAuth2Client, "nonexistent")).rejects.toThrow();
   });
 
-  it('throws descriptive error on API failure', async () => {
+  it("throws descriptive error on API failure", async () => {
     const mockClient = {
       albums: {
-        get: vi.fn().mockRejectedValue(new Error('Not found')),
+        get: vi.fn().mockRejectedValue(new Error("Not found")),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-    await expect(getAlbum(mockOAuth2Client, 'bad-id')).rejects.toThrow('Failed to get album');
+    await expect(getAlbum(mockOAuth2Client, "bad-id")).rejects.toThrow(
+      "Failed to get album",
+    );
   });
 });
 
-describe('createAlbum', () => {
+describe("createAlbum", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('calls photosClient.albums.create({ title }) and returns Album with id and title', async () => {
+  it("calls photosClient.albums.create({ title }) and returns Album with id and title", async () => {
     const mockClient = {
       albums: {
-        create: vi.fn().mockResolvedValue({ data: { id: 'new-album', title: 'My Album', productUrl: '...' } })
-      }
+        create: vi.fn().mockResolvedValue({
+          data: { id: "new-album", title: "My Album", productUrl: "..." },
+        }),
+      },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    const result = await createAlbum(mockOAuth2Client, 'My Album');
-    expect(result.id).toBe('new-album');
-    expect(result.title).toBe('My Album');
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
+    const result = await createAlbum(mockOAuth2Client, "My Album");
+    expect(result.id).toBe("new-album");
+    expect(result.title).toBe("My Album");
   });
 
   it('throws "Failed to create album" on API failure', async () => {
     const mockClient = {
       albums: {
-        create: vi.fn().mockRejectedValue(new Error('API failure'))
-      }
+        create: vi.fn().mockRejectedValue(new Error("API failure")),
+      },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    await expect(createAlbum(mockOAuth2Client, 'My Album')).rejects.toThrow('Failed to create album');
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
+    await expect(createAlbum(mockOAuth2Client, "My Album")).rejects.toThrow(
+      "Failed to create album",
+    );
   });
 });
 
-describe('batchAddMediaItemsToAlbum', () => {
+describe("batchAddMediaItemsToAlbum", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('calls photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }) and resolves without error', async () => {
+  it("calls photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }) and resolves without error", async () => {
     const mockClient = {
       albums: {
-        batchAddMediaItems: vi.fn().mockResolvedValue({ data: {} })
-      }
+        batchAddMediaItems: vi.fn().mockResolvedValue({ data: {} }),
+      },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).resolves.not.toThrow();
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
+    await expect(
+      batchAddMediaItemsToAlbum(mockOAuth2Client, "a1", ["m1"]),
+    ).resolves.not.toThrow();
   });
 
   it('throws "Failed to add media items to album" on API failure', async () => {
     const mockClient = {
       albums: {
-        batchAddMediaItems: vi.fn().mockRejectedValue(new Error('API failure'))
-      }
+        batchAddMediaItems: vi.fn().mockRejectedValue(new Error("API failure")),
+      },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
-    await expect(batchAddMediaItemsToAlbum(mockOAuth2Client, 'a1', ['m1'])).rejects.toThrow('Failed to add media items to album');
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
+    await expect(
+      batchAddMediaItemsToAlbum(mockOAuth2Client, "a1", ["m1"]),
+    ).rejects.toThrow("Failed to add media items to album");
   });
 });
 
 // ---- Phase 3 repository functions (RED state -- not yet implemented) ----
 
-describe('addEnrichment', () => {
+describe("addEnrichment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('calls albums.addEnrichment with correct TextEnrichment payload', async () => {
-    const mockAddEnrichment = vi.fn().mockResolvedValue({ data: { enrichmentItem: { id: 'enrich-1' } } });
+  it("calls albums.addEnrichment with correct TextEnrichment payload", async () => {
+    const mockAddEnrichment = vi
+      .fn()
+      .mockResolvedValue({ data: { enrichmentItem: { id: "enrich-1" } } });
     const mockClient = {
       albums: {
         addEnrichment: mockAddEnrichment,
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    await addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'Summer memories' }, undefined);
+    await addEnrichment(
+      mockOAuth2Client,
+      "album-1",
+      { type: "TEXT", text: "Summer memories" },
+      undefined,
+    );
 
     expect(mockAddEnrichment).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: 'album-1' })
+      expect.objectContaining({ albumId: "album-1" }),
     );
   });
 
-  it('calls albums.addEnrichment with correct LocationEnrichment payload', async () => {
-    const mockAddEnrichment = vi.fn().mockResolvedValue({ data: { enrichmentItem: { id: 'enrich-2' } } });
+  it("calls albums.addEnrichment with correct LocationEnrichment payload", async () => {
+    const mockAddEnrichment = vi
+      .fn()
+      .mockResolvedValue({ data: { enrichmentItem: { id: "enrich-2" } } });
     const mockClient = {
       albums: {
         addEnrichment: mockAddEnrichment,
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    await addEnrichment(mockOAuth2Client, 'album-1', { type: 'LOCATION', locationName: 'Paris, France' }, undefined);
+    await addEnrichment(
+      mockOAuth2Client,
+      "album-1",
+      { type: "LOCATION", locationName: "Paris, France" },
+      undefined,
+    );
 
     expect(mockAddEnrichment).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: 'album-1' })
+      expect.objectContaining({ albumId: "album-1" }),
     );
   });
 
-  it('surfaces 403 error for non-app-created albums', async () => {
-    const permissionError = Object.assign(new Error('PERMISSION_DENIED'), { code: 403 });
+  it("surfaces 403 error for non-app-created albums", async () => {
+    const permissionError = Object.assign(new Error("PERMISSION_DENIED"), {
+      code: 403,
+    });
     const mockClient = {
       albums: {
         addEnrichment: vi.fn().mockRejectedValue(permissionError),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    await expect(addEnrichment(mockOAuth2Client, 'album-1', { type: 'TEXT', text: 'x' }, undefined))
-      .rejects.toThrow();
+    await expect(
+      addEnrichment(
+        mockOAuth2Client,
+        "album-1",
+        { type: "TEXT", text: "x" },
+        undefined,
+      ),
+    ).rejects.toThrow();
   });
 });
 
-describe('patchAlbum', () => {
+describe("patchAlbum", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('calls albums.patch with coverPhotoMediaItemId and updateMask', async () => {
-    const mockPatch = vi.fn().mockResolvedValue({ data: { id: 'album-1', title: 'Vacation', productUrl: '...' } });
+  it("calls albums.patch with coverPhotoMediaItemId and updateMask", async () => {
+    const mockPatch = vi.fn().mockResolvedValue({
+      data: { id: "album-1", title: "Vacation", productUrl: "..." },
+    });
     const mockClient = {
       albums: {
         patch: mockPatch,
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    await patchAlbum(mockOAuth2Client, 'album-1', { coverPhotoMediaItemId: 'media-1' });
+    await patchAlbum(mockOAuth2Client, "album-1", {
+      coverPhotoMediaItemId: "media-1",
+    });
 
     expect(mockPatch).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: 'album-1' })
+      expect.objectContaining({ albumId: "album-1" }),
     );
   });
 
-  it('calls albums.patch with title and updateMask', async () => {
-    const mockPatch = vi.fn().mockResolvedValue({ data: { id: 'album-1', title: 'New Title', productUrl: '...' } });
+  it("calls albums.patch with title and updateMask", async () => {
+    const mockPatch = vi.fn().mockResolvedValue({
+      data: { id: "album-1", title: "New Title", productUrl: "..." },
+    });
     const mockClient = {
       albums: {
         patch: mockPatch,
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    const result = await patchAlbum(mockOAuth2Client, 'album-1', { title: 'New Title' });
+    const result = await patchAlbum(mockOAuth2Client, "album-1", {
+      title: "New Title",
+    });
 
     expect(mockPatch).toHaveBeenCalledWith(
-      expect.objectContaining({ albumId: 'album-1' })
+      expect.objectContaining({ albumId: "album-1" }),
     );
-    expect(result.title).toBe('New Title');
+    expect(result.title).toBe("New Title");
   });
 
-  it('surfaces 403 PERMISSION_DENIED error', async () => {
-    const permissionError = Object.assign(new Error('PERMISSION_DENIED'), { code: 403 });
+  it("surfaces 403 PERMISSION_DENIED error", async () => {
+    const permissionError = Object.assign(new Error("PERMISSION_DENIED"), {
+      code: 403,
+    });
     const mockClient = {
       albums: {
         patch: vi.fn().mockRejectedValue(permissionError),
       },
     };
-    vi.mocked(getPhotoClient).mockReturnValue(mockClient as unknown as ReturnType<typeof getPhotoClient>);
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
 
-
-    await expect(patchAlbum(mockOAuth2Client, 'album-1', { title: 'x' })).rejects.toThrow();
+    await expect(
+      patchAlbum(mockOAuth2Client, "album-1", { title: "x" }),
+    ).rejects.toThrow();
   });
 });

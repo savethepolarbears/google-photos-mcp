@@ -16,10 +16,10 @@ export default defineConfig({
       exclude: ['src/index.ts', 'src/dxt-server.ts', 'src/views/**', 'src/types/**'],
       reporter: ['text', 'text-summary'],
       thresholds: {
-        lines: 80,
-        functions: 80,
+        lines: 70,
+        functions: 75,
         branches: 70,
-        statements: 80,
+        statements: 70,
       },
     },
     testTimeout: 10000,

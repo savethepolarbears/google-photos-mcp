@@ -2,7 +2,7 @@
  * Shared mock factories for external dependencies.
  */
 
-import { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from 'axios';
+import { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from "axios";
 
 /**
  * Creates a mock Axios error with configurable status and message.
@@ -17,7 +17,7 @@ export function createMockAxiosError(
 
   const error = new AxiosError(
     message,
-    status >= 500 ? 'ERR_BAD_RESPONSE' : 'ERR_BAD_REQUEST',
+    status >= 500 ? "ERR_BAD_RESPONSE" : "ERR_BAD_REQUEST",
     config,
     {},
     {
@@ -37,11 +37,11 @@ export function createMockAxiosError(
  */
 export function createMockNetworkError(): AxiosError {
   const headers = new AxiosHeaders();
-  const config = { headers } as AxiosError['config'];
+  const config = { headers } as AxiosError["config"];
 
   return new AxiosError(
-    'Network Error',
-    'ERR_NETWORK',
+    "Network Error",
+    "ERR_NETWORK",
     config,
     {},
     undefined, // no response for network errors
