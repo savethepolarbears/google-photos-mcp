@@ -334,10 +334,10 @@ export function getPickerClient(auth: OAuth2Client) {
       ) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.get(
-            `/sessions/${sessionId}/mediaItems`,
-            { params, headers },
-          );
+          const response = await pickerApi.get(`/mediaItems`, {
+            params: { sessionId, ...params },
+            headers,
+          });
           return { data: response.data };
         } catch (error) {
           throw toError(error, "picker.sessions.listMediaItems");
