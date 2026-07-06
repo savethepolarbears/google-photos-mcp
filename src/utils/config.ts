@@ -3,7 +3,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 // Load environment variables
-dotenv.config({ override: true });
+// quiet: true suppresses dotenv's stdout banner, which would otherwise corrupt
+// the JSON-RPC stream in STDIO mode (see index.ts for the same treatment).
+dotenv.config({ override: true, quiet: true });
 
 // Derive project root from this file's location (src/utils/config.ts or dist/utils/config.js -> ../../)
 // This is stable regardless of process.cwd(), which varies depending on how the MCP client launches the server.

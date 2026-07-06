@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 import logger from "./utils/logger.js";
 import { GooglePhotosMCPCore } from "./mcp/core.js";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 const DXT_TIMEOUT = 30000; // 30 seconds timeout for DXT operations
 
