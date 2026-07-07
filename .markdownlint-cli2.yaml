@@ -8,6 +8,7 @@ globs:
   - "!dist"
   - "!.git"
   - "!.jules"
+  - "!.planning"
 
 # Enable auto-fix when running with --fix
 fix: true

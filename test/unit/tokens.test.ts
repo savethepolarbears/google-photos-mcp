@@ -57,7 +57,6 @@ vi.mock("keyv", () => {
 import {
   saveTokens,
   getFirstAvailableTokens,
-  // @ts-expect-error — getTokens does not exist yet; RED state until Plan 02
   getTokens,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";

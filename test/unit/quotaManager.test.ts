@@ -14,8 +14,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 // with mocked Date.now() to control time.
 
 describe("QuotaManager", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let quotaManager: any;
+  let quotaManager: typeof import("../../src/utils/quotaManager.js").quotaManager;
 
   beforeEach(async () => {
     // Import the singleton — it resets on module re-eval in test mode
