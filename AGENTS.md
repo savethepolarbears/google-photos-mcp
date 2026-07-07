@@ -52,10 +52,10 @@ npm run test:security # Security tests only
 
 ## 🛠️ Tech Stack & Details
 
-- **Language**: TypeScript 5.9+ (Strict Mode)
+- **Language**: TypeScript 6.0+ (Strict Mode)
 - **Runtime**: Node.js 22.22+
 - **Package Manager**: npm 11.11+
-- **Frameworks/Libs**: Express 5.2+, @modelcontextprotocol/sdk 1.27+, Zod 3.25+, Vitest 3.2+
+- **Frameworks/Libs**: Express 5.0+, @modelcontextprotocol/sdk 1.29+, Zod 4.4+, Vitest 4.1+
 - **Module System**: ESM (`"type": "module"` in package.json)
 
 ---

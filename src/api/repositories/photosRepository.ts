@@ -318,6 +318,16 @@ export async function getPickerSession(
   };
 }
 
+interface PickerMediaItem {
+  id?: string;
+  mediaFile?: {
+    mediaFileId?: string;
+    filename?: string;
+    baseUrl?: string;
+    mimeType?: string;
+  };
+}
+
 /**
  * Lists media items selected by the user in a completed Picker session.
  * Maps the Picker `mediaFile` schema to this project's `PhotoItem` interface.
@@ -335,8 +345,7 @@ export async function listPickerSessionMediaItems(
     "list picker media",
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const items: any[] = response.data.mediaItems || [];
+  const items = (response.data.mediaItems || []) as PickerMediaItem[];
 
   const photos = items.map((item) => ({
     id: item.mediaFile?.mediaFileId ?? item.id ?? "",
