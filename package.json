@@ -45,7 +45,7 @@
     "@types/supertest": "7.2.0",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.6.0",
-    "markdownlint-cli2": "^0.21.0",
+    "markdownlint-cli2": "^0.23.0",
     "prettier": "^3.9.4",
     "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
@@ -54,7 +54,23 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "google-auth-library": "$google-auth-library"
+    "google-auth-library": "$google-auth-library",
+    "@keyv/sqlite": {
+      "sqlite3": {
+        "node-gyp": "^11.0.0"
+      }
+    },
+    "node-gyp": "^10.3.1",
+    "tar": "^7.5.19",
+    "@tootallnate/once": "^2.0.0",
+    "hono": "^4.12.25",
+    "fast-uri": "^3.1.2",
+    "form-data": "^4.0.6",
+    "ip-address": "^10.1.1",
+    "js-yaml": "^4.1.2",
+    "linkify-it": "^5.0.1",
+    "markdown-it": "^14.1.2",
+    "qs": "^6.15.2"
   },
   "optionalDependencies": {
     "@rollup/rollup-darwin-x64": "^4.59.0"
