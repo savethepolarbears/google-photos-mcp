@@ -48,8 +48,13 @@ export async function getAuthorizedHeaders(
 ): Promise<Record<string, string>> {
   try {
     const headers = await auth.getRequestHeaders();
-    // google-auth-library v10 returns Headers object; convert to plain record
-    return Object.fromEntries(Object.entries(headers));
+    // google-auth-library v10 returns a native Headers object. It's iterable
+    // as [key, value] pairs, but Object.entries() only sees own enumerable
+    // properties (which Headers doesn't expose), so it silently produced an
+    // empty object here — meaning every authenticated API call was sent
+    // without an Authorization header. Spread the iterable directly into
+    // Object.fromEntries instead.
+    return Object.fromEntries(headers);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Authorization failed: ${message}`, { cause: error });
