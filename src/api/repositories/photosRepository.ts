@@ -548,10 +548,13 @@ export async function downloadPickerMedia(
       );
     }
 
-    if (options.sessionId && options.isVideo === undefined && !mimeType) {
-      // If baseUrl was provided with sessionId but without media type, lookup session to infer media type
+    if (options.sessionId) {
+      // Lookup session to verify item exists and resolve metadata (type, ID, processingStatus)
       let pageToken: string | undefined;
       let foundInSession = false;
+      let foundMatchingUrl = false;
+      let foundMatchingId = false;
+
       do {
         quotaManager.checkQuota(false);
         const page = await listPickerSessionMediaItems(
@@ -562,30 +565,42 @@ export async function downloadPickerMedia(
         );
         quotaManager.recordRequest(false);
 
-        const found = page.photos.find(
-          (p) =>
-            p.baseUrl === targetBaseUrl ||
-            p.productUrl === targetBaseUrl ||
-            (options.mediaItemId && p.id === options.mediaItemId),
-        );
-        if (found) {
-          filename = found.filename;
-          mimeType = found.mimeType;
-          if (!mediaItemId) mediaItemId = found.id;
-          if (!itemProcessingStatus) itemProcessingStatus = found.processingStatus;
-          foundInSession = true;
-          break;
+        for (const p of page.photos) {
+          const urlMatches =
+            p.baseUrl === targetBaseUrl || p.productUrl === targetBaseUrl;
+          const idMatches = Boolean(
+            options.mediaItemId && p.id === options.mediaItemId,
+          );
+
+          if (urlMatches) foundMatchingUrl = true;
+          if (idMatches) foundMatchingId = true;
+
+          // The item must match targetBaseUrl. If mediaItemId was also supplied, it must identify the same item.
+          if (urlMatches && (!options.mediaItemId || idMatches)) {
+            filename = filename || p.filename;
+            if (!mimeType) mimeType = p.mimeType;
+            if (!mediaItemId) mediaItemId = p.id;
+            if (!itemProcessingStatus) itemProcessingStatus = p.processingStatus;
+            foundInSession = true;
+            break;
+          }
         }
+
+        if (foundInSession) break;
         pageToken = page.nextPageToken;
       } while (pageToken);
 
       if (!foundInSession) {
+        if (options.mediaItemId && (foundMatchingUrl || foundMatchingId)) {
+          throw new Error(
+            `The provided baseUrl and mediaItemId (${options.mediaItemId}) refer to different items in Picker session ${options.sessionId}. Both must identify the same item.`,
+          );
+        }
         throw new Error(
           `Could not find matching media item for baseUrl in Picker session ${options.sessionId}. Please provide isVideo or mimeType to specify the media type directly.`,
         );
       }
     } else if (
-      !options.sessionId &&
       options.isVideo === undefined &&
       !mimeType
     ) {
@@ -626,8 +641,8 @@ export async function downloadPickerMedia(
     }
 
     targetBaseUrl = foundPhoto.baseUrl;
-    filename = foundPhoto.filename;
-    mimeType = foundPhoto.mimeType;
+    filename = filename || foundPhoto.filename;
+    mimeType = mimeType || foundPhoto.mimeType;
     mediaItemId = foundPhoto.id;
     if (!itemProcessingStatus) itemProcessingStatus = foundPhoto.processingStatus;
 
@@ -659,6 +674,11 @@ export async function downloadPickerMedia(
     if (itemProcessingStatus === "FAILED") {
       throw new Error(
         `Video ${mediaItemId || filename || "item"} failed processing in Google Photos (processingStatus: "FAILED"). Video bytes cannot be retrieved.`,
+      );
+    }
+    if (itemProcessingStatus !== "READY") {
+      throw new Error(
+        `Video ${mediaItemId || filename || "item"} cannot be downloaded: video processingStatus is ${itemProcessingStatus ? `"${itemProcessingStatus}"` : "not specified (unknown)"}. Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY, or pass processingStatus: "READY" if status has already been verified.`,
       );
     }
     if (!downloadUrl.includes("=dv")) {

@@ -666,6 +666,11 @@ describe("Picker API repositories", () => {
                     baseUrl: "https://lh3.googleusercontent.com/video-url",
                     filename: "clip.mp4",
                     mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "READY",
+                      },
+                    },
                   },
                 },
               ],
@@ -798,6 +803,161 @@ describe("Picker API repositories", () => {
       );
     });
 
+    it("rejects video download when processingStatus is missing or not explicitly READY", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // Case 1: Session item has UNSPECIFIED processing status
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-unspec-1",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/video-unspec",
+                    filename: "unspec.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "PROCESSING_STATUS_UNSPECIFIED",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-unspec",
+          mediaItemId: "video-unspec-1",
+        }),
+      ).rejects.toThrow(
+        "Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv)",
+      );
+
+      // Case 2: Base-URL-only form without processingStatus
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/direct-video-no-status",
+          mimeType: "video/mp4",
+        }),
+      ).rejects.toThrow(
+        "Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv)",
+      );
+    });
+
+    it("rejects when baseUrl and mediaItemId refer to different items in the session", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "item-1",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/item-1-url",
+                    filename: "photo1.jpg",
+                    mimeType: "image/jpeg",
+                  },
+                },
+                {
+                  id: "item-2",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/item-2-url",
+                    filename: "photo2.jpg",
+                    mimeType: "image/jpeg",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      // Caller provides item-1's baseUrl, but item-2's mediaItemId
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-conflict",
+          baseUrl: "https://lh3.googleusercontent.com/item-1-url",
+          mediaItemId: "item-2",
+        }),
+      ).rejects.toThrow(
+        "refer to different items in Picker session sess-conflict. Both must identify the same item.",
+      );
+    });
+
+    it("accepts when baseUrl and mediaItemId identify the same item in the session", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "item-match",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/item-match-url",
+                    filename: "photo-match.jpg",
+                    mimeType: "image/jpeg",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("img-bytes")),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-match",
+        baseUrl: "https://lh3.googleusercontent.com/item-match-url",
+        mediaItemId: "item-match",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.filename).toBe("photo-match.jpg");
+      axiosGetSpy.mockRestore();
+    });
+
     it("infers video downloads (=dv) from filename extension when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
@@ -817,6 +977,11 @@ describe("Picker API repositories", () => {
                   mediaFile: {
                     baseUrl: "https://lh3.googleusercontent.com/mov-url",
                     filename: "vacation.mov",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "READY",
+                      },
+                    },
                   },
                 },
               ],
@@ -869,6 +1034,11 @@ describe("Picker API repositories", () => {
                     baseUrl: "https://lh3.googleusercontent.com/session-video-base",
                     filename: "sunset.mp4",
                     mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "READY",
+                      },
+                    },
                   },
                 },
               ],
@@ -1002,6 +1172,7 @@ describe("Picker API repositories", () => {
       const result = await downloadPickerMedia(mockOAuthClient, {
         baseUrl: "https://lh3.googleusercontent.com/direct-video",
         mimeType: "video/webm",
+        processingStatus: "READY",
       });
 
       expect(result.success).toBe(true);
@@ -1118,6 +1289,7 @@ describe("Picker API repositories", () => {
         downloadPickerMedia(mockOAuthClient, {
           baseUrl: "https://lh3.googleusercontent.com/big-video",
           isVideo: true,
+          processingStatus: "READY",
         }),
       ).rejects.toThrow(
         "Media item size (25000000 bytes) exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",
@@ -1150,6 +1322,7 @@ describe("Picker API repositories", () => {
         downloadPickerMedia(mockOAuthClient, {
           baseUrl: "https://lh3.googleusercontent.com/big-chunk-video",
           isVideo: true,
+          processingStatus: "READY",
         }),
       ).rejects.toThrow(
         "Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",

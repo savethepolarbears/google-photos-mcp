@@ -679,7 +679,7 @@ export class GooglePhotosMCPCore {
         {
           name: "download_picker_media",
           description:
-            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) and require video processingStatus to be READY before downloading.",
+            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId (if both baseUrl and mediaItemId are supplied with sessionId, they must identify the same item). Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) and require video processingStatus to be explicitly READY before downloading.",
           inputSchema: {
             type: "object",
             properties: {
@@ -706,7 +706,7 @@ export class GooglePhotosMCPCore {
               processingStatus: {
                 type: "string",
                 description:
-                  "Optional video processing status (e.g. 'READY', 'PROCESSING', 'FAILED') returned by poll_picker_session. Videos currently 'PROCESSING' cannot be downloaded until ready.",
+                  "Optional video processing status (e.g. 'READY', 'PROCESSING', 'FAILED') returned by poll_picker_session. Google Photos requires video processingStatus to be explicitly 'READY' before downloading video bytes (=dv).",
               },
               downloadOriginal: {
                 type: "boolean",
