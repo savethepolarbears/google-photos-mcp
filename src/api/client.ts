@@ -15,7 +15,7 @@ import {
  * Shared HTTPS Agent with keep-alive to reuse TCP/TLS connections
  * across Google Photos Library API and Picker API requests.
  */
-const httpsAgent = new https.Agent({
+export const httpsAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 30000, // Send keep-alive packets every 30s
   maxSockets: 50, // Max concurrent connections per host

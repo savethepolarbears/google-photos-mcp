@@ -18,6 +18,8 @@ This server implements the **Google Photos Picker API**, providing full library 
 1. Call `create_picker_session` — returns a URL the user opens in their browser
 2. User selects photos from their full library
 3. Call `poll_picker_session` — when `mediaItemsSet` is true, selected photos are returned
+4. Call `download_picker_media` — downloads authenticated media bytes (base64 or saved directly to disk)
+5. Call `delete_picker_session` — cleans up the session after retrieval is complete
 
 ## 🛡️ Security Notice: CORS Removed
 
@@ -179,7 +181,7 @@ npx @modelcontextprotocol/inspector node dist/index.js        # HTTP
 npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 ```
 
-## Available tools (20)
+## Available tools (21)
 
 ### Search & browse
 
@@ -192,7 +194,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | `list_albums` | List all albums |
 | `get_album` | Get album details |
 | `list_album_photos` | List photos in an album |
-| `list_media_items` | List all media items |
+| `list_media_items` | List app-created media items (use Picker API for full library) |
 | `describe_filter_capabilities` | JSON reference of all filter options |
 
 ### Write & manage
@@ -212,6 +214,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | --- | --- |
 | `create_picker_session` | Start a Picker session for full library access |
 | `poll_picker_session` | Check session status and retrieve selected photos |
+| `download_picker_media` | Download selected media bytes using authenticated OAuth requests |
 | `delete_picker_session` | Delete and clean up a Picker session after all media items and bytes are downloaded |
 
 ### Auth

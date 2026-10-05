@@ -35,6 +35,7 @@ import {
   getPickerSession,
   deletePickerSession,
   listPickerSessionMediaItems,
+  downloadPickerMedia,
 } from "../api/photos.js";
 import { searchPhotos } from "../api/repositories/photosRepository.js";
 import type { SearchFilter } from "../api/types.js";
@@ -58,6 +59,7 @@ import {
   createPickerSessionSchema,
   pollPickerSessionSchema,
   deletePickerSessionSchema,
+  downloadPickerMediaSchema,
 } from "../schemas/toolSchemas.js";
 import { quotaManager } from "../utils/quotaManager.js";
 
@@ -458,7 +460,7 @@ export class GooglePhotosMCPCore {
         {
           name: "list_media_items",
           description:
-            "List all media items in the library (not filtered by album)",
+            "List app-created media items from Google Photos library (not filtered by album). Note: limited to media created by this app under photoslibrary.readonly.appcreateddata scope; use create_picker_session for full-library access.",
           inputSchema: {
             type: "object",
             properties: {
@@ -672,6 +674,63 @@ export class GooglePhotosMCPCore {
           },
         },
         {
+          name: "download_picker_media",
+          description:
+            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              baseUrl: {
+                type: "string",
+                description:
+                  "The baseUrl of the picked media item (returned by poll_picker_session)",
+              },
+              sessionId: {
+                type: "string",
+                description:
+                  "The Picker session ID (required if using mediaItemId instead of baseUrl)",
+              },
+              mediaItemId: {
+                type: "string",
+                description:
+                  "The media item ID within the Picker session (required if using sessionId instead of baseUrl)",
+              },
+              downloadOriginal: {
+                type: "boolean",
+                description:
+                  "Whether to download full-resolution original media (appends =d or =dv). Defaults to true.",
+                default: true,
+              },
+              width: {
+                type: "number",
+                description:
+                  "Optional custom width dimension (appends =w{width})",
+              },
+              height: {
+                type: "number",
+                description:
+                  "Optional custom height dimension (appends =h{height})",
+              },
+              isVideo: {
+                type: "boolean",
+                description:
+                  "Whether the item is a video (appends =dv for download). Defaults to false.",
+                default: false,
+              },
+              savePath: {
+                type: "string",
+                description:
+                  "Optional local file path to save the downloaded media bytes directly to disk",
+              },
+              includeBase64: {
+                type: "boolean",
+                description:
+                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided.",
+              },
+            },
+          },
+        },
+        {
           name: "delete_picker_session",
           description:
             "Delete and clean up a Google Photos Picker session. IMPORTANT: Call only after all media items have been retrieved (exhausting nextPageToken pagination) and all required media bytes have been downloaded, or if the session has timed out. Deleting the session immediately terminates access to the selected items.",
@@ -784,6 +843,9 @@ export class GooglePhotosMCPCore {
 
         case "poll_picker_session":
           return await this.handlePollPickerSession(request, tokens);
+
+        case "download_picker_media":
+          return await this.handleDownloadPickerMedia(request, tokens);
 
         case "delete_picker_session":
           return await this.handleDeletePickerSession(request, tokens);
@@ -1856,7 +1918,7 @@ Key rules:
                 "2. (Optional) You can append '/autoclose' to the pickerUri to close the tab automatically after selection.",
                 "3. After selecting, call poll_picker_session with the sessionId to check completion.",
                 "4. Once mediaItemsSet is true, poll_picker_session returns the selected items. Paginate using nextPageToken until all pages are retrieved.",
-                "5. Download all required media-item bytes from the returned baseUrl URLs before deleting the session.",
+                "5. Download required media items and bytes using the download_picker_media tool (providing either the media item's baseUrl or sessionId and mediaItemId) before deleting the session.",
                 "6. After all items and bytes are downloaded (or if the session has timed out), call delete_picker_session to clean up the session and release quota.",
               ],
             },
@@ -1897,6 +1959,32 @@ Key rules:
             null,
             2,
           ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Downloads media bytes from a Picker session using authenticated OAuth requests.
+   */
+  private async handleDownloadPickerMedia(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments,
+      downloadPickerMediaSchema,
+    );
+    quotaManager.checkQuota(true);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const result = await downloadPickerMedia(oauth2Client, args);
+    quotaManager.recordRequest(true);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
         },
       ],
     };

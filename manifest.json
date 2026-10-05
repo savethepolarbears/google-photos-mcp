@@ -66,7 +66,7 @@
     },
     {
       "name": "list_media_items",
-      "description": "List all media items from Google Photos library"
+      "description": "List app-created media items from Google Photos library (use Picker API for full library selection)"
     },
     {
       "name": "describe_filter_capabilities",
@@ -103,6 +103,10 @@
     {
       "name": "poll_picker_session",
       "description": "Poll an active Google Photos Picker session to retrieve selected media items"
+    },
+    {
+      "name": "download_picker_media",
+      "description": "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests"
     },
     {
       "name": "delete_picker_session",

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../src/api/client.js", () => ({
   getPhotoClient: vi.fn(),
   getPickerClient: vi.fn(),
+  httpsAgent: {},
   toError: vi.fn((err: unknown, ctx: string) => {
     if (err instanceof Error) {
       return new Error(`Google Photos API ${ctx} failed: ${err.message}`);
@@ -35,8 +36,10 @@ vi.mock("../../src/utils/logger.js", () => ({
 
 vi.mock("fs/promises", () => ({
   readFile: vi.fn().mockResolvedValue(Buffer.from("fake-image-data")),
+  writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
+import axios from "axios";
 import {
   listAlbumPhotos,
   getPhoto,
@@ -48,6 +51,7 @@ import {
   getPickerSession,
   deletePickerSession,
   listPickerSessionMediaItems,
+  downloadPickerMedia,
 } from "../../src/api/repositories/photosRepository.js";
 import { getPhotoClient, getPickerClient } from "../../src/api/client.js";
 import type { OAuth2Client } from "google-auth-library";
@@ -412,6 +416,126 @@ describe("Picker API repositories", () => {
     expect(result.photos[0].mediaMetadata?.width).toBe("1920");
     expect(result.photos[0].mediaMetadata?.height).toBe("1080");
     expect(result.nextPageToken).toBe("next-token");
+  });
+
+  describe("downloadPickerMedia", () => {
+    it("downloads media bytes from baseUrl with Authorization header", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+      } as unknown as OAuth2Client;
+
+      const fakeBytes = Buffer.from("image-bytes-123");
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeBytes,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://photos.google.com/sample-photo",
+        downloadOriginal: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mimeType).toBe("image/jpeg");
+      expect(result.size).toBe(fakeBytes.length);
+      expect(result.base64Data).toBe(fakeBytes.toString("base64"));
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://photos.google.com/sample-photo=d",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            authorization: "Bearer test-picker-token",
+          }),
+          responseType: "arraybuffer",
+        }),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("looks up mediaItemId in session when baseUrl is omitted", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "picked-item-99",
+                  mediaFile: {
+                    baseUrl: "https://photos.google.com/item-99-url",
+                    filename: "item99.png",
+                    mimeType: "image/png",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const fakeBytes = Buffer.from("item-99-bytes");
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeBytes,
+        headers: { "content-type": "image/png" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-123",
+        mediaItemId: "picked-item-99",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.filename).toBe("item99.png");
+      expect(result.mimeType).toBe("image/png");
+      expect(result.size).toBe(fakeBytes.length);
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("saves media bytes to disk when savePath is provided", async () => {
+      const fsPromises = await import("fs/promises");
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+      } as unknown as OAuth2Client;
+
+      const fakeBytes = Buffer.from("file-on-disk-bytes");
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeBytes,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://photos.google.com/sample-photo",
+        savePath: "/tmp/test-output.jpg",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.savedTo).toBe("/tmp/test-output.jpg");
+      expect(fsPromises.writeFile).toHaveBeenCalledWith(
+        "/tmp/test-output.jpg",
+        expect.any(Buffer),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("rejects when neither baseUrl nor sessionId+mediaItemId are provided", async () => {
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {}),
+      ).rejects.toThrow("Either baseUrl or both sessionId and mediaItemId must be provided");
+    });
   });
 });
 

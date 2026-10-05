@@ -235,3 +235,25 @@ export const deletePickerSessionSchema = z.object({
   sessionId: z.string().min(1, "Session ID is required"),
 });
 
+/**
+ * Schema for download_picker_media tool arguments
+ */
+export const downloadPickerMediaSchema = z
+  .object({
+    baseUrl: z.string().min(1, "baseUrl cannot be empty").optional(),
+    sessionId: z.string().min(1, "sessionId cannot be empty").optional(),
+    mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
+    downloadOriginal: z.boolean().optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    isVideo: z.boolean().optional(),
+    savePath: z.string().min(1).optional(),
+    includeBase64: z.boolean().optional(),
+  })
+  .refine(
+    (data) => Boolean(data.baseUrl || (data.sessionId && data.mediaItemId)),
+    {
+      message:
+        "Either baseUrl or both sessionId and mediaItemId must be provided",
+    },
+  );

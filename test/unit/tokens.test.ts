@@ -188,10 +188,32 @@ describe("tokens.ts — AUTH-01", () => {
     });
 
     it("throws if chmodSync fails to enforce 0600 permissions on an unowned file", () => {
-      if (process.platform === "win32") return;
+      if (process.platform !== "win32") return;
       expect(() => enforceOwnerOnlyPermissions("/dev/null")).toThrow(
         "Could not enforce 0600 permissions",
       );
+    });
+
+    it("does not alter permissions of an existing directory when hardening token files", async () => {
+      const fs = await import("node:fs/promises");
+      const tmpDir = await fs.mkdtemp(
+        path.join(process.cwd(), "test-dir-perms-"),
+      );
+      if (process.platform !== "win32") {
+        await fs.chmod(tmpDir, 0o755);
+        const statsBefore = await fs.stat(tmpDir);
+        expect(statsBefore.mode & 0o777).toBe(0o755);
+
+        const dbFile = path.join(tmpDir, "tokens.db");
+        await fs.writeFile(dbFile, "data", { mode: 0o644 });
+        enforceOwnerOnlyPermissions(dbFile);
+
+        const statsAfter = await fs.stat(tmpDir);
+        expect(statsAfter.mode & 0o777).toBe(0o755);
+        const fileStats = await fs.stat(dbFile);
+        expect(fileStats.mode & 0o777).toBe(0o600);
+      }
+      await fs.rm(tmpDir, { recursive: true, force: true });
     });
   });
 });

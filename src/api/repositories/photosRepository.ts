@@ -1,13 +1,21 @@
 import { OAuth2Client } from "google-auth-library";
 import axios from "axios";
-import { readFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
+import fs from "fs";
+import path from "path";
 import {
   PhotoItem,
   SearchParams,
   NewMediaItemResult,
   PickerSession,
 } from "../types.js";
-import { getPhotoClient, getPickerClient, toError } from "../client.js";
+import {
+  getPhotoClient,
+  getPickerClient,
+  httpsAgent,
+  toError,
+} from "../client.js";
+import { getAuthorizedHeaders } from "../oauth.js";
 import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
 import { getPhotoLocation } from "../../utils/location.js";
 import { withRetry } from "../../utils/retry.js";
@@ -209,7 +217,9 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
     return buffer.toString("base64");
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : toError(error, "download photo").message;
+      error instanceof Error
+        ? error.message
+        : toError(error, "download photo").message;
     logger.error(`Failed to download photo: ${message}`);
     throw new Error(`Failed to download photo: ${message}`, { cause: error });
   }
@@ -250,7 +260,9 @@ export async function uploadMedia(
     };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : toError(error, "upload media").message;
+      error instanceof Error
+        ? error.message
+        : toError(error, "upload media").message;
     logger.error(`Failed to upload media: ${message}`);
     throw new Error(`Failed to upload media: ${message}`, { cause: error });
   }
@@ -285,7 +297,9 @@ export async function batchCreateMediaItems(
         ? error.message
         : toError(error, "batch create media items").message;
     logger.error(`Failed to batch create media items: ${message}`);
-    throw new Error(`Failed to batch create media items: ${message}`, { cause: error });
+    throw new Error(`Failed to batch create media items: ${message}`, {
+      cause: error,
+    });
   }
 }
 
@@ -390,4 +404,167 @@ export async function listPickerSessionMediaItems(
   })) as PhotoItem[];
 
   return { photos, nextPageToken: response.data.nextPageToken };
+}
+
+/**
+ * Options for downloading media from the Google Photos Picker API.
+ */
+export interface DownloadPickerMediaOptions {
+  baseUrl?: string;
+  sessionId?: string;
+  mediaItemId?: string;
+  downloadOriginal?: boolean;
+  width?: number;
+  height?: number;
+  isVideo?: boolean;
+  savePath?: string;
+  includeBase64?: boolean;
+}
+
+/**
+ * Result of downloading media from the Google Photos Picker API.
+ */
+export interface DownloadPickerMediaResult {
+  success: boolean;
+  mediaItemId?: string;
+  filename?: string;
+  mimeType: string;
+  size: number;
+  savedTo?: string;
+  base64Data?: string;
+}
+
+/**
+ * Downloads media bytes for an item selected via the Google Photos Picker API
+ * using authenticated OAuth requests.
+ *
+ * @param oauth2Client - The authenticated OAuth2 client.
+ * @param options - Download options (baseUrl or sessionId + mediaItemId, sizing, destination).
+ * @returns Result object containing metadata, saved path, or base64Data.
+ */
+export async function downloadPickerMedia(
+  oauth2Client: OAuth2Client,
+  options: DownloadPickerMediaOptions,
+): Promise<DownloadPickerMediaResult> {
+  let targetBaseUrl = options.baseUrl;
+  let filename: string | undefined;
+  let mimeType: string | undefined;
+  let mediaItemId = options.mediaItemId;
+
+  if (!targetBaseUrl) {
+    if (!options.sessionId || !options.mediaItemId) {
+      throw new Error(
+        "Either baseUrl or both sessionId and mediaItemId must be provided to download Picker media",
+      );
+    }
+
+    const searchId = options.mediaItemId;
+    // Lookup media item in Picker session
+    let pageToken: string | undefined;
+    let foundPhoto: PhotoItem | undefined;
+    do {
+      const page = await listPickerSessionMediaItems(
+        oauth2Client,
+        options.sessionId,
+        100,
+        pageToken,
+      );
+      foundPhoto = page.photos.find(
+        (p) => p.id === searchId || p.id.endsWith(searchId),
+      );
+      if (foundPhoto) break;
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+
+    if (!foundPhoto || !foundPhoto.baseUrl) {
+      throw new Error(
+        `Media item ${options.mediaItemId} not found in Picker session ${options.sessionId}`,
+      );
+    }
+
+    targetBaseUrl = foundPhoto.baseUrl;
+    filename = foundPhoto.filename;
+    mimeType = foundPhoto.mimeType;
+    mediaItemId = foundPhoto.id;
+  }
+
+  if (
+    !targetBaseUrl.startsWith("http://") &&
+    !targetBaseUrl.startsWith("https://")
+  ) {
+    throw new Error(`Invalid baseUrl format: ${targetBaseUrl}`);
+  }
+
+  let downloadUrl = targetBaseUrl;
+  if (options.isVideo) {
+    if (!downloadUrl.includes("=dv")) {
+      downloadUrl = `${downloadUrl}=dv`;
+    }
+  } else if (options.width || options.height) {
+    const w = options.width ?? 0;
+    const h = options.height ?? 0;
+    downloadUrl = `${downloadUrl}=w${w}-h${h}`;
+  } else if (
+    options.downloadOriginal !== false &&
+    !downloadUrl.endsWith("=d")
+  ) {
+    downloadUrl = `${downloadUrl}=d`;
+  }
+
+  try {
+    const headers = await getAuthorizedHeaders(oauth2Client);
+    const response = await withRetry(
+      async () =>
+        await axios.get<ArrayBuffer>(downloadUrl, {
+          headers,
+          responseType: "arraybuffer",
+          httpsAgent,
+          timeout: 30000,
+        }),
+      { maxRetries: 3, initialDelayMs: 1000 },
+      "download picker media",
+    );
+
+    const buffer = Buffer.from(response.data);
+    const responseContentType = response.headers?.["content-type"];
+    const resolvedMimeType =
+      (typeof responseContentType === "string"
+        ? responseContentType
+        : undefined) ||
+      mimeType ||
+      (options.isVideo ? "video/mp4" : "image/jpeg");
+
+    let savedTo: string | undefined;
+    if (options.savePath) {
+      const resolvedPath = path.resolve(options.savePath);
+      const dir = path.dirname(resolvedPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      await writeFile(resolvedPath, buffer);
+      savedTo = resolvedPath;
+    }
+
+    const shouldIncludeBase64 =
+      options.includeBase64 ?? (options.savePath ? false : true);
+    const base64Data = shouldIncludeBase64
+      ? buffer.toString("base64")
+      : undefined;
+
+    return {
+      success: true,
+      mediaItemId,
+      filename,
+      mimeType: resolvedMimeType,
+      size: buffer.length,
+      savedTo,
+      base64Data,
+    };
+  } catch (error) {
+    const message = toError(error, "download picker media").message;
+    logger.error(`Failed to download picker media: ${message}`);
+    throw new Error(`Failed to download picker media: ${message}`, {
+      cause: error,
+    });
+  }
 }

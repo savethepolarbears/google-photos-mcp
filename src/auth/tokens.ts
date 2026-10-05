@@ -58,19 +58,17 @@ export function enforceOwnerOnlyPermissions(filePath: string): void {
   }
 }
 
-// Pre-create directory (0700) and file (0600) before KeyvSqlite opens it to prevent permissive umask creation
+// Pre-create directory (0700) and file (0600) before KeyvSqlite opens it to prevent permissive umask creation.
+// Only enforce 0700 permissions when the directory is created specifically for token storage.
+// Never alter permissions of pre-existing directories (e.g. project root or shared checkout).
 if (process.platform !== "win32" && config.tokens.dbPath) {
   const dir = path.dirname(config.tokens.dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  } else {
     try {
-      const dirStats = fs.statSync(dir);
-      if ((dirStats.mode & 0o777) !== 0o700) {
-        fs.chmodSync(dir, 0o700);
-      }
+      fs.chmodSync(dir, 0o700);
     } catch (err) {
-      const msg = `Could not enforce 0700 permissions on token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Could not enforce 0700 permissions on newly created token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
       logger.error(msg);
       throw new Error(msg, { cause: err });
     }

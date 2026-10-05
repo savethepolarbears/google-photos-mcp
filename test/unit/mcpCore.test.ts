@@ -28,6 +28,7 @@ vi.mock("../../src/api/photos.js", () => ({
   getPickerSession: vi.fn(),
   deletePickerSession: vi.fn(),
   listPickerSessionMediaItems: vi.fn(),
+  downloadPickerMedia: vi.fn(),
 }));
 
 vi.mock("../../src/utils/quotaManager.js", () => ({
@@ -191,6 +192,7 @@ describe("GooglePhotosMCPCore", () => {
       expect(names).toContain("start_auth");
       expect(names).toContain("create_picker_session");
       expect(names).toContain("poll_picker_session");
+      expect(names).toContain("download_picker_media");
       expect(names).toContain("delete_picker_session");
       // Deprecated sharing tools should NOT be present
       expect(names).not.toContain("share_album");
@@ -412,6 +414,27 @@ describe("GooglePhotosMCPCore", () => {
       expect(parsed.success).toBe(true);
       expect(parsed.sessionId).toBe("sess-1");
       expect(parsed.message).toContain("deleted successfully");
+    });
+
+    it("dispatches download_picker_media and returns downloaded media result", async () => {
+      const { downloadPickerMedia } = await import("../../src/api/photos.js");
+      vi.mocked(downloadPickerMedia).mockResolvedValue({
+        success: true,
+        filename: "test.jpg",
+        mimeType: "image/jpeg",
+        size: 1024,
+        base64Data: "aGVsbG8=",
+      } as never);
+
+      const result = await instance.handleCallTool(
+        callToolReq("download_picker_media", {
+          baseUrl: "https://photos.google.com/sample",
+        }),
+      );
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.base64Data).toBe("aGVsbG8=");
     });
   });
 

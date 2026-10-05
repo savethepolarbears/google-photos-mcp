@@ -44,7 +44,7 @@ npm run test:security # Security tests only
 3. **Tool Handlers**: All tool logic is centralized in `src/mcp/core.ts`. Tool arguments are strictly validated using Zod schemas (`src/schemas/toolSchemas.ts`).
 4. **API Integration**:
    - Low-level Google Photos API calls are in `src/api/repositories/`.
-   - The Picker API (`create_picker_session` / `poll_picker_session`) uses a separate OAuth scope (`photospicker.mediaitems.readonly`) and REST endpoints.
+   - The Picker API (`create_picker_session` / `poll_picker_session` / `download_picker_media`) uses a separate OAuth scope (`photospicker.mediaitems.readonly`) and REST endpoints.
    - **`uploadMedia` Rule**: It receives `albumId` directly—items are added to the album at creation time. No separate `batchAddMediaItemsToAlbum` call needed in `create_album_with_media`.
    - **Filter Rule**: `includeArchivedMedia` is a root-level filter boolean, not a feature filter entry. The API rejects `INCLUDE_ARCHIVED` in `featureFilter`.
 5. **Security**: CORS middleware has been removed for security (to prevent drive-by attacks on localhost). The local Express server uses an `allowedHosts` array for DNS rebinding protection (`127.0.0.1` and `[::1]`). Do not add CORS back.

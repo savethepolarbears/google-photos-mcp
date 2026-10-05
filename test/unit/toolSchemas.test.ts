@@ -22,6 +22,7 @@ import {
   createPickerSessionSchema,
   pollPickerSessionSchema,
   deletePickerSessionSchema,
+  downloadPickerMediaSchema,
 } from "../../src/schemas/toolSchemas.js";
 
 describe("searchPhotosSchema", () => {
@@ -412,7 +413,9 @@ describe("createPickerSessionSchema", () => {
   });
 
   it("rejects maxItemCount less than 1", () => {
-    expect(() => createPickerSessionSchema.parse({ maxItemCount: 0 })).toThrow();
+    expect(() =>
+      createPickerSessionSchema.parse({ maxItemCount: 0 }),
+    ).toThrow();
   });
 
   it("rejects maxItemCount greater than 2000", () => {
@@ -460,3 +463,60 @@ describe("deletePickerSessionSchema", () => {
   });
 });
 
+describe("downloadPickerMediaSchema", () => {
+  it("accepts valid baseUrl alone", () => {
+    const result = downloadPickerMediaSchema.parse({
+      baseUrl: "https://photos.google.com/sample",
+    });
+    expect(result.baseUrl).toBe("https://photos.google.com/sample");
+  });
+
+  it("accepts sessionId and mediaItemId together without baseUrl", () => {
+    const result = downloadPickerMediaSchema.parse({
+      sessionId: "sess-123",
+      mediaItemId: "item-456",
+    });
+    expect(result.sessionId).toBe("sess-123");
+    expect(result.mediaItemId).toBe("item-456");
+  });
+
+  it("accepts downloadOriginal, width, height, isVideo, savePath, and includeBase64", () => {
+    const result = downloadPickerMediaSchema.parse({
+      baseUrl: "https://photos.google.com/sample",
+      downloadOriginal: false,
+      width: 1920,
+      height: 1080,
+      isVideo: true,
+      savePath: "/tmp/download.mp4",
+      includeBase64: false,
+    });
+    expect(result.downloadOriginal).toBe(false);
+    expect(result.width).toBe(1920);
+    expect(result.height).toBe(1080);
+    expect(result.isVideo).toBe(true);
+    expect(result.savePath).toBe("/tmp/download.mp4");
+    expect(result.includeBase64).toBe(false);
+  });
+
+  it("rejects when neither baseUrl nor (sessionId and mediaItemId) are provided", () => {
+    expect(() => downloadPickerMediaSchema.parse({})).toThrow(
+      "Either baseUrl or both sessionId and mediaItemId must be provided",
+    );
+  });
+
+  it("rejects when only sessionId is provided without mediaItemId or baseUrl", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({ sessionId: "sess-123" }),
+    ).toThrow(
+      "Either baseUrl or both sessionId and mediaItemId must be provided",
+    );
+  });
+
+  it("rejects when only mediaItemId is provided without sessionId or baseUrl", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({ mediaItemId: "item-123" }),
+    ).toThrow(
+      "Either baseUrl or both sessionId and mediaItemId must be provided",
+    );
+  });
+});

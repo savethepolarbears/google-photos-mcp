@@ -97,7 +97,7 @@ describe("GooglePhotosMCPCore", () => {
   });
 
   describe("handleListTools", () => {
-    it("returns all 20 tool definitions", async () => {
+    it("returns all 21 tool definitions", async () => {
       // Access the protected method via the server's handler
       // We invoke it through the class's internal method
       const result = await (
@@ -106,7 +106,7 @@ describe("GooglePhotosMCPCore", () => {
         }
       ).handleListTools();
 
-      expect(result.tools).toHaveLength(20);
+      expect(result.tools).toHaveLength(21);
       const toolNames = result.tools.map(
         (t: unknown) => (t as { name: string }).name,
       );
@@ -119,6 +119,7 @@ describe("GooglePhotosMCPCore", () => {
       expect(toolNames).toContain("list_album_photos");
       expect(toolNames).toContain("create_picker_session");
       expect(toolNames).toContain("poll_picker_session");
+      expect(toolNames).toContain("download_picker_media");
       expect(toolNames).toContain("delete_picker_session");
     });
 
