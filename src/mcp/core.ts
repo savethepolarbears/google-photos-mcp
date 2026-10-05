@@ -695,10 +695,15 @@ export class GooglePhotosMCPCore {
                 description:
                   "The media item ID within the Picker session (required if using sessionId instead of baseUrl)",
               },
+              mimeType: {
+                type: "string",
+                description:
+                  "Optional MIME type (e.g. 'video/mp4' or 'image/jpeg') used to infer download parameters when baseUrl is provided without sessionId",
+              },
               downloadOriginal: {
                 type: "boolean",
                 description:
-                  "Whether to download full-resolution original media (appends =d or =dv). Defaults to true.",
+                  "Whether to download full-resolution original media (appends =d or =dv). Defaults to true. If false and dimensions are omitted, defaults to 2048x2048.",
                 default: true,
               },
               width: {
@@ -714,17 +719,17 @@ export class GooglePhotosMCPCore {
               isVideo: {
                 type: "boolean",
                 description:
-                  "Whether the item is a video (appends =dv for download). If omitted, media type is automatically inferred from item MIME type and filename.",
+                  "Whether the item is a video (appends =dv for download). If omitted and sessionId is provided, it is automatically inferred from session metadata. If baseUrl is used alone without sessionId, either isVideo or mimeType must be specified.",
               },
               savePath: {
                 type: "string",
                 description:
-                  "Optional local file path to save the downloaded media bytes directly to disk",
+                  "Optional local file path to stream the downloaded media bytes directly to disk. Strongly recommended for large files and videos to avoid memory exhaustion.",
               },
               includeBase64: {
                 type: "boolean",
                 description:
-                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided.",
+                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. Capped at 10MB to prevent memory exhaustion.",
               },
             },
           },

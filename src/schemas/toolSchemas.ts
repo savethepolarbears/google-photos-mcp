@@ -268,6 +268,7 @@ export const downloadPickerMediaSchema = z
       .optional(),
     sessionId: z.string().min(1, "sessionId cannot be empty").optional(),
     mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
+    mimeType: z.string().min(1, "mimeType cannot be empty").optional(),
     downloadOriginal: z.boolean().optional(),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
@@ -280,5 +281,17 @@ export const downloadPickerMediaSchema = z
     {
       message:
         "Either baseUrl or both sessionId and mediaItemId must be provided",
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.baseUrl && !data.sessionId) {
+        return data.isVideo !== undefined || Boolean(data.mimeType);
+      }
+      return true;
+    },
+    {
+      message:
+        "When supplying baseUrl without sessionId, either isVideo or mimeType must be specified to infer correct download parameters (=d or =dv)",
     },
   );

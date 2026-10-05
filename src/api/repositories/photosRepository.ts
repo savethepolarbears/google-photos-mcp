@@ -1,7 +1,9 @@
 import { OAuth2Client } from "google-auth-library";
 import axios from "axios";
-import { readFile, writeFile } from "fs/promises";
-import fs from "fs";
+import { readFile } from "fs/promises";
+import fs, { createWriteStream } from "fs";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
 import path from "path";
 import {
   PhotoItem,
@@ -440,6 +442,7 @@ export interface DownloadPickerMediaOptions {
   baseUrl?: string;
   sessionId?: string;
   mediaItemId?: string;
+  mimeType?: string;
   downloadOriginal?: boolean;
   width?: number;
   height?: number;
@@ -463,7 +466,7 @@ export interface DownloadPickerMediaResult {
 
 /**
  * Downloads media bytes for an item selected via the Google Photos Picker API
- * using authenticated OAuth requests.
+ * using authenticated OAuth requests and streaming.
  *
  * @param oauth2Client - The authenticated OAuth2 client.
  * @param options - Download options (baseUrl or sessionId + mediaItemId, sizing, destination).
@@ -475,10 +478,54 @@ export async function downloadPickerMedia(
 ): Promise<DownloadPickerMediaResult> {
   let targetBaseUrl = options.baseUrl;
   let filename: string | undefined;
-  let mimeType: string | undefined;
+  let mimeType: string | undefined = options.mimeType;
   let mediaItemId = options.mediaItemId;
 
-  if (!targetBaseUrl) {
+  if (targetBaseUrl) {
+    // Restrict downloads to official HTTPS Google Photos media domains immediately
+    if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
+      throw new Error(
+        `Invalid or untrusted baseUrl: must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com). Received: ${targetBaseUrl}`,
+      );
+    }
+
+    if (options.sessionId && options.isVideo === undefined && !mimeType) {
+      // If baseUrl was provided with sessionId but without media type, lookup session to infer media type
+      let pageToken: string | undefined;
+      do {
+        quotaManager.checkQuota(false);
+        const page = await listPickerSessionMediaItems(
+          oauth2Client,
+          options.sessionId,
+          100,
+          pageToken,
+        );
+        quotaManager.recordRequest(false);
+
+        const found = page.photos.find(
+          (p) =>
+            p.baseUrl === targetBaseUrl ||
+            p.productUrl === targetBaseUrl ||
+            (options.mediaItemId && p.id === options.mediaItemId),
+        );
+        if (found) {
+          filename = found.filename;
+          mimeType = found.mimeType;
+          if (!mediaItemId) mediaItemId = found.id;
+          break;
+        }
+        pageToken = page.nextPageToken;
+      } while (pageToken);
+    } else if (
+      !options.sessionId &&
+      options.isVideo === undefined &&
+      !mimeType
+    ) {
+      throw new Error(
+        "When specifying baseUrl without sessionId, either isVideo or mimeType must be provided to determine the correct download parameters (=d or =dv)",
+      );
+    }
+  } else {
     if (!options.sessionId || !options.mediaItemId) {
       throw new Error(
         "Either baseUrl or both sessionId and mediaItemId must be provided to download Picker media",
@@ -516,13 +563,12 @@ export async function downloadPickerMedia(
     filename = foundPhoto.filename;
     mimeType = foundPhoto.mimeType;
     mediaItemId = foundPhoto.id;
-  }
 
-  // Restrict downloads to official HTTPS Google Photos media domains
-  if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
-    throw new Error(
-      `Invalid or untrusted baseUrl: must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com). Received: ${targetBaseUrl}`,
-    );
+    if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
+      throw new Error(
+        `Invalid or untrusted baseUrl: must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com). Received: ${targetBaseUrl}`,
+      );
+    }
   }
 
   // Infer video downloads from MIME type, filename, or explicit options.isVideo
@@ -549,30 +595,32 @@ export async function downloadPickerMedia(
     if (w !== undefined && h !== undefined) {
       downloadUrl = `${downloadUrl}=w${w}-h${h}`;
     }
-  } else if (
-    options.downloadOriginal !== false &&
-    !downloadUrl.endsWith("=d")
-  ) {
+  } else if (options.downloadOriginal === false) {
+    // When original download is disabled without dimensions, default to standard full HD bounding box
+    downloadUrl = `${downloadUrl}=w2048-h2048`;
+  } else if (!downloadUrl.endsWith("=d")) {
     downloadUrl = `${downloadUrl}=d`;
   }
+
+  const MAX_BASE64_BYTES = 10 * 1024 * 1024; // 10MB limit for in-memory base64 responses
 
   try {
     quotaManager.checkQuota(true);
     const headers = await getAuthorizedHeaders(oauth2Client);
     const response = await withRetry(
       async () =>
-        await axios.get<ArrayBuffer>(downloadUrl, {
+        await axios.get<Readable>(downloadUrl, {
           headers,
-          responseType: "arraybuffer",
+          responseType: "stream",
           httpsAgent,
-          timeout: 30000,
+          timeout: 60000,
         }),
       { maxRetries: 3, initialDelayMs: 1000 },
       "download picker media",
     );
     quotaManager.recordRequest(true);
 
-    const buffer = Buffer.from(response.data);
+    const stream = response.data as unknown as Readable;
     const responseContentType = response.headers?.["content-type"];
     const resolvedMimeType =
       (typeof responseContentType === "string"
@@ -582,28 +630,73 @@ export async function downloadPickerMedia(
       (isVideo ? "video/mp4" : "image/jpeg");
 
     let savedTo: string | undefined;
+    let size = 0;
+    let base64Data: string | undefined;
+
     if (options.savePath) {
       const resolvedPath = path.resolve(options.savePath);
       const dir = path.dirname(resolvedPath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
-      await writeFile(resolvedPath, buffer);
-      savedTo = resolvedPath;
-    }
 
-    const shouldIncludeBase64 =
-      options.includeBase64 ?? (options.savePath ? false : true);
-    const base64Data = shouldIncludeBase64
-      ? buffer.toString("base64")
-      : undefined;
+      const fileWriteStream = createWriteStream(resolvedPath);
+      await pipeline(stream, fileWriteStream);
+      savedTo = resolvedPath;
+      size = fs.statSync(resolvedPath).size;
+
+      if (options.includeBase64 === true) {
+        if (size > MAX_BASE64_BYTES) {
+          throw new Error(
+            `Media size (${size} bytes) exceeds maximum allowable base64 limit of 10MB. File was successfully saved to ${resolvedPath}.`,
+          );
+        }
+        const fileBuffer = await readFile(resolvedPath);
+        base64Data = fileBuffer.toString("base64");
+      }
+    } else {
+      // Direct in-memory / base64 path — enforce MAX_BASE64_BYTES to prevent heap spikes
+      const contentLengthHeader = response.headers?.["content-length"];
+      const declaredLength = contentLengthHeader
+        ? parseInt(String(contentLengthHeader), 10)
+        : undefined;
+
+      if (declaredLength && declaredLength > MAX_BASE64_BYTES) {
+        if (typeof stream.destroy === "function") {
+          stream.destroy();
+        }
+        throw new Error(
+          `Media item size (${declaredLength} bytes) exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.`,
+        );
+      }
+
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      for await (const chunk of stream) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += buf.length;
+        if (totalBytes > MAX_BASE64_BYTES) {
+          if (typeof stream.destroy === "function") {
+            stream.destroy();
+          }
+          throw new Error(
+            `Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.`,
+          );
+        }
+        chunks.push(buf);
+      }
+
+      const buffer = Buffer.concat(chunks);
+      size = buffer.length;
+      base64Data = buffer.toString("base64");
+    }
 
     return {
       success: true,
       mediaItemId,
       filename,
       mimeType: resolvedMimeType,
-      size: buffer.length,
+      size,
       savedTo,
       base64Data,
     };

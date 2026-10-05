@@ -48,6 +48,10 @@ vi.mock("../../src/utils/quotaManager.js", () => ({
 }));
 
 import axios from "axios";
+import { Readable } from "stream";
+import fs from "fs";
+import path from "path";
+import os from "os";
 import {
   listAlbumPhotos,
   getPhoto,
@@ -442,13 +446,14 @@ describe("Picker API repositories", () => {
 
       const fakeBytes = Buffer.from("image-bytes-123");
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: fakeBytes,
+        data: Readable.from(fakeBytes),
         headers: { "content-type": "image/jpeg" },
       });
 
       const result = await downloadPickerMedia(mockOAuthClient, {
         baseUrl: "https://photos.google.com/sample-photo",
         downloadOriginal: true,
+        isVideo: false,
       });
 
       expect(result.success).toBe(true);
@@ -461,7 +466,7 @@ describe("Picker API repositories", () => {
           headers: expect.objectContaining({
             authorization: "Bearer test-picker-token",
           }),
-          responseType: "arraybuffer",
+          responseType: "stream",
         }),
       );
 
@@ -501,7 +506,7 @@ describe("Picker API repositories", () => {
 
       const fakeBytes = Buffer.from("item-99-bytes");
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: fakeBytes,
+        data: Readable.from(fakeBytes),
         headers: { "content-type": "image/png" },
       });
 
@@ -519,34 +524,38 @@ describe("Picker API repositories", () => {
     });
 
     it("saves media bytes to disk when savePath is provided", async () => {
-      const fsPromises = await import("fs/promises");
-      const mockOAuthClient = {
-        getRequestHeaders: vi
-          .fn()
-          .mockResolvedValue(
-            new Map([["authorization", "Bearer test-picker-token"]]),
-          ),
-      } as unknown as OAuth2Client;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-test-"));
+      const testFilePath = path.join(tempDir, "test-output.jpg");
+      try {
+        const mockOAuthClient = {
+          getRequestHeaders: vi
+            .fn()
+            .mockResolvedValue(
+              new Map([["authorization", "Bearer test-picker-token"]]),
+            ),
+        } as unknown as OAuth2Client;
 
-      const fakeBytes = Buffer.from("file-on-disk-bytes");
-      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: fakeBytes,
-        headers: { "content-type": "image/jpeg" },
-      });
+        const fakeBytes = Buffer.from("file-on-disk-bytes");
+        const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+          data: Readable.from(fakeBytes),
+          headers: { "content-type": "image/jpeg" },
+        });
 
-      const result = await downloadPickerMedia(mockOAuthClient, {
-        baseUrl: "https://photos.google.com/sample-photo",
-        savePath: "/tmp/test-output.jpg",
-      });
+        const result = await downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          savePath: testFilePath,
+          isVideo: false,
+        });
 
-      expect(result.success).toBe(true);
-      expect(result.savedTo).toBe("/tmp/test-output.jpg");
-      expect(fsPromises.writeFile).toHaveBeenCalledWith(
-        "/tmp/test-output.jpg",
-        expect.any(Buffer),
-      );
+        expect(result.success).toBe(true);
+        expect(result.savedTo).toBe(testFilePath);
+        expect(result.size).toBe(fakeBytes.length);
+        expect(fs.readFileSync(testFilePath)).toEqual(fakeBytes);
 
-      axiosGetSpy.mockRestore();
+        axiosGetSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("rejects when neither baseUrl nor sessionId+mediaItemId are provided", async () => {
@@ -575,7 +584,17 @@ describe("Picker API repositories", () => {
       ).rejects.toThrow("Invalid or untrusted baseUrl");
     });
 
-    it("infers video downloads (=dv) from MIME type when isVideo is omitted", async () => {
+    it("rejects when specifying baseUrl without sessionId and omitting isVideo and mimeType", async () => {
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://photos.google.com/sample-photo",
+        }),
+      ).rejects.toThrow(
+        "When specifying baseUrl without sessionId, either isVideo or mimeType must be provided to determine the correct download parameters (=d or =dv)",
+      );
+    });
+
+    it("infers video downloads (=dv) from MIME type when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
@@ -607,7 +626,7 @@ describe("Picker API repositories", () => {
       );
 
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: Buffer.from("video-bytes"),
+        data: Readable.from(Buffer.from("video-bytes")),
         headers: { "content-type": "video/mp4" },
       });
 
@@ -626,7 +645,7 @@ describe("Picker API repositories", () => {
       axiosGetSpy.mockRestore();
     });
 
-    it("infers video downloads (=dv) from filename extension when isVideo is omitted", async () => {
+    it("infers video downloads (=dv) from filename extension when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
@@ -657,7 +676,7 @@ describe("Picker API repositories", () => {
       );
 
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: Buffer.from("mov-bytes"),
+        data: Readable.from(Buffer.from("mov-bytes")),
         headers: {},
       });
 
@@ -676,7 +695,59 @@ describe("Picker API repositories", () => {
       axiosGetSpy.mockRestore();
     });
 
-    it("defaults omitted dimension to maintain aspect ratio without failing with 0", async () => {
+    it("infers media type from session when baseUrl is provided with sessionId and isVideo is omitted", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "vid-target",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+                    filename: "sunset.mp4",
+                    mimeType: "video/mp4",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("streamed-video-data")),
+        headers: { "content-type": "video/mp4" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+        sessionId: "sess-video-lookup",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.filename).toBe("sunset.mp4");
+      expect(result.mimeType).toBe("video/mp4");
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/session-video-base=dv",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("infers video download when baseUrl is provided with mimeType video/*", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
@@ -686,14 +757,72 @@ describe("Picker API repositories", () => {
       } as unknown as OAuth2Client;
 
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: Buffer.from("image-bytes"),
+        data: Readable.from(Buffer.from("video-bytes")),
+        headers: { "content-type": "video/webm" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/direct-video",
+        mimeType: "video/webm",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mimeType).toBe("video/webm");
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/direct-video=dv",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("defaults omitted dimensions to 2048x2048 when downloadOriginal is false", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("preview-bytes")),
         headers: { "content-type": "image/jpeg" },
       });
+
+      await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/sample-photo",
+        downloadOriginal: false,
+        isVideo: false,
+      });
+
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/sample-photo=w2048-h2048",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("defaults omitted dimension to maintain aspect ratio without failing with 0", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockImplementation(async () => ({
+        data: Readable.from(Buffer.from("image-bytes")),
+        headers: { "content-type": "image/jpeg" },
+      }));
 
       // Width only
       await downloadPickerMedia(mockOAuthClient, {
         baseUrl: "https://lh3.googleusercontent.com/sample-photo",
         width: 800,
+        isVideo: false,
       });
       expect(axiosGetSpy).toHaveBeenLastCalledWith(
         "https://lh3.googleusercontent.com/sample-photo=w800-h800",
@@ -704,6 +833,7 @@ describe("Picker API repositories", () => {
       await downloadPickerMedia(mockOAuthClient, {
         baseUrl: "https://lh3.googleusercontent.com/sample-photo",
         height: 600,
+        isVideo: false,
       });
       expect(axiosGetSpy).toHaveBeenLastCalledWith(
         "https://lh3.googleusercontent.com/sample-photo=w600-h600",
@@ -715,6 +845,7 @@ describe("Picker API repositories", () => {
         baseUrl: "https://lh3.googleusercontent.com/sample-photo",
         width: 1200,
         height: 900,
+        isVideo: false,
       });
       expect(axiosGetSpy).toHaveBeenLastCalledWith(
         "https://lh3.googleusercontent.com/sample-photo=w1200-h900",
@@ -722,6 +853,105 @@ describe("Picker API repositories", () => {
       );
 
       axiosGetSpy.mockRestore();
+    });
+
+    it("aborts and rejects oversized base64 response exceeding 10MB memory limit via content-length header", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const fakeStream = Readable.from(Buffer.from("tiny-chunk"));
+      const destroySpy = vi.spyOn(fakeStream, "destroy");
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeStream,
+        headers: {
+          "content-type": "video/mp4",
+          "content-length": "25000000",
+        },
+      });
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/big-video",
+          isVideo: true,
+        }),
+      ).rejects.toThrow(
+        "Media item size (25000000 bytes) exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",
+      );
+
+      expect(destroySpy).toHaveBeenCalled();
+      axiosGetSpy.mockRestore();
+    });
+
+    it("aborts and rejects oversized base64 response when chunks exceed 10MB during streaming", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // Stream emitting 11MB chunk without content-length header
+      const chunk11MB = Buffer.alloc(11 * 1024 * 1024);
+      const fakeStream = Readable.from([chunk11MB]);
+      const destroySpy = vi.spyOn(fakeStream, "destroy");
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeStream,
+        headers: { "content-type": "video/mp4" },
+      });
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/big-chunk-video",
+          isVideo: true,
+        }),
+      ).rejects.toThrow(
+        "Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",
+      );
+
+      expect(destroySpy).toHaveBeenCalled();
+      axiosGetSpy.mockRestore();
+    });
+
+    it("rejects includeBase64 when saved file exceeds 10MB limit", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-test-"));
+      const testFilePath = path.join(tempDir, "big-test.jpg");
+      try {
+        const mockOAuthClient = {
+          getRequestHeaders: vi
+            .fn()
+            .mockResolvedValue(
+              new Map([["authorization", "Bearer test-picker-token"]]),
+            ),
+        } as unknown as OAuth2Client;
+
+        // Create a 11MB file to simulate large saved file
+        const bigBytes = Buffer.alloc(11 * 1024 * 1024);
+        const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+          data: Readable.from([bigBytes]),
+          headers: { "content-type": "image/jpeg" },
+        });
+
+        await expect(
+          downloadPickerMedia(mockOAuthClient, {
+            baseUrl: "https://lh3.googleusercontent.com/big-saved-file",
+            savePath: testFilePath,
+            includeBase64: true,
+            isVideo: false,
+          }),
+        ).rejects.toThrow("exceeds maximum allowable base64 limit of 10MB");
+
+        axiosGetSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it("accounts for each paginated lookup page and media download in quota tracking", async () => {
@@ -773,7 +1003,7 @@ describe("Picker API repositories", () => {
       );
 
       const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
-        data: Buffer.from("image-data"),
+        data: Readable.from(Buffer.from("image-data")),
         headers: { "content-type": "image/jpeg" },
       });
 

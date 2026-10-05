@@ -464,11 +464,28 @@ describe("deletePickerSessionSchema", () => {
 });
 
 describe("downloadPickerMediaSchema", () => {
-  it("accepts valid baseUrl alone", () => {
-    const result = downloadPickerMediaSchema.parse({
+  it("accepts valid baseUrl alone when isVideo or mimeType is provided", () => {
+    const result1 = downloadPickerMediaSchema.parse({
       baseUrl: "https://photos.google.com/sample",
+      isVideo: false,
     });
-    expect(result.baseUrl).toBe("https://photos.google.com/sample");
+    expect(result1.baseUrl).toBe("https://photos.google.com/sample");
+
+    const result2 = downloadPickerMediaSchema.parse({
+      baseUrl: "https://photos.google.com/sample",
+      mimeType: "video/mp4",
+    });
+    expect(result2.mimeType).toBe("video/mp4");
+  });
+
+  it("rejects baseUrl alone without isVideo or mimeType", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+      }),
+    ).toThrow(
+      "When supplying baseUrl without sessionId, either isVideo or mimeType must be specified",
+    );
   });
 
   it("accepts sessionId and mediaItemId together without baseUrl", () => {
@@ -532,9 +549,10 @@ describe("downloadPickerMediaSchema", () => {
     );
   });
 
-  it("accepts valid googleusercontent.com subdomain baseUrl", () => {
+  it("accepts valid googleusercontent.com subdomain baseUrl with isVideo", () => {
     const result = downloadPickerMediaSchema.parse({
       baseUrl: "https://lh3.googleusercontent.com/lr/sample-photo",
+      isVideo: false,
     });
     expect(result.baseUrl).toBe(
       "https://lh3.googleusercontent.com/lr/sample-photo",

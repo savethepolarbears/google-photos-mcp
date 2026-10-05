@@ -429,6 +429,7 @@ describe("GooglePhotosMCPCore", () => {
       const result = await instance.handleCallTool(
         callToolReq("download_picker_media", {
           baseUrl: "https://photos.google.com/sample",
+          isVideo: false,
         }),
       );
       expect(result.content).toBeDefined();
