@@ -5,7 +5,7 @@ This is a **PUBLIC** open-source repository.
 ## ⚠️ STRICT CONSTRAINTS (MUST READ)
 
 1. **NO SECRETS:** Ensure no tokens, credentials, or `.env` files are accidentally generated or preserved in commits.
-2. **VERIFICATION-FIRST:** Because we do not use GitHub Actions or automated workflows (due to cost), ALL testing and verification MUST be performed locally by the agent before ANY commit is made.
+2. **VERIFICATION-FIRST:** While GitHub Actions CI now validates PRs automatically, ALL testing and verification MUST be performed locally by the agent before ANY commit is made.
 3. **DOCUMENTATION EXCELLENCE:** All documentation must be rock solid, cleanly linted (MD013 disabled, but MD022/MD032 strict), and highly functional.
 4. **NO BROKEN COMMITS:** A commit must not be pushed if `npm run lint`, `npm run build`, or `npm test` are failing. Period.
 
