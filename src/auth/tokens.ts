@@ -42,39 +42,44 @@ export function enforceOwnerOnlyPermissions(filePath: string): void {
   ];
 
   for (const file of filesToCheck) {
-    try {
-      if (fs.existsSync(file)) {
-        const stats = fs.statSync(file);
-        if ((stats.mode & 0o777) !== 0o600) {
+    if (fs.existsSync(file)) {
+      const stats = fs.statSync(file);
+      if ((stats.mode & 0o777) !== 0o600) {
+        try {
           fs.chmodSync(file, 0o600);
           logger.debug(`Enforced 0600 permissions on ${file}`);
+        } catch (err) {
+          const msg = `Could not enforce 0600 permissions on ${file}: ${err instanceof Error ? err.message : String(err)}`;
+          logger.error(msg);
+          throw new Error(msg, { cause: err });
         }
       }
-    } catch (err) {
-      logger.warn(
-        `Could not enforce 0600 permissions on ${file}: ${err instanceof Error ? err.message : String(err)}`,
-      );
     }
   }
 }
 
 // Pre-create directory (0700) and file (0600) before KeyvSqlite opens it to prevent permissive umask creation
 if (process.platform !== "win32" && config.tokens.dbPath) {
-  try {
-    const dir = path.dirname(config.tokens.dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const dir = path.dirname(config.tokens.dbPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  } else {
+    try {
+      const dirStats = fs.statSync(dir);
+      if ((dirStats.mode & 0o777) !== 0o700) {
+        fs.chmodSync(dir, 0o700);
+      }
+    } catch (err) {
+      const msg = `Could not enforce 0700 permissions on token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error(msg);
+      throw new Error(msg, { cause: err });
     }
-    if (!fs.existsSync(config.tokens.dbPath)) {
-      const fd = fs.openSync(config.tokens.dbPath, "w", 0o600);
-      fs.closeSync(fd);
-    }
-    enforceOwnerOnlyPermissions(config.tokens.dbPath);
-  } catch (err) {
-    logger.warn(
-      `Failed to pre-create or secure token database at ${config.tokens.dbPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
   }
+  if (!fs.existsSync(config.tokens.dbPath)) {
+    const fd = fs.openSync(config.tokens.dbPath, "w", 0o600);
+    fs.closeSync(fd);
+  }
+  enforceOwnerOnlyPermissions(config.tokens.dbPath);
 }
 
 // Module-level singleton — one connection, reused across all calls.

@@ -186,5 +186,12 @@ describe("tokens.ts — AUTH-01", () => {
         enforceOwnerOnlyPermissions("/path/to/nonexistent/db.sqlite");
       }).not.toThrow();
     });
+
+    it("throws if chmodSync fails to enforce 0600 permissions on an unowned file", () => {
+      if (process.platform === "win32") return;
+      expect(() => enforceOwnerOnlyPermissions("/dev/null")).toThrow(
+        "Could not enforce 0600 permissions",
+      );
+    });
   });
 });

@@ -155,7 +155,8 @@ export class GooglePhotosMCPCore {
         {
           uri: "google-photos://albums",
           name: "Google Photos Albums",
-          description: "List of all Google Photos albums",
+          description:
+            "List of app-created Google Photos albums (photoslibrary.readonly.appcreateddata scope)",
           mimeType: "application/json",
         },
       ],
@@ -163,7 +164,8 @@ export class GooglePhotosMCPCore {
         {
           uriTemplate: "google-photos://albums/{albumId}",
           name: "Google Photos Album",
-          description: "A specific Google Photos album by ID",
+          description:
+            "Metadata for a specific app-created Google Photos album by ID",
           mimeType: "application/json",
         },
         {
