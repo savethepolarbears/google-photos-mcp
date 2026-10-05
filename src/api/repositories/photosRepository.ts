@@ -860,23 +860,25 @@ export async function downloadPickerMedia(
     if (options.savePath) {
       const resolvedPath = path.resolve(options.savePath);
       const dir = path.dirname(resolvedPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      // Capture pre-existing destination stats to preserve restrictive permissions or ACLs
-      const existingStats = fs.existsSync(resolvedPath)
-        ? fs.statSync(resolvedPath)
-        : null;
-
-      // Stream to a sibling temporary file to preserve any pre-existing destination
-      // file if the stream or network aborts mid-transfer.
-      const tempPath = path.join(
-        dir,
-        `.tmp.${path.basename(resolvedPath)}.${Date.now()}.${Math.random().toString(36).slice(2)}`,
-      );
+      let tempPath: string | undefined;
 
       try {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+
+        // Capture pre-existing destination stats to preserve restrictive permissions or ACLs
+        const existingStats = fs.existsSync(resolvedPath)
+          ? fs.statSync(resolvedPath)
+          : null;
+
+        // Stream to a sibling temporary file to preserve any pre-existing destination
+        // file if the stream or network aborts mid-transfer.
+        tempPath = path.join(
+          dir,
+          `.tmp.${path.basename(resolvedPath)}.${Date.now()}.${Math.random().toString(36).slice(2)}`,
+        );
+
         // Pre-create the temporary file and apply destination permissions/ACL
         // before streaming any media bytes to disk, preventing exposure in shared directories.
         fs.closeSync(
@@ -895,7 +897,10 @@ export async function downloadPickerMedia(
         );
         fs.renameSync(tempPath, resolvedPath);
       } catch (streamErr) {
-        if (fs.existsSync(tempPath)) {
+        if (typeof stream?.destroy === "function") {
+          stream.destroy();
+        }
+        if (tempPath && fs.existsSync(tempPath)) {
           try {
             fs.unlinkSync(tempPath);
           } catch {

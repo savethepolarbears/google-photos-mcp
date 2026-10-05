@@ -2403,6 +2403,56 @@ describe("Picker API repositories", () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    it("destroys response stream when file setup or destination preparation throws before streaming", async () => {
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "stream-destroy-test-"),
+      );
+      const destFile = path.join(tempDir, "existing-dest.jpg");
+
+      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
+        throw new Error("Simulated file setup error");
+      });
+
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockStream = new Readable({
+        read() {
+          this.push(Buffer.from("mock-data"));
+          this.push(null);
+        },
+      });
+      const destroySpy = vi.spyOn(mockStream, "destroy");
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: mockStream,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      try {
+        fs.writeFileSync(destFile, "original-data", { mode: 0o600 });
+
+        await expect(
+          downloadPickerMedia(mockOAuthClient, {
+            baseUrl: "https://photos.google.com/sample-photo",
+            savePath: destFile,
+            isVideo: false,
+          }),
+        ).rejects.toThrow();
+
+        expect(destroySpy).toHaveBeenCalled();
+      } finally {
+        chmodSpy.mockRestore();
+        axiosGetSpy.mockRestore();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("isAllowedGooglePhotosMediaUrl", () => {

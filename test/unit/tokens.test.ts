@@ -55,6 +55,7 @@ vi.mock("keyv", () => {
 });
 
 import childProcess from "node:child_process";
+import Keyv from "keyv";
 import {
   saveTokens,
   getFirstAvailableTokens,
@@ -100,6 +101,90 @@ describe("tokens.ts — AUTH-01", () => {
     it("getTokens returns null for an unknown userId", async () => {
       const result = await getTokens("nobody");
       expect(result).toBeNull();
+    });
+
+    it("serializes concurrent saveTokens calls so writes execute sequentially", async () => {
+      const callLog: string[] = [];
+      const originalSet = Keyv.prototype.set;
+
+      let resolveFirstSet: () => void = () => {};
+      const firstSetBlocker = new Promise<void>((resolve) => {
+        resolveFirstSet = resolve;
+      });
+
+      let callCount = 0;
+      const setSpy = vi
+        .spyOn(Keyv.prototype, "set")
+        .mockImplementation(async function (
+          this: unknown,
+          key: string,
+          value: unknown,
+        ) {
+          callCount++;
+          const current = callCount;
+          callLog.push(`start-${current}`);
+          if (current === 1) {
+            // Block the first write until explicitly resolved
+            await firstSetBlocker;
+          }
+          callLog.push(`end-${current}`);
+          return originalSet.call(this, key, value);
+        });
+
+      try {
+        const token1 = makeToken({ userId: "user-concurrent-1" });
+        const token2 = makeToken({ userId: "user-concurrent-2" });
+
+        // Trigger both writes concurrently
+        const promise1 = saveTokens("user-concurrent-1", token1);
+        const promise2 = saveTokens("user-concurrent-2", token2);
+
+        // Yield event loop
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // With serialization, write 2 must NOT have started yet while write 1 is blocked!
+        expect(callLog).toEqual(["start-1"]);
+
+        // Unblock the first write
+        resolveFirstSet();
+
+        await Promise.all([promise1, promise2]);
+
+        // Write 1 starts, ends, then write 2 starts, ends
+        expect(callLog).toEqual(["start-1", "end-1", "start-2", "end-2"]);
+      } finally {
+        setSpy.mockRestore();
+      }
+    });
+
+    it("executes queued saveTokens even if previous saveTokens rejected", async () => {
+      let failFirst = true;
+      const originalSet = Keyv.prototype.set;
+      const setSpy = vi
+        .spyOn(Keyv.prototype, "set")
+        .mockImplementation(async function (
+          this: unknown,
+          key: string,
+          value: unknown,
+        ) {
+          if (failFirst) {
+            failFirst = false;
+            throw new Error("Simulated token write failure");
+          }
+          return originalSet.call(this, key, value);
+        });
+
+      try {
+        const token1 = makeToken({ userId: "user-fail" });
+        const token2 = makeToken({ userId: "user-succeed" });
+
+        await expect(saveTokens("user-fail", token1)).rejects.toThrow(
+          "Simulated token write failure",
+        );
+        await expect(saveTokens("user-succeed", token2)).resolves.not.toThrow();
+      } finally {
+        setSpy.mockRestore();
+      }
     });
   });
 

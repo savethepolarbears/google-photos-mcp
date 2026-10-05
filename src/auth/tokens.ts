@@ -271,6 +271,13 @@ if (typeof tokenStore.on === "function") {
   });
 }
 
+// Mutex queue to serialize all token store writes.
+// Ensures that precreateAndHardenTokenStorage and the SQLite write transaction
+// execute atomically and sequentially. This prevents race conditions where overlapping writes
+// in a shared directory could allow SQLite to delete a hardened sidecar (-journal) on commit
+// and recreate it in a concurrent transaction with unhardened directory permissions.
+let _tokenWriteQueue: Promise<void> = Promise.resolve();
+
 /**
  * Save authentication tokens for a user to the local SQLite store.
  */
@@ -278,19 +285,25 @@ export async function saveTokens(
   userId: string,
   tokens: TokenData,
 ): Promise<void> {
-  // Pre-create and harden all SQLite sidecars (-journal, -wal, -shm) BEFORE
-  // starting the write transaction. In pre-existing shared directories (especially on Windows),
-  // SQLite creates rollback journal or WAL files during writes with inherited directory ACLs
-  // unless they are pre-created with owner-only ACLs before writing.
-  precreateAndHardenTokenStorage(config.tokens.dbPath);
+  const writeTask = async () => {
+    // Pre-create and harden all SQLite sidecars (-journal, -wal, -shm) BEFORE
+    // starting the write transaction. In pre-existing shared directories (especially on Windows),
+    // SQLite creates rollback journal or WAL files during writes with inherited directory ACLs
+    // unless they are pre-created with owner-only ACLs before writing.
+    precreateAndHardenTokenStorage(config.tokens.dbPath);
 
-  await tokenStore.set(
-    userId,
-    JSON.stringify({ ...tokens, retrievedAt: Date.now() }),
-  );
-  _savedUserIds.add(userId);
-  enforceOwnerOnlyPermissions(config.tokens.dbPath);
-  logger.info(`Saved tokens for user ${userId}`);
+    await tokenStore.set(
+      userId,
+      JSON.stringify({ ...tokens, retrievedAt: Date.now() }),
+    );
+    _savedUserIds.add(userId);
+    enforceOwnerOnlyPermissions(config.tokens.dbPath);
+    logger.info(`Saved tokens for user ${userId}`);
+  };
+
+  const nextPromise = _tokenWriteQueue.then(writeTask, writeTask);
+  _tokenWriteQueue = nextPromise.catch(() => {});
+  await nextPromise;
 }
 
 /**
