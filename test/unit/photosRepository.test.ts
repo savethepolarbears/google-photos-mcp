@@ -2032,11 +2032,47 @@ describe("Picker API repositories", () => {
       const tempFile = path.join(tempDir, "temp.jpg");
 
       try {
-        fs.writeFileSync(tempFile, "temp-data");
+        fs.writeFileSync(tempFile, "temp-data", { mode: 0o644 });
         expect(() => {
           preserveDestinationPermissions(destFile, tempFile);
         }).not.toThrow();
+
+        if (process.platform !== "win32") {
+          const stats = fs.statSync(tempFile);
+          expect(stats.mode & 0o777).toBe(0o600);
+        }
       } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("enforces owner-only ACL on Windows if destination does not exist", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-new-dest-test-"));
+      const destFile = path.join(tempDir, "nonexistent.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(tempFile, "temp-data");
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        preserveDestinationPermissions(destFile, tempFile);
+
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [tempFile, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });
@@ -2294,6 +2330,76 @@ describe("Picker API repositories", () => {
       } finally {
         chmodSpy.mockRestore();
         axiosGetSpy.mockRestore();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("applies owner-only Windows ACL to temporary file before streaming when savePath is new", async () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "win-stream-new-dest-"),
+      );
+      const destFile = path.join(tempDir, "new-dest.jpg");
+
+      let aclAppliedBeforeStream = false;
+      let streamRead = false;
+
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const readable = new Readable({
+        read() {
+          streamRead = true;
+          this.push(Buffer.from("media-data-chunk"));
+          this.push(null);
+        },
+      });
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: readable,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      execSpy.mockImplementation((cmd, args) => {
+        if (
+          cmd === "icacls.exe" &&
+          args &&
+          typeof args[0] === "string" &&
+          args[0].includes(".tmp.") &&
+          !streamRead
+        ) {
+          aclAppliedBeforeStream = true;
+        }
+        return Buffer.from("");
+      });
+
+      try {
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        const result = await downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          savePath: destFile,
+          isVideo: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(aclAppliedBeforeStream).toBe(true);
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        axiosGetSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });

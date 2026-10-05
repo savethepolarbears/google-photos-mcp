@@ -45,6 +45,15 @@ export function preserveDestinationPermissions(
   tempPath: string,
 ): void {
   if (!fs.existsSync(existingPath)) {
+    if (process.platform === "win32") {
+      enforceWindowsOwnerOnlyAcl(tempPath);
+    } else {
+      try {
+        fs.chmodSync(tempPath, 0o600);
+      } catch {
+        // best-effort chmod on Unix
+      }
+    }
     return;
   }
 
