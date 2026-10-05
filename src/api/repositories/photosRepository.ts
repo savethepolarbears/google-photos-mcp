@@ -24,6 +24,7 @@ import childProcess from "child_process";
 import {
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  hasWindowsExplicitDenyAces,
   getWindowsCurrentOwnerInfo,
 } from "../../auth/tokens.js";
 import { withRetry } from "../../utils/retry.js";
@@ -90,7 +91,12 @@ export function preserveDestinationPermissions(
         ownerInfo,
         existingPath,
       );
-      if (isInheritanceDisabled || nonOwnerAces.length === 0) {
+      const hasExplicitDeny = hasWindowsExplicitDenyAces(output);
+      if (
+        isInheritanceDisabled ||
+        nonOwnerAces.length === 0 ||
+        hasExplicitDeny
+      ) {
         enforceWindowsOwnerOnlyAcl(tempPath);
       }
     } catch (err) {

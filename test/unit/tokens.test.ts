@@ -63,6 +63,7 @@ import {
   enforceOwnerOnlyPermissions,
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  hasWindowsExplicitDenyAces,
   getWindowsCurrentOwnerInfo,
   precreateAndHardenTokenStorage,
 } from "../../src/auth/tokens.js";
@@ -462,6 +463,37 @@ describe("tokens.ts — AUTH-01", () => {
         "C:\\tokens.db",
       );
       expect(nonOwners).toEqual(["*S-1-5-21-9999", "BUILTIN\\Users"]);
+    });
+
+    it("detects explicit Windows deny ACEs accurately from icacls output", () => {
+      // Case 1: Explicit deny ACE present alongside inherited allows
+      const sampleExplicitDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            DOMAIN\\Contractors:(DENY)(R)\r\n" +
+        "            BUILTIN\\Users:(I)(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleExplicitDeny)).toBe(true);
+
+      // Case 2: Explicit deny ACE with (N) (No Access)
+      const sampleNoAccessDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            BUILTIN\\Guests:(N)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleNoAccessDeny)).toBe(true);
+
+      // Case 3: Inherited deny ACE (should NOT be treated as explicit)
+      const sampleInheritedDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            BUILTIN\\Guests:(I)(DENY)(R)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleInheritedDeny)).toBe(false);
+
+      // Case 4: Only allow ACEs (no deny ACEs)
+      const sampleAllowsOnly =
+        "C:\\file.jpg DOMAIN\\alice:(F)\r\n" +
+        "            BUILTIN\\Users:(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleAllowsOnly)).toBe(false);
     });
 
     it("enforces owner-only ACL on Windows using SID when available", () => {

@@ -2256,6 +2256,53 @@ describe("Picker API repositories", () => {
       }
     });
 
+    it("enforces owner-only ACL on Windows if destination has explicit deny ACE even with inherited allows", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-deny-test-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data");
+        fs.writeFileSync(tempFile, "temp-data");
+
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        // Destination has inherited allows (isInheritanceDisabled is false, nonOwnerAces is nonempty),
+        // but has an explicit deny ACE to protect private media.
+        execSpy.mockImplementation((cmd, args) => {
+          if (args && args[0] === destFile) {
+            return (
+              "dest.jpg testwinuser:(I)(F)\r\n" +
+              "         DOMAIN\\Contractors:(DENY)(R)\r\n" +
+              "         BUILTIN\\Users:(I)(RX)\r\n" +
+              "Successfully processed 1 files"
+            );
+          }
+          return Buffer.from("");
+        });
+
+        preserveDestinationPermissions(destFile, tempFile);
+
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [tempFile, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("throws and fails closed on Windows if icacls fails", () => {
       const execSpy = vi
         .spyOn(childProcess, "execFileSync")

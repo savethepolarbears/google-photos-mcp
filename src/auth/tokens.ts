@@ -196,6 +196,37 @@ export function parseWindowsNonOwnerAces(
   return Array.from(nonOwnerIdentities);
 }
 
+/**
+ * Inspects icacls output to detect if any explicit deny ACEs are present on the target.
+ * In Windows ACLs, an explicit deny ACE takes precedence over group allow permissions.
+ * Deny ACEs display as (DENY)(...) or (N) in icacls, and explicit ACEs lack the (I) inheritance flag.
+ *
+ * @param icaclsOutput - Output from `icacls.exe <path>`
+ * @returns True if an explicit deny ACE is present.
+ */
+export function hasWindowsExplicitDenyAces(
+  icaclsOutput: string | Buffer,
+): boolean {
+  const text = Buffer.isBuffer(icaclsOutput)
+    ? icaclsOutput.toString("utf8")
+    : String(icaclsOutput ?? "");
+  const lines = text.split(/\r?\n/);
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith("Successfully processed")) continue;
+    const aceMatches = line.matchAll(/([^\r\n:]+):((?:\([^)]+\))+)/g);
+    for (const match of aceMatches) {
+      const perms = match[2].toUpperCase();
+      const isInherited = perms.includes("(I)");
+      const isDeny = perms.includes("(DENY)") || perms.includes("(N)");
+      if (isDeny && !isInherited) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 
 /**
  * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
