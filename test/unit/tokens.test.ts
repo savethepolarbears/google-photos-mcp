@@ -58,6 +58,7 @@ import {
   saveTokens,
   getFirstAvailableTokens,
   getTokens,
+  enforceOwnerOnlyPermissions,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
 
@@ -146,6 +147,44 @@ describe("tokens.ts — AUTH-01", () => {
         f.startsWith("tokens.json.backup"),
       );
       expect(backupFiles).toHaveLength(0);
+    });
+  });
+
+  describe("enforceOwnerOnlyPermissions", () => {
+    it("restricts permissions to 0600 on file and sidecars", async () => {
+      const fs = await import("node:fs/promises");
+      const tmpDir = await fs.mkdtemp(path.join(process.cwd(), "test-perms-"));
+      const dbFile = path.join(tmpDir, "test.db");
+      const walFile = path.join(tmpDir, "test.db-wal");
+      const shmFile = path.join(tmpDir, "test.db-shm");
+      const journalFile = path.join(tmpDir, "test.db-journal");
+
+      await fs.writeFile(dbFile, "db-content", { mode: 0o644 });
+      await fs.writeFile(walFile, "wal-content", { mode: 0o644 });
+      await fs.writeFile(shmFile, "shm-content", { mode: 0o644 });
+      await fs.writeFile(journalFile, "journal-content", { mode: 0o644 });
+
+      enforceOwnerOnlyPermissions(dbFile);
+
+      if (process.platform !== "win32") {
+        const dbStats = await fs.stat(dbFile);
+        const walStats = await fs.stat(walFile);
+        const shmStats = await fs.stat(shmFile);
+        const journalStats = await fs.stat(journalFile);
+
+        expect(dbStats.mode & 0o777).toBe(0o600);
+        expect(walStats.mode & 0o777).toBe(0o600);
+        expect(shmStats.mode & 0o777).toBe(0o600);
+        expect(journalStats.mode & 0o777).toBe(0o600);
+      }
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("handles non-existent sidecar files gracefully", () => {
+      expect(() => {
+        enforceOwnerOnlyPermissions("/path/to/nonexistent/db.sqlite");
+      }).not.toThrow();
     });
   });
 });

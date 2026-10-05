@@ -35,6 +35,7 @@ vi.mock("../../src/utils/logger.js", () => ({
 }));
 
 import { setupAuthRoutes } from "../../src/auth/routes.js";
+import { enforceOwnerOnlyPermissions } from "../../src/auth/tokens.js";
 
 describe("Security Tests", () => {
   let app: express.Express;
@@ -323,9 +324,6 @@ describe("Security Tests", () => {
     });
 
     it("enforceOwnerOnlyPermissions restricts permissive SQLite database and sidecars to 0600", async () => {
-      const { enforceOwnerOnlyPermissions } = await import(
-        "../../src/auth/tokens.js"
-      );
       const fs = await import("fs/promises");
       const tmpDir = await fs.mkdtemp("/tmp/sec-perms-");
       const dbFile = path.join(tmpDir, "tokens.db");
