@@ -49,18 +49,25 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 - Create picker sessions for full library access
 - Poll sessions and retrieve selected media items
 
+### MCP Resources & Prompts
+
+- Browse albums as MCP resources (`photos://albums`, `photos://albums/{albumId}`)
+- Inspect media items directly via URI (`photos://media-items/{mediaItemId}`)
+- Built-in prompts for assisted organization, batch uploads, and multi-criteria photo discovery
+
 ### Infrastructure
 
 - ⚡ Streamable HTTP transport (MCP 2025-06-18 spec)
 - 🔗 HTTPS Keep-Alive with connection pooling
-- 🔒 OS keychain token storage
+- 🔒 Local SQLite token storage (`tokens.db` via Keyv) with user-scoped permissions
 - 📊 Quota management with automatic tracking
 - 🔄 Automatic token refresh
 
 ## Prerequisites
 
 - Node.js 22.22+
-- Google Cloud project with **Photos Library API** enabled
+- npm 11.11+
+- Google Cloud project with **Photos Library API** and **Google Photos Picker API** enabled
 - OAuth 2.0 credentials (Web application type)
 
 ## Setup
@@ -69,7 +76,7 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or select existing)
-3. Enable **Photos Library API**
+3. Enable **Photos Library API** and **Google Photos Picker API**
 4. Create OAuth 2.0 credentials (Web application)
 5. Add `http://localhost:3000/auth/callback` as an authorized redirect URI
 6. Note your Client ID and Client Secret
@@ -112,7 +119,7 @@ npm run dev      # Dev mode with live reload
 1. Start in HTTP mode: `npm start`
 2. Visit `http://localhost:3000/auth` in your browser
 3. Complete the Google OAuth flow
-4. Tokens are saved automatically to the OS keychain
+4. Tokens are saved automatically to the local SQLite database (`tokens.db` via Keyv)
 
 > **Note**: Authentication must be completed in HTTP mode first. After that, switch to STDIO mode for Claude Desktop.
 
@@ -213,6 +220,26 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | `auth_status` | Check authentication status |
 | `start_auth` | Start OAuth flow via temporary local server |
 
+## MCP Resources (3)
+
+AI clients can read Google Photos entities directly as MCP resources:
+
+| URI | Description |
+| --- | --- |
+| `photos://albums` | List of all user albums in Google Photos |
+| `photos://albums/{albumId}` | Metadata and media item listing for a specific album |
+| `photos://media-items/{mediaItemId}` | Detailed metadata, base URL, and properties for a photo or video |
+
+## MCP Prompts (3)
+
+Pre-configured prompt templates guide AI assistants through common media workflows:
+
+| Prompt | Description | Arguments |
+| --- | --- | --- |
+| `organize_photos` | Guide the AI to organize photos by theme or date range into albums | `theme` (optional), `dateRange` (optional) |
+| `batch_upload_workflow` | Guide the AI through uploading multiple local media files and creating an album | `albumName` (required) |
+| `find_photos_by_criteria` | Guide the AI to find photos using specific criteria, dates, and locations | `criteria` (required) |
+
 ## Example queries
 
 ```text
@@ -253,7 +280,7 @@ src/
 │   ├── photos.ts         # Facade module (re-exports)
 │   ├── types.ts          # TypeScript interfaces
 │   └── repositories/     # Low-level API calls
-├── auth/                 # OAuth, tokens, keychain
+├── auth/                 # OAuth, tokens, SQLite storage
 ├── schemas/              # Zod validation schemas
 ├── utils/                # Config, logging, quota, retry
 └── views/                # HTML templates
@@ -270,12 +297,14 @@ npm run test:security # Security suite only
 
 ### Quality checks
 
-All three must pass before merge:
+All verification commands must pass before merge:
 
 ```bash
 npx tsc --noEmit   # Type check
 npm run lint        # ESLint
-npm test            # Tests
+npm run lint:md     # Markdown lint
+npm test            # Vitest suite
+npm run build       # Build check
 ```
 
 ## License

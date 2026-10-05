@@ -33,6 +33,10 @@
       "description": "Check authentication status with Google Photos"
     },
     {
+      "name": "start_auth",
+      "description": "Initiate Google OAuth authentication flow via a temporary local server"
+    },
+    {
       "name": "search_photos",
       "description": "Search for photos based on text queries"
     },
@@ -41,8 +45,12 @@
       "description": "Search for photos based on location name"
     },
     {
+      "name": "search_media_by_filter",
+      "description": "Search media items using granular filters (dates, categories, media type, favorites, archived)"
+    },
+    {
       "name": "get_photo",
-      "description": "Get details of a specific photo by ID"
+      "description": "Get details of a specific photo by ID with optional base64 image data"
     },
     {
       "name": "list_albums",
@@ -55,6 +63,46 @@
     {
       "name": "list_album_photos",
       "description": "List photos in a specific album"
+    },
+    {
+      "name": "list_media_items",
+      "description": "List all media items from Google Photos library"
+    },
+    {
+      "name": "describe_filter_capabilities",
+      "description": "Describe available search filter options and capabilities for Google Photos"
+    },
+    {
+      "name": "create_album",
+      "description": "Create a new photo album in Google Photos"
+    },
+    {
+      "name": "upload_media",
+      "description": "Upload a local image or video file to Google Photos"
+    },
+    {
+      "name": "add_media_to_album",
+      "description": "Add existing media items to an album (up to 50 items)"
+    },
+    {
+      "name": "create_album_with_media",
+      "description": "Create a new album and upload multiple media files in a single composite operation (up to 50 items)"
+    },
+    {
+      "name": "add_album_enrichment",
+      "description": "Add text or location enrichment items to an album"
+    },
+    {
+      "name": "set_album_cover",
+      "description": "Set the cover photo for an album"
+    },
+    {
+      "name": "create_picker_session",
+      "description": "Create a Google Photos Picker session for interactive user media selection"
+    },
+    {
+      "name": "poll_picker_session",
+      "description": "Poll an active Google Photos Picker session to retrieve selected media items"
     }
   ],
   "user_config": {
@@ -76,6 +124,6 @@
   "compatibility": {
     "min_dxt_version": "0.1",
     "platforms": ["darwin", "linux", "win32"],
-    "node_version": ">=18.0.0"
+    "node_version": ">=22.22.0"
   }
 }

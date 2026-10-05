@@ -23,6 +23,7 @@ npm start             # Run compiled HTTP server
 npm run stdio         # Run compiled STDIO server
 npx tsc --noEmit      # Type-check without emitting (MUST PASS)
 npm run lint          # ESLint check (MUST PASS)
+npm run lint:md       # Markdown lint check (MUST PASS)
 npm test              # Run all tests via Vitest (MUST PASS)
 npm run test:watch    # Interactive TDD mode
 npm run test:coverage # Coverage report
@@ -40,7 +41,7 @@ npm run test:security # Security tests only
 1. **Transport Layers**: The server supports both STDIO (for Claude Desktop) and Streamable HTTP (for Cursor and other clients).
 2. **Entry Points**: `src/index.ts` (HTTP) and `src/dxt-server.ts` (STDIO/DXT).
    - **Crucial Rule**: Entry points call `super.registerHandlers()` and **must not override** `ListResourcesRequestSchema` or `ListPromptsRequestSchema`.
-3. **Tool Handlers**: All tool logic is centralized in `src/mcp/core.ts`. Tool arguments are strictly validated using Zod schemas (`src/schemas/toolSchemas.js`).
+3. **Tool Handlers**: All tool logic is centralized in `src/mcp/core.ts`. Tool arguments are strictly validated using Zod schemas (`src/schemas/toolSchemas.ts`).
 4. **API Integration**:
    - Low-level Google Photos API calls are in `src/api/repositories/`.
    - The Picker API (`create_picker_session` / `poll_picker_session`) uses a separate OAuth scope (`photospicker.mediaitems.readonly`) and REST endpoints.
@@ -55,7 +56,7 @@ npm run test:security # Security tests only
 - **Language**: TypeScript 6.0+ (Strict Mode)
 - **Runtime**: Node.js 22.22+
 - **Package Manager**: npm 11.11+
-- **Frameworks/Libs**: Express 5.0+, @modelcontextprotocol/sdk 1.29+, Zod 4.4+, Vitest 4.1+
+- **Frameworks/Libs**: Express 5.0+, @modelcontextprotocol/sdk 1.32+, Zod 4.6+, Vitest 4.1+
 - **Module System**: ESM (`"type": "module"` in package.json)
 
 ---
@@ -69,7 +70,7 @@ npm run test:security # Security tests only
 | `src/mcp/core.ts` | All MCP tool definitions, handlers, prompts, and resources |
 | `src/api/` | Google Photos API clients, facades, and search logic |
 | `src/api/repositories/` | Low-level API REST calls (Library API + Picker API) |
-| `src/auth/` | OAuth flows, local token storage (keychain), and refresh management |
+| `src/auth/` | OAuth flows, local SQLite token storage, and refresh management |
 | `src/schemas/` | Zod schemas for all tool argument validation |
 | `src/utils/` | Config, quota tracking, logging, retry logic |
 | `src/views/` | HTML templates for OAuth success/failure |
@@ -104,7 +105,7 @@ npm run test:security # Security tests only
 
 ## 🧪 PR & Review Expectations
 
-1. **Validation Checks**: `npm run lint`, `npx tsc --noEmit`, and `npm test` **MUST** all pass.
+1. **Validation Checks**: `npm run lint`, `npm run lint:md`, `npx tsc --noEmit`, and `npm test` **MUST** all pass.
 2. **Test Coverage**:
    - New features require: Zod validation tests, error handling tests, and integration tests.
    - Touching sensitive operations (auth, files, tokens) requires updating/adding tests in `test/security/`.
