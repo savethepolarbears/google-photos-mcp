@@ -171,13 +171,47 @@ export function enforceOwnerOnlyPermissions(filePath: string): void {
   }
 }
 
-// Pre-create directory (0700 on Unix, owner-only ACL on Windows) and file (0600 on Unix, owner-only ACL on Windows)
+/**
+ * Pre-creates the SQLite database and all companion sidecar files (-journal, -wal, -shm)
+ * with owner-only permissions (0600 on Unix, owner-only ACL on Windows) if they do not exist,
+ * and enforces owner-only permissions across all of them.
+ *
+ * This ensures that before SQLite begins any write transaction, the rollback journal and
+ * WAL sidecars already exist with secure owner-only permissions, preventing SQLite from
+ * creating sidecar files with inherited directory ACLs in pre-existing shared directories.
+ *
+ * @param filePath - The path to the SQLite database file.
+ */
+export function precreateAndHardenTokenStorage(filePath: string): void {
+  const files = [
+    filePath,
+    `${filePath}-journal`,
+    `${filePath}-wal`,
+    `${filePath}-shm`,
+  ];
+
+  for (const file of files) {
+    if (!fs.existsSync(file)) {
+      try {
+        const fd = fs.openSync(file, "w", 0o600);
+        fs.closeSync(fd);
+      } catch (err) {
+        const msg = `Could not pre-create token storage file ${file}: ${err instanceof Error ? err.message : String(err)}`;
+        logger.error(msg);
+        throw new Error(msg, { cause: err });
+      }
+    }
+  }
+
+  enforceOwnerOnlyPermissions(filePath);
+}
+
+// Pre-create directory (0700 on Unix, owner-only ACL on Windows) and file + sidecars (0600 on Unix, owner-only ACL on Windows)
 // before KeyvSqlite opens it to prevent permissive umask creation.
 // Only enforce restrictive permissions when the directory is created specifically for token storage.
 // Never alter permissions of pre-existing directories (e.g. project root or shared checkout).
 if (config.tokens.dbPath) {
   const dir = path.dirname(config.tokens.dbPath);
-  let createdFile = false;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (process.platform === "win32") {
@@ -210,21 +244,12 @@ if (config.tokens.dbPath) {
       }
     }
   }
-  if (!fs.existsSync(config.tokens.dbPath)) {
-    const fd = fs.openSync(config.tokens.dbPath, "w", 0o600);
-    fs.closeSync(fd);
-    createdFile = true;
-  }
   try {
-    enforceOwnerOnlyPermissions(config.tokens.dbPath);
+    precreateAndHardenTokenStorage(config.tokens.dbPath);
   } catch (err) {
-    if (createdFile && fs.existsSync(config.tokens.dbPath)) {
-      try {
-        fs.unlinkSync(config.tokens.dbPath);
-      } catch {
-        // best-effort cleanup
-      }
-    }
+    logger.error(
+      `Failed to initialize secure token storage for ${config.tokens.dbPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
     throw err;
   }
 }
@@ -253,6 +278,12 @@ export async function saveTokens(
   userId: string,
   tokens: TokenData,
 ): Promise<void> {
+  // Pre-create and harden all SQLite sidecars (-journal, -wal, -shm) BEFORE
+  // starting the write transaction. In pre-existing shared directories (especially on Windows),
+  // SQLite creates rollback journal or WAL files during writes with inherited directory ACLs
+  // unless they are pre-created with owner-only ACLs before writing.
+  precreateAndHardenTokenStorage(config.tokens.dbPath);
+
   await tokenStore.set(
     userId,
     JSON.stringify({ ...tokens, retrievedAt: Date.now() }),

@@ -52,6 +52,7 @@ import { Readable } from "stream";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import childProcess from "child_process";
 import {
   listAlbumPhotos,
   getPhoto,
@@ -65,7 +66,9 @@ import {
   listPickerSessionMediaItems,
   downloadPickerMedia,
   isAllowedGooglePhotosMediaUrl,
+  preserveDestinationPermissions,
 } from "../../src/api/repositories/photosRepository.js";
+import { withRetry } from "../../src/utils/retry.js";
 import { quotaManager } from "../../src/utils/quotaManager.js";
 import { getPhotoClient, getPickerClient } from "../../src/api/client.js";
 import type { OAuth2Client } from "google-auth-library";
@@ -622,6 +625,46 @@ describe("Picker API repositories", () => {
         // No leftover temporary files in directory
         const filesInDir = fs.readdirSync(tempDir);
         expect(filesInDir).toEqual(["existing-file.jpg"]);
+
+        axiosGetSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves pre-existing restrictive file permissions (0600) when replacing an existing file", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-mode-"));
+      const testFilePath = path.join(tempDir, "private-file.jpg");
+      fs.writeFileSync(testFilePath, "old-bytes", { mode: 0o600 });
+
+      try {
+        const mockOAuthClient = {
+          getRequestHeaders: vi
+            .fn()
+            .mockResolvedValue(
+              new Map([["authorization", "Bearer test-picker-token"]]),
+            ),
+        } as unknown as OAuth2Client;
+
+        const fakeBytes = Buffer.from("new-bytes-replacing-old");
+        const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+          data: Readable.from(fakeBytes),
+          headers: { "content-type": "image/jpeg" },
+        });
+
+        const result = await downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          savePath: testFilePath,
+          isVideo: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(fs.readFileSync(testFilePath)).toEqual(fakeBytes);
+
+        if (process.platform !== "win32") {
+          const stats = fs.statSync(testFilePath);
+          expect(stats.mode & 0o777).toBe(0o600);
+        }
 
         axiosGetSpy.mockRestore();
       } finally {
@@ -1706,6 +1749,143 @@ describe("Picker API repositories", () => {
       expect(quotaManager.recordRequest).toHaveBeenCalledTimes(3);
 
       axiosGetSpy.mockRestore();
+    });
+
+    it("records quota for each retry attempt on transient download errors", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // Simulate withRetry executing up to 3 attempts on error
+      vi.mocked(withRetry).mockImplementationOnce(
+        async (fn: () => Promise<unknown>) => {
+          let lastErr;
+          for (let i = 0; i < 3; i++) {
+            try {
+              return await fn();
+            } catch (e) {
+              lastErr = e;
+            }
+          }
+          throw lastErr;
+        },
+      );
+
+      let callCount = 0;
+      const axiosGetSpy = vi
+        .spyOn(axios, "get")
+        .mockImplementation(async () => {
+          callCount++;
+          if (callCount < 3) {
+            const err = Object.assign(new Error("503 Service Unavailable"), {
+              response: { status: 503 },
+            });
+            throw err;
+          }
+          return {
+            data: Readable.from(Buffer.from("media-data")),
+            headers: { "content-type": "image/jpeg" },
+          };
+        });
+
+      vi.mocked(quotaManager.checkQuota).mockClear();
+      vi.mocked(quotaManager.recordRequest).mockClear();
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://photos.google.com/sample-photo",
+        isVideo: false,
+      });
+
+      expect(result.success).toBe(true);
+      // Called 3 times: 2 transient failures retried + 1 success on third attempt
+      expect(quotaManager.checkQuota).toHaveBeenCalledTimes(3);
+      expect(quotaManager.recordRequest).toHaveBeenCalledTimes(3);
+      expect(quotaManager.checkQuota).toHaveBeenCalledWith(true);
+      expect(quotaManager.recordRequest).toHaveBeenCalledWith(true);
+
+      axiosGetSpy.mockRestore();
+    });
+  });
+
+  describe("preserveDestinationPermissions", () => {
+    it("preserves Unix mode bits from destination file to temporary file", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "perm-test-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data", { mode: 0o600 });
+        fs.writeFileSync(tempFile, "temp-data", { mode: 0o644 });
+
+        preserveDestinationPermissions(destFile, tempFile);
+
+        if (process.platform !== "win32") {
+          const stats = fs.statSync(tempFile);
+          expect(stats.mode & 0o777).toBe(0o600);
+        }
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("handles non-existent destination gracefully", () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "perm-test-none-"));
+      const destFile = path.join(tempDir, "nonexistent.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(tempFile, "temp-data");
+        expect(() => {
+          preserveDestinationPermissions(destFile, tempFile);
+        }).not.toThrow();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("preserves owner-only ACL on Windows if destination has inheritance disabled", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-perm-test-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data");
+        fs.writeFileSync(tempFile, "temp-data");
+
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        // Mock icacls output for destination to simulate inheritance disabled
+        execSpy.mockImplementation((cmd, args) => {
+          if (args && args[0] === destFile) {
+            return "dest.jpg testwinuser:(F)\r\nSuccessfully processed 1 files";
+          }
+          return Buffer.from("");
+        });
+
+        preserveDestinationPermissions(destFile, tempFile);
+
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [tempFile, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
   });
 

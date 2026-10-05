@@ -20,9 +20,80 @@ import {
 import { getAuthorizedHeaders } from "../oauth.js";
 import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
 import { getPhotoLocation } from "../../utils/location.js";
+import childProcess from "child_process";
+import {
+  enforceWindowsOwnerOnlyAcl,
+  parseWindowsNonOwnerAces,
+} from "../../auth/tokens.js";
 import { withRetry } from "../../utils/retry.js";
 import logger from "../../utils/logger.js";
 import { quotaManager } from "../../utils/quotaManager.js";
+
+/**
+ * Preserves permissions from a pre-existing destination file to a newly written temporary file
+ * before atomic replacement via rename.
+ *
+ * On Unix, copies exact mode bits (e.g. 0600).
+ * On Windows, synchronizes mode bits and preserves owner-only ACLs if the destination had restricted ACLs.
+ *
+ * @param existingPath - The original destination file path.
+ * @param tempPath - The temporary file that will replace the destination.
+ */
+export function preserveDestinationPermissions(
+  existingPath: string,
+  tempPath: string,
+): void {
+  try {
+    if (!fs.existsSync(existingPath)) {
+      return;
+    }
+
+    const existingStats = fs.statSync(existingPath);
+
+    if (process.platform === "win32") {
+      try {
+        fs.chmodSync(tempPath, existingStats.mode & 0o777);
+      } catch {
+        // best-effort chmod on Windows
+      }
+
+      try {
+        const username = process.env.USERNAME || process.env.USER;
+        if (username) {
+          const output = childProcess.execFileSync(
+            "icacls.exe",
+            [existingPath],
+            {
+              encoding: "utf8",
+              stdio: ["ignore", "pipe", "ignore"],
+            },
+          );
+          const isInheritanceDisabled =
+            output.includes("(I)") === false && output.includes(":");
+          const nonOwnerAces = parseWindowsNonOwnerAces(
+            output,
+            username,
+            existingPath,
+          );
+          if (isInheritanceDisabled || nonOwnerAces.length === 0) {
+            enforceWindowsOwnerOnlyAcl(tempPath);
+          }
+        }
+      } catch {
+        // best-effort icacls on Windows
+      }
+      return;
+    }
+
+    // Unix / macOS: copy exact file mode bits (e.g. 0600)
+    const existingMode = existingStats.mode & 0o777;
+    fs.chmodSync(tempPath, existingMode);
+  } catch (err) {
+    logger.debug(
+      `Could not preserve destination permissions from ${existingPath} to ${tempPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
 
 /**
  * Validates that a baseUrl uses HTTPS and targets an official Google Photos media host.
@@ -729,20 +800,21 @@ export async function downloadPickerMedia(
   const MAX_BASE64_BYTES = 10 * 1024 * 1024; // 10MB limit for in-memory base64 responses
 
   try {
-    quotaManager.checkQuota(true);
     const headers = await getAuthorizedHeaders(oauth2Client);
     const response = await withRetry(
-      async () =>
-        await axios.get<Readable>(downloadUrl, {
+      async () => {
+        quotaManager.checkQuota(true);
+        quotaManager.recordRequest(true);
+        return await axios.get<Readable>(downloadUrl, {
           headers,
           responseType: "stream",
           httpsAgent,
           timeout: 60000,
-        }),
+        });
+      },
       { maxRetries: 3, initialDelayMs: 1000 },
       "download picker media",
     );
-    quotaManager.recordRequest(true);
 
     const stream = response.data as unknown as Readable;
     const responseContentType = response.headers?.["content-type"];
@@ -764,6 +836,11 @@ export async function downloadPickerMedia(
         fs.mkdirSync(dir, { recursive: true });
       }
 
+      // Capture pre-existing destination stats to preserve restrictive permissions or ACLs
+      const existingStats = fs.existsSync(resolvedPath)
+        ? fs.statSync(resolvedPath)
+        : null;
+
       // Stream to a sibling temporary file to preserve any pre-existing destination
       // file if the stream or network aborts mid-transfer.
       const tempPath = path.join(
@@ -772,11 +849,14 @@ export async function downloadPickerMedia(
       );
 
       try {
-        const fileWriteStream = createWriteStream(tempPath);
+        const fileWriteStream = createWriteStream(tempPath, {
+          mode: existingStats ? existingStats.mode & 0o777 : undefined,
+        });
         await pipeline(
           stream as unknown as NodeJS.ReadableStream,
           fileWriteStream,
         );
+        preserveDestinationPermissions(resolvedPath, tempPath);
         fs.renameSync(tempPath, resolvedPath);
       } catch (streamErr) {
         if (fs.existsSync(tempPath)) {

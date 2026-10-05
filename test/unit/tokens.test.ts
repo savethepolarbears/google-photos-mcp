@@ -62,6 +62,7 @@ import {
   enforceOwnerOnlyPermissions,
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  precreateAndHardenTokenStorage,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
 
@@ -446,6 +447,61 @@ describe("tokens.ts — AUTH-01", () => {
         Object.defineProperty(process, "platform", { value: originalPlatform });
         execSpy.mockRestore();
         process.env.USERNAME = originalUsername;
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("precreateAndHardenTokenStorage", () => {
+    it("pre-creates database and sidecars (-journal, -wal, -shm) with 0600 permissions", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-precreate-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      const journalFile = `${testDb}-journal`;
+      const walFile = `${testDb}-wal`;
+      const shmFile = `${testDb}-shm`;
+
+      try {
+        precreateAndHardenTokenStorage(testDb);
+
+        expect(existsSync(testDb)).toBe(true);
+        expect(existsSync(journalFile)).toBe(true);
+        expect(existsSync(walFile)).toBe(true);
+        expect(existsSync(shmFile)).toBe(true);
+
+        if (process.platform !== "win32") {
+          const dbStat = await fsPromises.stat(testDb);
+          const journalStat = await fsPromises.stat(journalFile);
+          const walStat = await fsPromises.stat(walFile);
+          const shmStat = await fsPromises.stat(shmFile);
+
+          expect(dbStat.mode & 0o777).toBe(0o600);
+          expect(journalStat.mode & 0o777).toBe(0o600);
+          expect(walStat.mode & 0o777).toBe(0o600);
+          expect(shmStat.mode & 0o777).toBe(0o600);
+        }
+      } finally {
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("pre-creates missing sidecars when database file already exists", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-precreate-exist-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      await fsPromises.writeFile(testDb, "existing-sqlite-data", { mode: 0o600 });
+
+      try {
+        precreateAndHardenTokenStorage(testDb);
+
+        expect(existsSync(`${testDb}-journal`)).toBe(true);
+        expect(existsSync(`${testDb}-wal`)).toBe(true);
+        expect(existsSync(`${testDb}-shm`)).toBe(true);
+      } finally {
         await fsPromises.rm(tmpDir, { recursive: true, force: true });
       }
     });
