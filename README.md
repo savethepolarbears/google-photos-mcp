@@ -51,8 +51,8 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 ### MCP Resources & Prompts
 
-- Browse albums as MCP resources (`photos://albums`, `photos://albums/{albumId}`)
-- Inspect media items directly via URI (`photos://media-items/{mediaItemId}`)
+- Browse albums as MCP resources (`google-photos://albums`, `google-photos://albums/{albumId}`)
+- Inspect media items directly via URI (`google-photos://media/{mediaItemId}`)
 - Built-in prompts for assisted organization, batch uploads, and multi-criteria photo discovery
 
 ### Infrastructure
@@ -212,7 +212,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | --- | --- |
 | `create_picker_session` | Start a Picker session for full library access |
 | `poll_picker_session` | Check session status and retrieve selected photos |
-| `delete_picker_session` | Delete and clean up a Picker session |
+| `delete_picker_session` | Delete and clean up a Picker session after all media items and bytes are downloaded |
 
 ### Auth
 
@@ -228,7 +228,7 @@ AI clients can read Google Photos entities directly as MCP resources:
 | URI | Description |
 | --- | --- |
 | `google-photos://albums` | List of all user albums in Google Photos |
-| `google-photos://albums/{albumId}` | Metadata and media item listing for a specific album |
+| `google-photos://albums/{albumId}` | Metadata for a specific album by ID (title, item count, cover photo URL) |
 | `google-photos://media/{mediaItemId}` | Detailed metadata, base URL, and properties for a photo or video |
 
 ## MCP Prompts (3)

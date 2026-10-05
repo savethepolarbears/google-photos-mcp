@@ -672,7 +672,7 @@ export class GooglePhotosMCPCore {
         {
           name: "delete_picker_session",
           description:
-            "Delete and clean up a Google Photos Picker session. It is recommended best practice to delete sessions once media items are retrieved or if the session has timed out, avoiding hitting session limit quotas.",
+            "Delete and clean up a Google Photos Picker session. IMPORTANT: Call only after all media items have been retrieved (exhausting nextPageToken pagination) and all required media bytes have been downloaded, or if the session has timed out. Deleting the session immediately terminates access to the selected items.",
           inputSchema: {
             type: "object",
             properties: {
@@ -1853,8 +1853,9 @@ Key rules:
                 "1. Open the pickerUri in a browser to select photos from your library.",
                 "2. (Optional) You can append '/autoclose' to the pickerUri to close the tab automatically after selection.",
                 "3. After selecting, call poll_picker_session with the sessionId to check completion.",
-                "4. Once mediaItemsSet is true, poll_picker_session returns the selected items.",
-                "5. After retrieving items, call delete_picker_session to clean up the session.",
+                "4. Once mediaItemsSet is true, poll_picker_session returns the selected items. Paginate using nextPageToken until all pages are retrieved.",
+                "5. Download all required media-item bytes from the returned baseUrl URLs before deleting the session.",
+                "6. After all items and bytes are downloaded (or if the session has timed out), call delete_picker_session to clean up the session and release quota.",
               ],
             },
             null,

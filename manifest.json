@@ -106,7 +106,7 @@
     },
     {
       "name": "delete_picker_session",
-      "description": "Delete and clean up an active or timed-out Google Photos Picker session"
+      "description": "Delete and clean up a Google Photos Picker session after all media items and bytes are downloaded"
     }
   ],
   "user_config": {

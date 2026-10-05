@@ -45,8 +45,18 @@ vi.mock("../../src/utils/logger.js", () => ({
 
 type TestableCore = GooglePhotosMCPCore & {
   handleListResources: () => Promise<{
-    resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
-    resourceTemplates?: Array<{ uriTemplate: string; name: string; description?: string; mimeType?: string }>;
+    resources: Array<{
+      uri: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+    }>;
+    resourceTemplates?: Array<{
+      uriTemplate: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+    }>;
   }>;
   handleReadResource: (request: { params: { uri: string } }) => Promise<{
     contents: Array<{ uri: string; mimeType?: string; text?: string }>;
@@ -55,11 +65,15 @@ type TestableCore = GooglePhotosMCPCore & {
     tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
   }>;
   handleCallTool: (request: ReturnType<typeof callToolReq>) => Promise<{
-    content?: Array<{ type: string; text: string }>;
+    content: Array<{ type: string; text: string }>;
     isError?: boolean;
   }>;
   handleListPrompts: () => Promise<{
-    prompts: Array<{ name: string; description?: string; arguments?: unknown[] }>;
+    prompts: Array<{
+      name: string;
+      description?: string;
+      arguments?: unknown[];
+    }>;
   }>;
   handleGetPrompt: (request: {
     params: { name: string; arguments?: Record<string, string> };
