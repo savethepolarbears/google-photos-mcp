@@ -420,7 +420,11 @@ export async function createPickerSession(
 ): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
-    () => client.sessions.create(options),
+    async () => {
+      quotaManager.checkQuota(false);
+      quotaManager.recordRequest(false);
+      return await client.sessions.create(options);
+    },
     { maxRetries: 3, initialDelayMs: 1000 },
     "create picker session",
   );
@@ -436,7 +440,11 @@ export async function getPickerSession(
 ): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
-    () => client.sessions.get(sessionId),
+    async () => {
+      quotaManager.checkQuota(false);
+      quotaManager.recordRequest(false);
+      return await client.sessions.get(sessionId);
+    },
     { maxRetries: 3, initialDelayMs: 1000 },
     "get picker session",
   );
@@ -452,7 +460,11 @@ export async function deletePickerSession(
 ): Promise<void> {
   const client = getPickerClient(oauth2Client);
   await withRetry(
-    () => client.sessions.delete(sessionId),
+    async () => {
+      quotaManager.checkQuota(false);
+      quotaManager.recordRequest(false);
+      return await client.sessions.delete(sessionId);
+    },
     { maxRetries: 3, initialDelayMs: 1000 },
     "delete picker session",
   );
@@ -856,14 +868,22 @@ export async function downloadPickerMedia(
       );
 
       try {
-        const fileWriteStream = createWriteStream(tempPath, {
-          mode: existingStats ? existingStats.mode & 0o777 : undefined,
-        });
+        // Pre-create the temporary file and apply destination permissions/ACL
+        // before streaming any media bytes to disk, preventing exposure in shared directories.
+        fs.closeSync(
+          fs.openSync(
+            tempPath,
+            "w",
+            existingStats ? existingStats.mode & 0o777 : 0o600,
+          ),
+        );
+        preserveDestinationPermissions(resolvedPath, tempPath);
+
+        const fileWriteStream = createWriteStream(tempPath, { flags: "r+" });
         await pipeline(
           stream as unknown as NodeJS.ReadableStream,
           fileWriteStream,
         );
-        preserveDestinationPermissions(resolvedPath, tempPath);
         fs.renameSync(tempPath, resolvedPath);
       } catch (streamErr) {
         if (fs.existsSync(tempPath)) {

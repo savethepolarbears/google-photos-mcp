@@ -398,6 +398,49 @@ describe("Picker API repositories", () => {
     expect(mockClient.sessions.delete).toHaveBeenCalledWith("sess-123");
   });
 
+  it("records quota for each retry attempt in deletePickerSession", async () => {
+    let callCount = 0;
+    const mockClient = {
+      sessions: {
+        delete: vi.fn().mockImplementation(async () => {
+          callCount++;
+          if (callCount < 3) {
+            throw new Error("503 Service Unavailable");
+          }
+          return { data: {} };
+        }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    vi.mocked(withRetry).mockImplementationOnce(
+      async (fn: () => Promise<unknown>) => {
+        let lastErr;
+        for (let i = 0; i < 3; i++) {
+          try {
+            return await fn();
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr;
+      },
+    );
+
+    vi.mocked(quotaManager.checkQuota).mockClear();
+    vi.mocked(quotaManager.recordRequest).mockClear();
+
+    await deletePickerSession(mockOAuth2Client, "sess-del-retry");
+
+    expect(mockClient.sessions.delete).toHaveBeenCalledTimes(3);
+    expect(quotaManager.checkQuota).toHaveBeenCalledTimes(3);
+    expect(quotaManager.recordRequest).toHaveBeenCalledTimes(3);
+    expect(quotaManager.checkQuota).toHaveBeenCalledWith(false);
+    expect(quotaManager.recordRequest).toHaveBeenCalledWith(false);
+  });
+
   it("listPickerSessionMediaItems maps media items correctly", async () => {
     const mockClient = {
       sessions: {
@@ -2186,6 +2229,68 @@ describe("Picker API repositories", () => {
         // Verify no leftover .tmp files exist in directory
         const leftoverFiles = fs.readdirSync(tempDir);
         expect(leftoverFiles).toEqual(["existing-dest.jpg"]);
+      } finally {
+        chmodSpy.mockRestore();
+        axiosGetSpy.mockRestore();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("applies destination permissions to temporary file before streaming any media bytes", async () => {
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "pre-stream-perm-test-"),
+      );
+      const destFile = path.join(tempDir, "existing-dest.jpg");
+
+      let permissionsCheckedBeforeStream = false;
+      let streamRead = false;
+
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // Custom stream to detect when bytes are read
+      const readable = new Readable({
+        read() {
+          streamRead = true;
+          this.push(Buffer.from("media-data-chunk"));
+          this.push(null);
+        },
+      });
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: readable,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      // Spy on chmodSync to check that it is called on the temp file before streamRead is true
+      const chmodSpy = vi
+        .spyOn(fs, "chmodSync")
+        .mockImplementation((targetPath) => {
+          if (
+            typeof targetPath === "string" &&
+            targetPath.includes(".tmp.") &&
+            !streamRead
+          ) {
+            permissionsCheckedBeforeStream = true;
+          }
+        });
+
+      try {
+        fs.writeFileSync(destFile, "initial-protected-data", { mode: 0o600 });
+
+        const result = await downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          savePath: destFile,
+          isVideo: false,
+        });
+
+        expect(result.success).toBe(true);
+        expect(permissionsCheckedBeforeStream).toBe(true);
       } finally {
         chmodSpy.mockRestore();
         axiosGetSpy.mockRestore();

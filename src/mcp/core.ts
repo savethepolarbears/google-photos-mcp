@@ -1908,13 +1908,11 @@ Key rules:
       request.params.arguments || {},
       createPickerSessionSchema,
     );
-    quotaManager.checkQuota(false);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const session = await createPickerSession(
       oauth2Client,
       args.maxItemCount ? { maxItemCount: args.maxItemCount } : undefined,
     );
-    quotaManager.recordRequest(false);
     return {
       content: [
         {
@@ -1953,10 +1951,8 @@ Key rules:
       request.params.arguments,
       deletePickerSessionSchema,
     );
-    quotaManager.checkQuota(false);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     await deletePickerSession(oauth2Client, args.sessionId);
-    quotaManager.recordRequest(false);
 
     return {
       content: [
@@ -2011,10 +2007,8 @@ Key rules:
       request.params.arguments,
       pollPickerSessionSchema,
     );
-    quotaManager.checkQuota(false);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const session = await getPickerSession(oauth2Client, args.sessionId);
-    quotaManager.recordRequest(false);
 
     if (!session.mediaItemsSet) {
       return {
