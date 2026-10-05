@@ -67,6 +67,8 @@ import {
   downloadPickerMedia,
   isAllowedGooglePhotosMediaUrl,
   preserveDestinationPermissions,
+  MAX_ENCODED_BASE64_BYTES,
+  MAX_RAW_BASE64_BYTES,
 } from "../../src/api/repositories/photosRepository.js";
 import { withRetry } from "../../src/utils/retry.js";
 import { quotaManager } from "../../src/utils/quotaManager.js";
@@ -1867,6 +1869,142 @@ describe("Picker API repositories", () => {
       } finally {
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
+    });
+
+    it("rejects binary payloads larger than ~7.5MB raw (e.g. 8MB) whose base64 expansion exceeds 10MB (in-memory chunks)", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // 8MB raw payload: below 10MB in raw bytes, but expands to ~11.2MB in base64
+      const chunk8MB = Buffer.alloc(8 * 1024 * 1024);
+      const fakeStream = Readable.from([chunk8MB]);
+      const destroySpy = vi.spyOn(fakeStream, "destroy");
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeStream,
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/eight-mb-photo",
+          isVideo: false,
+        }),
+      ).rejects.toThrow(
+        "Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",
+      );
+
+      expect(destroySpy).toHaveBeenCalled();
+      axiosGetSpy.mockRestore();
+    });
+
+    it("rejects binary payloads larger than ~7.5MB raw via content-length header to prevent memory expansion", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const fakeStream = Readable.from(Buffer.from("small-chunk"));
+      const destroySpy = vi.spyOn(fakeStream, "destroy");
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: fakeStream,
+        headers: {
+          "content-type": "image/jpeg",
+          "content-length": "8388608", // 8MB
+        },
+      });
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/eight-mb-header-photo",
+          isVideo: false,
+        }),
+      ).rejects.toThrow(
+        "Media item size (8388608 bytes) exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.",
+      );
+
+      expect(destroySpy).toHaveBeenCalled();
+      axiosGetSpy.mockRestore();
+    });
+
+    it("rejects includeBase64 on saved files between 7.5MB and 10MB raw (e.g. 8MB) where base64 would exceed 10MB", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-test-8mb-"));
+      const testFilePath = path.join(tempDir, "eight-mb.jpg");
+      try {
+        const mockOAuthClient = {
+          getRequestHeaders: vi
+            .fn()
+            .mockResolvedValue(
+              new Map([["authorization", "Bearer test-picker-token"]]),
+            ),
+        } as unknown as OAuth2Client;
+
+        const eightMbBytes = Buffer.alloc(8 * 1024 * 1024);
+        const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+          data: Readable.from([eightMbBytes]),
+          headers: { "content-type": "image/jpeg" },
+        });
+
+        await expect(
+          downloadPickerMedia(mockOAuthClient, {
+            baseUrl: "https://lh3.googleusercontent.com/eight-mb-saved",
+            savePath: testFilePath,
+            includeBase64: true,
+            isVideo: false,
+          }),
+        ).rejects.toThrow(
+          "Media size (8388608 bytes) exceeds maximum allowable base64 limit of 10MB. File was successfully saved to",
+        );
+
+        expect(fs.existsSync(testFilePath)).toBe(true);
+        expect(fs.statSync(testFilePath).size).toBe(8 * 1024 * 1024);
+        axiosGetSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("accepts payloads under 7.5MB raw and produces base64 within the 10MB cap", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      // 1MB raw payload -> ~1.33MB base64
+      const oneMbBuffer = Buffer.alloc(1024 * 1024, "a");
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from([oneMbBuffer]),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/one-mb-photo",
+        isVideo: false,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.size).toBe(1024 * 1024);
+      expect(typeof result.base64Data).toBe("string");
+      expect(result.base64Data?.length).toBeLessThanOrEqual(
+        MAX_ENCODED_BASE64_BYTES,
+      );
+      expect(result.base64Data?.length).toBe(
+        Math.ceil((1024 * 1024) / 3) * 4,
+      );
+      expect(MAX_RAW_BASE64_BYTES).toBe(7864320);
+      axiosGetSpy.mockRestore();
     });
 
     it("accounts for each paginated lookup page and media download in quota tracking", async () => {

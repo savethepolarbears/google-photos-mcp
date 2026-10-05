@@ -737,7 +737,7 @@ export class GooglePhotosMCPCore {
               includeBase64: {
                 type: "boolean",
                 description:
-                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. If set to false, savePath is required. Capped at 10MB to prevent memory exhaustion.",
+                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. If set to false, savePath is required. Capped at 10MB (raw media up to ~7.5MB) to prevent memory exhaustion.",
               },
             },
           },

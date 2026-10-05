@@ -606,6 +606,20 @@ export interface DownloadPickerMediaResult {
 }
 
 /**
+ * Maximum allowable size for in-memory base64 response strings (10MB).
+ */
+export const MAX_ENCODED_BASE64_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Maximum raw binary payload size (~7.5MB) that can be base64-encoded
+ * without exceeding the 10MB in-memory response ceiling:
+ * floor((10 * 1024 * 1024 * 3) / 4) = 7,864,320 bytes.
+ */
+export const MAX_RAW_BASE64_BYTES = Math.floor(
+  (MAX_ENCODED_BASE64_BYTES * 3) / 4,
+);
+
+/**
  * Downloads media bytes for an item selected via the Google Photos Picker API
  * using authenticated OAuth requests and streaming.
  *
@@ -828,8 +842,6 @@ export async function downloadPickerMedia(
     downloadUrl = `${downloadUrl}=d`;
   }
 
-  const MAX_BASE64_BYTES = 10 * 1024 * 1024; // 10MB limit for in-memory base64 responses
-
   try {
     const headers = await getAuthorizedHeaders(oauth2Client);
     const response = await withRetry(
@@ -917,13 +929,18 @@ export async function downloadPickerMedia(
       size = fs.statSync(resolvedPath).size;
 
       if (options.includeBase64 === true) {
-        if (size > MAX_BASE64_BYTES) {
+        if (size > MAX_RAW_BASE64_BYTES) {
           throw new Error(
             `Media size (${size} bytes) exceeds maximum allowable base64 limit of 10MB. File was successfully saved to ${resolvedPath}.`,
           );
         }
         const fileBuffer = await readFile(resolvedPath);
         base64Data = fileBuffer.toString("base64");
+        if (base64Data.length > MAX_ENCODED_BASE64_BYTES) {
+          throw new Error(
+            `Encoded base64 size (${base64Data.length} bytes) exceeds maximum allowable limit of 10MB. File was successfully saved to ${resolvedPath}.`,
+          );
+        }
       }
     } else {
       // Direct in-memory path: honor includeBase64 (defaults to true when savePath is omitted)
@@ -936,7 +953,7 @@ export async function downloadPickerMedia(
       if (
         shouldIncludeBase64 &&
         declaredLength &&
-        declaredLength > MAX_BASE64_BYTES
+        declaredLength > MAX_RAW_BASE64_BYTES
       ) {
         if (typeof stream.destroy === "function") {
           stream.destroy();
@@ -952,7 +969,7 @@ export async function downloadPickerMedia(
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         totalBytes += buf.length;
         if (shouldIncludeBase64) {
-          if (totalBytes > MAX_BASE64_BYTES) {
+          if (totalBytes > MAX_RAW_BASE64_BYTES) {
             if (typeof stream.destroy === "function") {
               stream.destroy();
             }
@@ -968,6 +985,11 @@ export async function downloadPickerMedia(
       if (shouldIncludeBase64) {
         const buffer = Buffer.concat(chunks);
         base64Data = buffer.toString("base64");
+        if (base64Data.length > MAX_ENCODED_BASE64_BYTES) {
+          throw new Error(
+            `Encoded base64 size (${base64Data.length} bytes) exceeds maximum allowable limit of 10MB. Please specify 'savePath' to stream large media directly to disk.`,
+          );
+        }
       }
     }
 
