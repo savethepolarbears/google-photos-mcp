@@ -958,6 +958,111 @@ describe("Picker API repositories", () => {
       axiosGetSpy.mockRestore();
     });
 
+    it("prefers fresh READY processingStatus from session over stale PROCESSING supplied by caller", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-fresh-ready",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/fresh-ready-url",
+                    filename: "video.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "READY",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("video-bytes")),
+        headers: { "content-type": "video/mp4" },
+      });
+
+      // Caller passes stale PROCESSING, but session has fresh READY
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-fresh",
+        mediaItemId: "video-fresh-ready",
+        processingStatus: "PROCESSING",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/fresh-ready-url=dv",
+        expect.anything(),
+      );
+      axiosGetSpy.mockRestore();
+    });
+
+    it("rejects video download when session returns PROCESSING even if caller supplied stale READY", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-fresh-proc",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/fresh-proc-url",
+                    filename: "video.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "PROCESSING",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      // Caller passes stale READY, but session actually has PROCESSING
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-proc-truth",
+          mediaItemId: "video-fresh-proc",
+          processingStatus: "READY",
+        }),
+      ).rejects.toThrow(
+        'Video video-fresh-proc is currently being processed by Google Photos (processingStatus: "PROCESSING")',
+      );
+    });
+
     it("infers video downloads (=dv) from filename extension when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi

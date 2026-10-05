@@ -179,4 +179,29 @@ describe("withRetry", () => {
 
     expect(result).toBe("ok");
   });
+
+  it("retries on errors normalized by toError when they contain transient Axios metadata", async () => {
+    const { toError } = await import("../../src/api/client.js");
+    const transientErr = toError(
+      createMockAxiosError(500, "Internal Server Error"),
+      "picker.sessions.delete",
+    );
+
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(transientErr)
+      .mockResolvedValue("recovered");
+
+    const promise = withRetry(
+      fn,
+      { maxRetries: 3, initialDelayMs: 100 },
+      "picker.sessions.delete",
+    );
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(result).toBe("recovered");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
 });
+

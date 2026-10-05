@@ -49,25 +49,35 @@ export function toError(error: unknown, context: string): Error {
       axiosError.response?.statusText ||
       axiosError.message;
 
+    let err: Error;
     // Check for 2025 API scope deprecation errors
     if (status === 403 && message?.includes("PERMISSION_DENIED")) {
-      return new Error(
+      err = new Error(
         `Google Photos API ${context} failed (${status}): ${message}. ` +
           "NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. " +
           "For full photo library access, please use the Google Photos Picker API.",
       );
-    }
-
-    if (status === 401) {
-      return new Error(
+    } else if (status === 401) {
+      err = new Error(
         `Google Photos API ${context} failed (401): Unauthorized (${message}). ` +
           "Authentication token may have expired or is invalid. Use the start_auth tool or visit /auth to re-authenticate.",
       );
+    } else {
+      err = new Error(
+        `Google Photos API ${context} failed${status ? ` (${status})` : ""}: ${message}`,
+      );
     }
 
-    return new Error(
-      `Google Photos API ${context} failed${status ? ` (${status})` : ""}: ${message}`,
-    );
+    // Preserve retry-relevant Axios metadata so retry utilities (e.g. withRetry) can inspect status and retry
+    Object.assign(err, {
+      isAxiosError: true,
+      response: axiosError.response,
+      status: axiosError.response?.status,
+      code: axiosError.code,
+      config: axiosError.config,
+    });
+
+    return err;
   }
 
   if (error instanceof Error) {

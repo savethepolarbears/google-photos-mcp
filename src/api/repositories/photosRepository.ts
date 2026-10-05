@@ -580,7 +580,10 @@ export async function downloadPickerMedia(
             filename = filename || p.filename;
             if (!mimeType) mimeType = p.mimeType;
             if (!mediaItemId) mediaItemId = p.id;
-            if (!itemProcessingStatus) itemProcessingStatus = p.processingStatus;
+            // Prefer fresh processing status from session over caller-supplied status
+            if (p.processingStatus) {
+              itemProcessingStatus = p.processingStatus;
+            }
             foundInSession = true;
             break;
           }
@@ -644,7 +647,10 @@ export async function downloadPickerMedia(
     filename = filename || foundPhoto.filename;
     mimeType = mimeType || foundPhoto.mimeType;
     mediaItemId = foundPhoto.id;
-    if (!itemProcessingStatus) itemProcessingStatus = foundPhoto.processingStatus;
+    // Prefer fresh processing status from session over caller-supplied status
+    if (foundPhoto.processingStatus) {
+      itemProcessingStatus = foundPhoto.processingStatus;
+    }
 
     if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
       throw new Error(

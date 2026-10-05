@@ -90,4 +90,18 @@ describe("toError", () => {
 
     expect(result.message).toContain("Invalid filter format");
   });
+
+  it("preserves retry-relevant Axios metadata on normalized Error", () => {
+    const axiosErr = createMockAxiosError(503, "Service Unavailable");
+    const result = toError(axiosErr, "picker.sessions.delete") as Error & {
+      isAxiosError?: boolean;
+      status?: number;
+      response?: unknown;
+    };
+
+    expect(result.isAxiosError).toBe(true);
+    expect(result.status).toBe(503);
+    expect(result.response).toBeDefined();
+    expect(result.message).toContain("503");
+  });
 });
