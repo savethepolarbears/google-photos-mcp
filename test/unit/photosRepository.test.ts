@@ -218,11 +218,13 @@ describe("listMediaItems", () => {
   it("preserves 401 unauthorized guidance in thrown error", async () => {
     const mockClient = {
       mediaItems: {
-        list: vi.fn().mockRejectedValue(
-          new Error(
-            "Unauthorized (401). Use the start_auth tool or visit /auth to re-authenticate.",
+        list: vi
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              "Unauthorized (401). Use the start_auth tool or visit /auth to re-authenticate.",
+            ),
           ),
-        ),
       },
     };
     vi.mocked(getPhotoClient).mockReturnValue(
@@ -423,7 +425,9 @@ describe("Picker API repositories", () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
-          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
       } as unknown as OAuth2Client;
 
       const fakeBytes = Buffer.from("image-bytes-123");
@@ -458,7 +462,9 @@ describe("Picker API repositories", () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
-          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
       } as unknown as OAuth2Client;
 
       const mockClient = {
@@ -507,7 +513,9 @@ describe("Picker API repositories", () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
           .fn()
-          .mockResolvedValue(new Map([["authorization", "Bearer test-picker-token"]])),
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
       } as unknown as OAuth2Client;
 
       const fakeBytes = Buffer.from("file-on-disk-bytes");
@@ -532,10 +540,9 @@ describe("Picker API repositories", () => {
     });
 
     it("rejects when neither baseUrl nor sessionId+mediaItemId are provided", async () => {
-      await expect(
-        downloadPickerMedia(mockOAuth2Client, {}),
-      ).rejects.toThrow("Either baseUrl or both sessionId and mediaItemId must be provided");
+      await expect(downloadPickerMedia(mockOAuth2Client, {})).rejects.toThrow(
+        "Either baseUrl or both sessionId and mediaItemId must be provided",
+      );
     });
   });
 });
-
