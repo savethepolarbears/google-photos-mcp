@@ -197,6 +197,123 @@ export function parseWindowsNonOwnerAces(
 }
 
 /**
+ * Inspects icacls output to find identities belonging to the current owner that have
+ * explicit deny ACEs ((DENY) or (N) without inheritance flag (I)).
+ * On Windows, /grant:r replaces only explicit grant permissions and leaves deny ACEs intact,
+ * which can cause owner operations to be denied unless explicitly removed via /remove:d.
+ *
+ * @param icaclsOutput - Output from `icacls.exe <path>`
+ * @param owner - Optional WindowsOwnerInfo or username string
+ * @param targetPath - Optional target path prefix to strip from icacls output lines
+ * @returns Array of unique owner identities that have explicit deny ACEs
+ */
+export function parseWindowsOwnerDenyAces(
+  icaclsOutput: string | Buffer,
+  owner?: WindowsOwnerInfo | string,
+  targetPath?: string,
+): string[] {
+  const text = Buffer.isBuffer(icaclsOutput)
+    ? icaclsOutput.toString("utf8")
+    : String(icaclsOutput ?? "");
+  const lines = text.split(/\r?\n/);
+  const ownerDenyIdentities = new Set<string>();
+
+  let ownerInfo: WindowsOwnerInfo;
+  if (!owner || typeof owner === "string") {
+    const trimmed = (
+      owner ||
+      process.env.USERNAME ||
+      process.env.USER ||
+      ""
+    ).trim();
+    if (!owner) {
+      ownerInfo = getWindowsCurrentOwnerInfo();
+      if (!ownerInfo.username && trimmed) {
+        ownerInfo.username = trimmed;
+      }
+    } else {
+      ownerInfo = {
+        username: trimmed,
+        qualifiedName: process.env.USERDOMAIN
+          ? `${process.env.USERDOMAIN}\\${trimmed}`
+          : undefined,
+        sid: process.env.USER_SID,
+      };
+    }
+  } else {
+    ownerInfo = owner;
+  }
+
+  const normalizedOwnerUsername = ownerInfo.username?.toLowerCase();
+  const normalizedQualifiedOwner = ownerInfo.qualifiedName?.toLowerCase();
+  const normalizedOwnerSid = ownerInfo.sid?.toLowerCase().replace(/^\*/, "");
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith("Successfully processed")) continue;
+
+    if (targetPath && line.toLowerCase().startsWith(targetPath.toLowerCase())) {
+      line = line.slice(targetPath.length).trim();
+    }
+
+    const aceMatches = line.matchAll(/([^\r\n:]+):((?:\([^)]+\))+)/g);
+    for (const m of aceMatches) {
+      let identity = m[1].trim();
+      if (
+        targetPath &&
+        identity.toLowerCase().startsWith(targetPath.toLowerCase())
+      ) {
+        identity = identity.slice(targetPath.length).trim();
+      }
+      if (!identity) continue;
+
+      const lower = identity.toLowerCase();
+      const rawIdentitySid =
+        lower.startsWith("*s-1-") || lower.startsWith("s-1-")
+          ? lower.replace(/^\*/, "")
+          : undefined;
+
+      let isOwner = false;
+
+      // 1. Check SID equality if identity is a SID
+      if (rawIdentitySid) {
+        if (normalizedOwnerSid) {
+          isOwner = rawIdentitySid === normalizedOwnerSid;
+        } else {
+          isOwner = false;
+        }
+      } else if (lower.includes("\\")) {
+        // 2. Check exact fully qualified principal (DOMAIN\user)
+        if (normalizedQualifiedOwner) {
+          isOwner = lower === normalizedQualifiedOwner;
+        } else if (normalizedOwnerUsername && process.env.USERDOMAIN) {
+          isOwner =
+            lower ===
+            `${process.env.USERDOMAIN.toLowerCase()}\\${normalizedOwnerUsername}`;
+        } else {
+          isOwner = false;
+        }
+      } else {
+        // 3. Unqualified identity (e.g. "alice")
+        if (normalizedOwnerUsername) {
+          isOwner = lower === normalizedOwnerUsername;
+        }
+      }
+
+      const perms = m[2].toUpperCase();
+      const isInherited = perms.includes("(I)");
+      const isDeny = perms.includes("(DENY)") || perms.includes("(N)");
+
+      if (isOwner && isDeny && !isInherited) {
+        ownerDenyIdentities.add(identity);
+      }
+    }
+  }
+
+  return Array.from(ownerDenyIdentities);
+}
+
+/**
  * Inspects icacls output to detect if any explicit deny ACEs are present on the target.
  * In Windows ACLs, an explicit deny ACE takes precedence over group allow permissions.
  * Deny ACEs display as (DENY)(...) or (N) in icacls, and explicit ACEs lack the (I) inheritance flag.
@@ -231,7 +348,8 @@ export function hasWindowsExplicitDenyAces(
 /**
  * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
  * Atomically strips inherited permissions, grants full control exclusively to the current user,
- * and removes any remaining non-owner explicit ACEs from pre-existing files or directories.
+ * removes any remaining non-owner explicit ACEs, and removes any owner explicit deny ACEs
+ * (since /grant:r only replaces grant ACEs and leaves explicit deny ACEs intact).
  *
  * @param targetPath - The path to the file or directory.
  */
@@ -262,6 +380,7 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
     );
 
     // 2. Query DACL to identify and explicitly remove any remaining non-owner explicit ACEs
+    // and owner explicit deny ACEs (since /grant:r only replaces grants and leaves explicit deny intact)
     const output = childProcess.execFileSync("icacls.exe", [targetPath], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -278,6 +397,64 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
         [targetPath, "/remove", nonOwnerId],
         { stdio: "ignore" },
       );
+    }
+
+    const ownerDenyIdentities = parseWindowsOwnerDenyAces(
+      output,
+      ownerInfo,
+      targetPath,
+    );
+    for (const ownerDenyId of ownerDenyIdentities) {
+      childProcess.execFileSync(
+        "icacls.exe",
+        [targetPath, "/remove:d", ownerDenyId],
+        { stdio: "ignore" },
+      );
+    }
+
+    // If owner deny entries were removed, re-apply the owner grant to ensure full control
+    if (ownerDenyIdentities.length > 0) {
+      childProcess.execFileSync(
+        "icacls.exe",
+        [targetPath, "/grant:r", permissionSpec],
+        { stdio: "ignore" },
+      );
+    }
+
+    // 3. If any removals were performed, verify DACL has no remaining owner deny or non-owner ACEs
+    if (nonOwnerIdentities.length > 0 || ownerDenyIdentities.length > 0) {
+      const verifyOutput = childProcess.execFileSync("icacls.exe", [targetPath], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+
+      const remainingOwnerDeny = parseWindowsOwnerDenyAces(
+        verifyOutput,
+        ownerInfo,
+        targetPath,
+      );
+      if (remainingOwnerDeny.length > 0) {
+        throw new Error(
+          `Failed to remove owner deny ACEs for ${remainingOwnerDeny.join(", ")} on ${targetPath}`,
+        );
+      }
+
+      const remainingNonOwners = parseWindowsNonOwnerAces(
+        verifyOutput,
+        ownerInfo,
+        targetPath,
+      );
+      if (remainingNonOwners.length > 0) {
+        throw new Error(
+          `Failed to remove non-owner ACEs for ${remainingNonOwners.join(", ")} on ${targetPath}`,
+        );
+      }
+
+      if (hasWindowsExplicitDenyAces(verifyOutput)) {
+        throw new Error(
+          `Explicit deny ACEs remain on ${targetPath} after ACL hardening`,
+        );
+      }
     }
 
     logger.debug(`Enforced Windows owner-only ACL on ${targetPath}`);

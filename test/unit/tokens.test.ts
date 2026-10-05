@@ -63,6 +63,7 @@ import {
   enforceOwnerOnlyPermissions,
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  parseWindowsOwnerDenyAces,
   hasWindowsExplicitDenyAces,
   getWindowsCurrentOwnerInfo,
   precreateAndHardenTokenStorage,
@@ -379,7 +380,7 @@ describe("tokens.ts — AUTH-01", () => {
 
       try {
         enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
-        expect(execSpy).toHaveBeenCalledTimes(4);
+        expect(execSpy).toHaveBeenCalledTimes(5);
         expect(execSpy).toHaveBeenNthCalledWith(
           1,
           "icacls.exe",
@@ -408,6 +409,12 @@ describe("tokens.ts — AUTH-01", () => {
           "icacls.exe",
           ["C:\\token-storage\\tokens.db", "/remove", "BUILTIN\\Users"],
           { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          5,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
         );
       } finally {
         execSpy.mockRestore();
@@ -494,6 +501,109 @@ describe("tokens.ts — AUTH-01", () => {
         "            BUILTIN\\Users:(RX)\r\n" +
         "Successfully processed 1 files;\r\n";
       expect(hasWindowsExplicitDenyAces(sampleAllowsOnly)).toBe(false);
+    });
+
+    it("identifies explicit Windows deny ACEs belonging to the owner", () => {
+      const sample =
+        "C:\\tokens.db CORP\\alice:(DENY)(R)\r\n" +
+        "             CORP\\alice:(F)\r\n" +
+        "             *S-1-5-21-1001:(N)\r\n" +
+        "             alice:(I)(DENY)(R)\r\n" +
+        "             DOMAIN\\Contractors:(DENY)(R)\r\n" +
+        "             BUILTIN\\Users:(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+
+      const ownerDenyIdentities = parseWindowsOwnerDenyAces(
+        sample,
+        { username: "alice", qualifiedName: "CORP\\alice", sid: "S-1-5-21-1001" },
+        "C:\\tokens.db",
+      );
+
+      // Should find CORP\alice (explicit deny) and *S-1-5-21-1001 (explicit deny with (N))
+      // Should NOT find alice:(I)(DENY)(R) (inherited)
+      // Should NOT find DOMAIN\Contractors (non-owner deny, handled by parseWindowsNonOwnerAces)
+      // Should NOT find CORP\alice:(F) (allow ACE)
+      expect(ownerDenyIdentities).toEqual(["CORP\\alice", "*S-1-5-21-1001"]);
+    });
+
+    it("removes owner explicit deny ACEs via /remove:d and re-applies owner grant", () => {
+      const execSpy = vi.spyOn(childProcess, "execFileSync");
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "alice";
+
+      execSpy.mockImplementation((cmd, args) => {
+        if (args && args.length === 1 && args[0] === "C:\\tokens.db") {
+          // If called before removals:
+          if (!execSpy.mock.calls.some((c) => c[1]?.[1] === "/remove:d")) {
+            return (
+              "C:\\tokens.db alice:(DENY)(R)\r\n" +
+              "             alice:(F)\r\n" +
+              "             BUILTIN\\Users:(RX)\r\n" +
+              "Successfully processed 1 files;\r\n"
+            );
+          }
+          // After removals:
+          return (
+            "C:\\tokens.db alice:(F)\r\n" +
+            "Successfully processed 1 files;\r\n"
+          );
+        }
+        return Buffer.from("");
+      });
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+
+        // Verify /remove was called for non-owner
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/remove", "BUILTIN\\Users"],
+          { stdio: "ignore" },
+        );
+
+        // Verify /remove:d was called for owner deny
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/remove:d", "alice"],
+          { stdio: "ignore" },
+        );
+
+        // Verify /grant:r was re-applied
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/grant:r", "alice:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("throws and fails closed if owner deny ACEs cannot be removed on Windows", () => {
+      const execSpy = vi.spyOn(childProcess, "execFileSync");
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "alice";
+
+      execSpy.mockImplementation((cmd, args) => {
+        if (args && args.length === 1 && args[0] === "C:\\tokens.db") {
+          return (
+            "C:\\tokens.db alice:(DENY)(R)\r\n" +
+            "             alice:(F)\r\n" +
+            "Successfully processed 1 files;\r\n"
+          );
+        }
+        return Buffer.from("");
+      });
+
+      try {
+        expect(() => enforceWindowsOwnerOnlyAcl("C:\\tokens.db")).toThrow(
+          "Failed to remove owner deny ACEs for alice on C:\\tokens.db",
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
     });
 
     it("enforces owner-only ACL on Windows using SID when available", () => {
