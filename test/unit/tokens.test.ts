@@ -63,6 +63,7 @@ import {
   enforceOwnerOnlyPermissions,
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  getWindowsCurrentOwnerInfo,
   precreateAndHardenTokenStorage,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
@@ -423,10 +424,141 @@ describe("tokens.ts — AUTH-01", () => {
 
       const nonOwners = parseWindowsNonOwnerAces(
         sample,
-        "testwinuser",
+        "DOMAIN\\testwinuser",
         "C:\\tokens.db",
       );
       expect(nonOwners).toEqual(["NT AUTHORITY\\SYSTEM", "BUILTIN\\Users"]);
+    });
+
+    it("identifies accounts with identical leaf usernames from other domains as non-owners", () => {
+      const sample =
+        "C:\\tokens.db CORP\\alice:(F)\r\n" +
+        "             OTHERDOMAIN\\alice:(F)\r\n" +
+        "             MACHINE\\alice:(F)\r\n" +
+        "             alice:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        { username: "alice", qualifiedName: "CORP\\alice" },
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual([
+        "OTHERDOMAIN\\alice",
+        "MACHINE\\alice",
+        "BUILTIN\\Users",
+      ]);
+    });
+
+    it("compares Windows ACL principals by exact SID", () => {
+      const sample =
+        "C:\\tokens.db *S-1-5-21-1001:(F)\r\n" +
+        "             *S-1-5-21-9999:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        { username: "alice", sid: "S-1-5-21-1001" },
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual(["*S-1-5-21-9999", "BUILTIN\\Users"]);
+    });
+
+    it("enforces owner-only ACL on Windows using SID when available", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalSid = process.env.USER_SID;
+      process.env.USERNAME = "alice";
+      process.env.USER_SID = "S-1-5-21-1001";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          ["C:\\tokens.db", "/inheritance:r", "/grant:r", "*S-1-5-21-1001:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        if (originalSid) process.env.USER_SID = originalSid;
+        else delete process.env.USER_SID;
+      }
+    });
+
+    it("enforces owner-only ACL on Windows using qualified principal DOMAIN\\user", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalDomain = process.env.USERDOMAIN;
+      process.env.USERNAME = "alice";
+      process.env.USERDOMAIN = "CORP";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          ["C:\\tokens.db", "/inheritance:r", "/grant:r", "CORP\\alice:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        if (originalDomain) process.env.USERDOMAIN = originalDomain;
+        else delete process.env.USERDOMAIN;
+      }
+    });
+
+    it("resolves Windows owner info via environment variables and whoami.exe", () => {
+      const originalUsername = process.env.USERNAME;
+      const originalDomain = process.env.USERDOMAIN;
+      const originalSid = process.env.USER_SID;
+      const originalMock = process.env.MOCK_WINDOWS_WHOAMI;
+
+      process.env.USERNAME = "alice";
+      process.env.USERDOMAIN = "CORPDOM";
+      delete process.env.USER_SID;
+      delete process.env.MOCK_WINDOWS_WHOAMI;
+
+      try {
+        const infoEnv = getWindowsCurrentOwnerInfo();
+        expect(infoEnv.username).toBe("alice");
+        expect(infoEnv.qualifiedName).toBe("CORPDOM\\alice");
+        expect(infoEnv.sid).toBeUndefined();
+
+        // Now test whoami resolution
+        const execSpy = vi
+          .spyOn(childProcess, "execFileSync")
+          .mockReturnValue(Buffer.from('"CORPDOM\\alice","S-1-5-21-9999"\r\n'));
+        process.env.MOCK_WINDOWS_WHOAMI = "true";
+
+        try {
+          const infoWhoami = getWindowsCurrentOwnerInfo();
+          expect(infoWhoami.username).toBe("alice");
+          expect(infoWhoami.qualifiedName).toBe("CORPDOM\\alice");
+          expect(infoWhoami.sid).toBe("S-1-5-21-9999");
+          expect(execSpy).toHaveBeenCalledWith(
+            "whoami.exe",
+            ["/user", "/fo", "csv", "/nh"],
+            expect.any(Object),
+          );
+        } finally {
+          execSpy.mockRestore();
+        }
+      } finally {
+        process.env.USERNAME = originalUsername;
+        if (originalDomain) process.env.USERDOMAIN = originalDomain;
+        else delete process.env.USERDOMAIN;
+        if (originalSid) process.env.USER_SID = originalSid;
+        else delete process.env.USER_SID;
+        if (originalMock) process.env.MOCK_WINDOWS_WHOAMI = originalMock;
+        else delete process.env.MOCK_WINDOWS_WHOAMI;
+      }
     });
 
     it("enforces inheritance container/object owner-only ACL on Windows for directories", async () => {

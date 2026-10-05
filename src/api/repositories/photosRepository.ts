@@ -24,6 +24,7 @@ import childProcess from "child_process";
 import {
   enforceWindowsOwnerOnlyAcl,
   parseWindowsNonOwnerAces,
+  getWindowsCurrentOwnerInfo,
 } from "../../auth/tokens.js";
 import { withRetry } from "../../utils/retry.js";
 import logger from "../../utils/logger.js";
@@ -68,8 +69,10 @@ export function preserveDestinationPermissions(
       throw new Error(msg, { cause: err });
     }
 
-    const username = process.env.USERNAME || process.env.USER;
-    if (!username) {
+    const ownerInfo = getWindowsCurrentOwnerInfo();
+    const username =
+      ownerInfo.username || process.env.USERNAME || process.env.USER;
+    if (!username && !ownerInfo.qualifiedName && !ownerInfo.sid) {
       throw new Error(
         `Could not determine Windows username to verify and preserve destination ACL from ${existingPath}`,
       );
@@ -84,7 +87,7 @@ export function preserveDestinationPermissions(
         output.includes("(I)") === false && output.includes(":");
       const nonOwnerAces = parseWindowsNonOwnerAces(
         output,
-        username,
+        ownerInfo,
         existingPath,
       );
       if (isInheritanceDisabled || nonOwnerAces.length === 0) {

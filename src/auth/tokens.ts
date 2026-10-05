@@ -27,17 +27,76 @@ export interface TokenData {
   retrievedAt?: number;
 }
 
+export interface WindowsOwnerInfo {
+  username?: string;
+  qualifiedName?: string;
+  sid?: string;
+}
+
+/**
+ * Resolves the current Windows user identity (leaf username, domain-qualified principal, and optional SID).
+ * Checks standard environment variables (USERNAME, USERDOMAIN, USER_SID) and queries whoami.exe if available.
+ */
+export function getWindowsCurrentOwnerInfo(): WindowsOwnerInfo {
+  const leafUser = process.env.USERNAME || process.env.USER || "";
+  let qualifiedName: string | undefined;
+  let sid: string | undefined;
+
+  if (process.env.USER_SID) {
+    sid = process.env.USER_SID.trim();
+  }
+
+  if (process.env.USERDOMAIN && leafUser) {
+    qualifiedName = `${process.env.USERDOMAIN}\\${leafUser}`;
+  }
+
+  // Attempt to resolve SID and qualifiedName via whoami.exe if explicitly requested
+  if (
+    (!sid || !qualifiedName) &&
+    (process.env.MOCK_WINDOWS_WHOAMI === "true" ||
+      process.env.RESOLVE_WINDOWS_SID === "true")
+  ) {
+    try {
+      const whoamiOutput = childProcess.execFileSync(
+        "whoami.exe",
+        ["/user", "/fo", "csv", "/nh"],
+        {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+      const whoamiText = String(whoamiOutput ?? "");
+      const match = whoamiText.match(/"([^"]+)","([^"]+)"/);
+      if (match) {
+        if (!qualifiedName) qualifiedName = match[1].trim();
+        if (!sid) sid = match[2].trim();
+      }
+    } catch {
+      // ignore whoami failure
+    }
+  }
+
+  return {
+    username: leafUser,
+    qualifiedName,
+    sid,
+  };
+}
+
 /**
  * Parses icacls stdout to extract non-owner identities that have explicit ACEs on the target.
+ * Resolves current account and ACE identities by exact SID or fully qualified principal (DOMAIN\user)
+ * rather than loose leaf username suffix matching to prevent accounts with identical leaf names
+ * from different domains or local machines from retaining access.
  *
  * @param icaclsOutput - Output from `icacls.exe <path>`
- * @param ownerUsername - The active Windows username
+ * @param owner - The active Windows username, fully qualified principal, SID, or WindowsOwnerInfo object
  * @param targetPath - Optional path to strip from the beginning of lines
  * @returns Array of non-owner identity strings
  */
 export function parseWindowsNonOwnerAces(
   icaclsOutput: string | Buffer,
-  ownerUsername: string,
+  owner: string | WindowsOwnerInfo,
   targetPath?: string,
 ): string[] {
   const text = Buffer.isBuffer(icaclsOutput)
@@ -45,7 +104,36 @@ export function parseWindowsNonOwnerAces(
     : String(icaclsOutput ?? "");
   const lines = text.split(/\r?\n/);
   const nonOwnerIdentities = new Set<string>();
-  const normalizedOwner = ownerUsername.toLowerCase();
+
+  let ownerInfo: WindowsOwnerInfo;
+  if (typeof owner === "string") {
+    const trimmed = owner.trim();
+    if (trimmed.startsWith("S-1-") || trimmed.startsWith("*S-1-")) {
+      ownerInfo = {
+        username: "",
+        sid: trimmed.replace(/^\*/, ""),
+      };
+    } else if (trimmed.includes("\\")) {
+      ownerInfo = {
+        qualifiedName: trimmed,
+        username: trimmed.split("\\").pop() || trimmed,
+      };
+    } else {
+      ownerInfo = {
+        username: trimmed,
+        qualifiedName: process.env.USERDOMAIN
+          ? `${process.env.USERDOMAIN}\\${trimmed}`
+          : undefined,
+        sid: process.env.USER_SID,
+      };
+    }
+  } else {
+    ownerInfo = owner;
+  }
+
+  const normalizedOwnerUsername = ownerInfo.username?.toLowerCase();
+  const normalizedQualifiedOwner = ownerInfo.qualifiedName?.toLowerCase();
+  const normalizedOwnerSid = ownerInfo.sid?.toLowerCase().replace(/^\*/, "");
 
   for (let line of lines) {
     line = line.trim();
@@ -65,8 +153,40 @@ export function parseWindowsNonOwnerAces(
         identity = identity.slice(targetPath.length).trim();
       }
       const lower = identity.toLowerCase();
-      const isOwner =
-        lower === normalizedOwner || lower.endsWith(`\\${normalizedOwner}`);
+      const rawIdentitySid =
+        lower.startsWith("*s-1-") || lower.startsWith("s-1-")
+          ? lower.replace(/^\*/, "")
+          : undefined;
+
+      let isOwner = false;
+
+      // 1. Check SID equality if identity is a SID
+      if (rawIdentitySid) {
+        if (normalizedOwnerSid) {
+          isOwner = rawIdentitySid === normalizedOwnerSid;
+        } else {
+          // ACE is an explicit SID but owner SID is different or unknown
+          isOwner = false;
+        }
+      } else if (lower.includes("\\")) {
+        // 2. Check exact fully qualified principal (DOMAIN\user)
+        if (normalizedQualifiedOwner) {
+          isOwner = lower === normalizedQualifiedOwner;
+        } else if (normalizedOwnerUsername && process.env.USERDOMAIN) {
+          isOwner =
+            lower ===
+            `${process.env.USERDOMAIN.toLowerCase()}\\${normalizedOwnerUsername}`;
+        } else {
+          // Domain prefix present on ACE but cannot verify against owner domain
+          isOwner = false;
+        }
+      } else {
+        // 3. Unqualified identity (e.g. "alice")
+        if (normalizedOwnerUsername) {
+          isOwner = lower === normalizedOwnerUsername;
+        }
+      }
+
       if (!isOwner && identity.length > 0) {
         nonOwnerIdentities.add(identity);
       }
@@ -76,6 +196,7 @@ export function parseWindowsNonOwnerAces(
   return Array.from(nonOwnerIdentities);
 }
 
+
 /**
  * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
  * Atomically strips inherited permissions, grants full control exclusively to the current user,
@@ -84,8 +205,10 @@ export function parseWindowsNonOwnerAces(
  * @param targetPath - The path to the file or directory.
  */
 export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
-  const username = process.env.USERNAME || process.env.USER;
-  if (!username) {
+  const ownerInfo = getWindowsCurrentOwnerInfo();
+  const username =
+    ownerInfo.username || process.env.USERNAME || process.env.USER;
+  if (!username && !ownerInfo.qualifiedName && !ownerInfo.sid) {
     throw new Error(
       `Could not determine Windows username to enforce owner-only ACL on ${targetPath}`,
     );
@@ -93,9 +216,12 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
   try {
     const isDir =
       fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory();
+    const principalSpec = ownerInfo.sid
+      ? `*${ownerInfo.sid}`
+      : ownerInfo.qualifiedName || username;
     const permissionSpec = isDir
-      ? `${username}:(OI)(CI)(F)`
-      : `${username}:(F)`;
+      ? `${principalSpec}:(OI)(CI)(F)`
+      : `${principalSpec}:(F)`;
 
     // 1. Apply restrictive DACL atomically in a single invocation without resetting to inherited ACLs
     childProcess.execFileSync(
@@ -112,7 +238,7 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
 
     const nonOwnerIdentities = parseWindowsNonOwnerAces(
       output,
-      username,
+      ownerInfo,
       targetPath,
     );
     for (const nonOwnerId of nonOwnerIdentities) {
