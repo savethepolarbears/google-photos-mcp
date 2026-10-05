@@ -61,6 +61,7 @@ import {
   getTokens,
   enforceOwnerOnlyPermissions,
   enforceWindowsOwnerOnlyAcl,
+  parseWindowsNonOwnerAces,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
 
@@ -247,8 +248,8 @@ describe("tokens.ts — AUTH-01", () => {
 
       try {
         enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
-        expect(execSpy).toHaveBeenCalledTimes(1);
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
           "icacls.exe",
           [
             "C:\\token-storage\\tokens.db",
@@ -258,11 +259,88 @@ describe("tokens.ts — AUTH-01", () => {
           ],
           { stdio: "ignore" },
         );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
       } finally {
         execSpy.mockRestore();
         process.env.USERNAME = originalUsername;
         process.env.USER = originalUser;
       }
+    });
+
+    it("removes non-owner explicit ACEs when discovered in icacls query", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValueOnce(Buffer.from(""))
+        .mockReturnValueOnce(
+          Buffer.from(
+            "C:\\token-storage\\tokens.db testwinuser:(F)\r\n" +
+              "                           DOMAIN\\OtherUser:(R)\r\n" +
+              "                           BUILTIN\\Users:(M)\r\n" +
+              "Successfully processed 1 files; Failed processing 0 files\r\n",
+          ),
+        )
+        .mockReturnValue(Buffer.from(""));
+
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
+        expect(execSpy).toHaveBeenCalledTimes(4);
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [
+            "C:\\token-storage\\tokens.db",
+            "/inheritance:r",
+            "/grant:r",
+            "testwinuser:(F)",
+          ],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          3,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db", "/remove", "DOMAIN\\OtherUser"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          4,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db", "/remove", "BUILTIN\\Users"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("parses non-owner ACEs accurately from icacls output", () => {
+      const sample =
+        "C:\\tokens.db DOMAIN\\testwinuser:(F)\r\n" +
+        "             NT AUTHORITY\\SYSTEM:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n" +
+        "             testwinuser:(F)\r\n" +
+        "Successfully processed 1 files;\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        "testwinuser",
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual(["NT AUTHORITY\\SYSTEM", "BUILTIN\\Users"]);
     });
 
     it("enforces inheritance container/object owner-only ACL on Windows for directories", async () => {
@@ -278,11 +356,17 @@ describe("tokens.ts — AUTH-01", () => {
 
       try {
         enforceWindowsOwnerOnlyAcl(tmpDir);
-        expect(execSpy).toHaveBeenCalledTimes(1);
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
           "icacls.exe",
           [tmpDir, "/inheritance:r", "/grant:r", "testwinuser:(OI)(CI)(F)"],
           { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          [tmpDir],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
         );
       } finally {
         execSpy.mockRestore();
@@ -346,11 +430,17 @@ describe("tokens.ts — AUTH-01", () => {
       try {
         Object.defineProperty(process, "platform", { value: "win32" });
         enforceOwnerOnlyPermissions(testDb);
-        expect(execSpy).toHaveBeenCalledTimes(1);
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
           "icacls.exe",
           [testDb, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
           { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          [testDb],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
         );
       } finally {
         Object.defineProperty(process, "platform", { value: originalPlatform });

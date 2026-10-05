@@ -28,9 +28,58 @@ export interface TokenData {
 }
 
 /**
+ * Parses icacls stdout to extract non-owner identities that have explicit ACEs on the target.
+ *
+ * @param icaclsOutput - Output from `icacls.exe <path>`
+ * @param ownerUsername - The active Windows username
+ * @param targetPath - Optional path to strip from the beginning of lines
+ * @returns Array of non-owner identity strings
+ */
+export function parseWindowsNonOwnerAces(
+  icaclsOutput: string | Buffer,
+  ownerUsername: string,
+  targetPath?: string,
+): string[] {
+  const text = Buffer.isBuffer(icaclsOutput)
+    ? icaclsOutput.toString("utf8")
+    : String(icaclsOutput ?? "");
+  const lines = text.split(/\r?\n/);
+  const nonOwnerIdentities = new Set<string>();
+  const normalizedOwner = ownerUsername.toLowerCase();
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line || line.startsWith("Successfully processed")) continue;
+
+    if (targetPath && line.toLowerCase().startsWith(targetPath.toLowerCase())) {
+      line = line.slice(targetPath.length).trim();
+    }
+
+    const aceMatches = line.matchAll(/([^\r\n:]+):\(/g);
+    for (const m of aceMatches) {
+      let identity = m[1].trim();
+      if (
+        targetPath &&
+        identity.toLowerCase().startsWith(targetPath.toLowerCase())
+      ) {
+        identity = identity.slice(targetPath.length).trim();
+      }
+      const lower = identity.toLowerCase();
+      const isOwner =
+        lower === normalizedOwner || lower.endsWith(`\\${normalizedOwner}`);
+      if (!isOwner && identity.length > 0) {
+        nonOwnerIdentities.add(identity);
+      }
+    }
+  }
+
+  return Array.from(nonOwnerIdentities);
+}
+
+/**
  * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
- * Atomically strips inherited permissions and grants full control exclusively to the current user
- * in a single command invocation, preventing any exposure window to inherited DACL permissions.
+ * Atomically strips inherited permissions, grants full control exclusively to the current user,
+ * and removes any remaining non-owner explicit ACEs from pre-existing files or directories.
  *
  * @param targetPath - The path to the file or directory.
  */
@@ -48,12 +97,32 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
       ? `${username}:(OI)(CI)(F)`
       : `${username}:(F)`;
 
-    // Apply restrictive DACL atomically in a single invocation without resetting to inherited ACLs
+    // 1. Apply restrictive DACL atomically in a single invocation without resetting to inherited ACLs
     childProcess.execFileSync(
       "icacls.exe",
       [targetPath, "/inheritance:r", "/grant:r", permissionSpec],
       { stdio: "ignore" },
     );
+
+    // 2. Query DACL to identify and explicitly remove any remaining non-owner explicit ACEs
+    const output = childProcess.execFileSync("icacls.exe", [targetPath], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+
+    const nonOwnerIdentities = parseWindowsNonOwnerAces(
+      output,
+      username,
+      targetPath,
+    );
+    for (const nonOwnerId of nonOwnerIdentities) {
+      childProcess.execFileSync(
+        "icacls.exe",
+        [targetPath, "/remove", nonOwnerId],
+        { stdio: "ignore" },
+      );
+    }
+
     logger.debug(`Enforced Windows owner-only ACL on ${targetPath}`);
   } catch (err) {
     const msg = `Could not enforce owner-only ACL on Windows for ${targetPath}: ${err instanceof Error ? err.message : String(err)}`;

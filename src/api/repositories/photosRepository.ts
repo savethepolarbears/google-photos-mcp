@@ -764,8 +764,31 @@ export async function downloadPickerMedia(
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const fileWriteStream = createWriteStream(resolvedPath);
-      await pipeline(stream as unknown as NodeJS.ReadableStream, fileWriteStream);
+      // Stream to a sibling temporary file to preserve any pre-existing destination
+      // file if the stream or network aborts mid-transfer.
+      const tempPath = path.join(
+        dir,
+        `.tmp.${path.basename(resolvedPath)}.${Date.now()}.${Math.random().toString(36).slice(2)}`,
+      );
+
+      try {
+        const fileWriteStream = createWriteStream(tempPath);
+        await pipeline(
+          stream as unknown as NodeJS.ReadableStream,
+          fileWriteStream,
+        );
+        fs.renameSync(tempPath, resolvedPath);
+      } catch (streamErr) {
+        if (fs.existsSync(tempPath)) {
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {
+            // best-effort cleanup
+          }
+        }
+        throw streamErr;
+      }
+
       savedTo = resolvedPath;
       size = fs.statSync(resolvedPath).size;
 

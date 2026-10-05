@@ -580,6 +580,55 @@ describe("Picker API repositories", () => {
       }
     });
 
+    it("preserves pre-existing destination file and cleans up temporary file when download stream fails", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-preserve-"));
+      const testFilePath = path.join(tempDir, "existing-file.jpg");
+      const existingBytes = Buffer.from("pre-existing-important-data");
+      fs.writeFileSync(testFilePath, existingBytes);
+
+      try {
+        const mockOAuthClient = {
+          getRequestHeaders: vi
+            .fn()
+            .mockResolvedValue(
+              new Map([["authorization", "Bearer test-picker-token"]]),
+            ),
+        } as unknown as OAuth2Client;
+
+        // Create a readable stream that errors mid-way
+        const failingStream = new Readable({
+          read() {
+            this.destroy(new Error("Connection reset by peer mid-stream"));
+          },
+        });
+
+        const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+          data: failingStream,
+          headers: { "content-type": "image/jpeg" },
+        });
+
+        await expect(
+          downloadPickerMedia(mockOAuthClient, {
+            baseUrl: "https://photos.google.com/sample-photo",
+            savePath: testFilePath,
+            isVideo: false,
+          }),
+        ).rejects.toThrow("Connection reset by peer mid-stream");
+
+        // The pre-existing file must remain intact with original bytes
+        expect(fs.existsSync(testFilePath)).toBe(true);
+        expect(fs.readFileSync(testFilePath)).toEqual(existingBytes);
+
+        // No leftover temporary files in directory
+        const filesInDir = fs.readdirSync(tempDir);
+        expect(filesInDir).toEqual(["existing-file.jpg"]);
+
+        axiosGetSpy.mockRestore();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it("rejects when neither baseUrl nor sessionId+mediaItemId are provided", async () => {
       await expect(downloadPickerMedia(mockOAuth2Client, {})).rejects.toThrow(
         "Either baseUrl or both sessionId and mediaItemId must be provided",
