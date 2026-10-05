@@ -459,6 +459,65 @@ describe("Picker API repositories", () => {
     expect(result.nextPageToken).toBe("next-token");
   });
 
+  it("records quota for each retry attempt in listPickerSessionMediaItems", async () => {
+    let callCount = 0;
+    const mockClient = {
+      sessions: {
+        listMediaItems: vi.fn().mockImplementation(async () => {
+          callCount++;
+          if (callCount < 3) {
+            throw new Error("503 Service Unavailable");
+          }
+          return {
+            data: {
+              mediaItems: [
+                {
+                  id: "retried-item",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/retried",
+                    filename: "retried.jpg",
+                  },
+                },
+              ],
+            },
+          };
+        }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    vi.mocked(withRetry).mockImplementationOnce(
+      async (fn: () => Promise<unknown>) => {
+        let lastErr;
+        for (let i = 0; i < 3; i++) {
+          try {
+            return await fn();
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        throw lastErr;
+      },
+    );
+
+    vi.mocked(quotaManager.checkQuota).mockClear();
+    vi.mocked(quotaManager.recordRequest).mockClear();
+
+    const result = await listPickerSessionMediaItems(
+      mockOAuth2Client,
+      "sess-retry",
+    );
+
+    expect(result.photos).toHaveLength(1);
+    expect(result.photos[0].id).toBe("retried-item");
+    expect(quotaManager.checkQuota).toHaveBeenCalledTimes(3);
+    expect(quotaManager.recordRequest).toHaveBeenCalledTimes(3);
+    expect(quotaManager.checkQuota).toHaveBeenCalledWith(false);
+    expect(quotaManager.recordRequest).toHaveBeenCalledWith(false);
+  });
+
   describe("downloadPickerMedia", () => {
     it("downloads media bytes from baseUrl with Authorization header", async () => {
       const mockOAuthClient = {
@@ -1381,6 +1440,98 @@ describe("Picker API repositories", () => {
       axiosGetSpy.mockRestore();
     });
 
+    it("clears caller-supplied READY status and rejects video download when session item omits processingStatus (baseUrl + sessionId)", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "vid-target",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+                    filename: "sunset.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        // Notice: processingStatus is absent/undefined
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+          sessionId: "sess-video-lookup",
+          processingStatus: "READY",
+        }),
+      ).rejects.toThrow(
+        'Video vid-target cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.',
+      );
+    });
+
+    it("clears caller-supplied READY status and rejects video download when session item omits processingStatus (mediaItemId + sessionId)", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "vid-id-lookup",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/session-video-id",
+                    filename: "clip.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {},
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-video-id",
+          mediaItemId: "vid-id-lookup",
+          processingStatus: "READY",
+        }),
+      ).rejects.toThrow(
+        'Video vid-id-lookup cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.',
+      );
+    });
+
     it("rejects when baseUrl is not found in session and isVideo/mimeType are omitted", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
@@ -1884,6 +2035,160 @@ describe("Picker API repositories", () => {
         Object.defineProperty(process, "platform", { value: originalPlatform });
         execSpy.mockRestore();
         process.env.USERNAME = originalUsername;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws and fails closed on Windows if icacls fails", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockImplementation(() => {
+          throw new Error("icacls error: Access is denied");
+        });
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-icacls-fail-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data");
+        fs.writeFileSync(tempFile, "temp-data");
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        expect(() => {
+          preserveDestinationPermissions(destFile, tempFile);
+        }).toThrow("Could not verify or preserve Windows ACL");
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws and fails closed on Windows if username is missing", () => {
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      const originalUser = process.env.USER;
+      delete process.env.USERNAME;
+      delete process.env.USER;
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-user-fail-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data");
+        fs.writeFileSync(tempFile, "temp-data");
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        expect(() => {
+          preserveDestinationPermissions(destFile, tempFile);
+        }).toThrow("Could not determine Windows username");
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        process.env.USERNAME = originalUsername;
+        process.env.USER = originalUser;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws and fails closed on Windows if chmodSync fails", () => {
+      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
+        throw new Error("EPERM: operation not permitted");
+      });
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-chmod-fail-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data");
+        fs.writeFileSync(tempFile, "temp-data");
+        Object.defineProperty(process, "platform", { value: "win32" });
+
+        expect(() => {
+          preserveDestinationPermissions(destFile, tempFile);
+        }).toThrow("Could not synchronize file mode on Windows");
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        chmodSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws and fails closed on Unix if chmodSync fails", () => {
+      if (process.platform === "win32") return;
+
+      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
+        throw new Error("EPERM: operation not permitted");
+      });
+
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "unix-chmod-fail-"));
+      const destFile = path.join(tempDir, "dest.jpg");
+      const tempFile = path.join(tempDir, "temp.jpg");
+
+      try {
+        fs.writeFileSync(destFile, "dest-data", { mode: 0o600 });
+        fs.writeFileSync(tempFile, "temp-data", { mode: 0o644 });
+
+        expect(() => {
+          preserveDestinationPermissions(destFile, tempFile);
+        }).toThrow("Could not enforce mode");
+      } finally {
+        chmodSpy.mockRestore();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    it("aborts downloadPickerMedia, cleans up temp file, and preserves existing destination if permission preservation throws", async () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "abort-perm-test-"));
+      const destFile = path.join(tempDir, "existing-dest.jpg");
+
+      const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
+        throw new Error("Simulated permission error");
+      });
+
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("new-bytes")),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      try {
+        fs.writeFileSync(destFile, "original-protected-data", { mode: 0o600 });
+
+        await expect(
+          downloadPickerMedia(mockOAuthClient, {
+            baseUrl: "https://photos.google.com/sample-photo",
+            savePath: destFile,
+            isVideo: false,
+          }),
+        ).rejects.toThrow();
+
+        // Verify existing destination file was NOT replaced or corrupted
+        expect(fs.readFileSync(destFile, "utf8")).toBe("original-protected-data");
+
+        // Verify no leftover .tmp files exist in directory
+        const leftoverFiles = fs.readdirSync(tempDir);
+        expect(leftoverFiles).toEqual(["existing-dest.jpg"]);
+      } finally {
+        chmodSpy.mockRestore();
+        axiosGetSpy.mockRestore();
         fs.rmSync(tempDir, { recursive: true, force: true });
       }
     });

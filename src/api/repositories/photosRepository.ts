@@ -35,6 +35,7 @@ import { quotaManager } from "../../utils/quotaManager.js";
  *
  * On Unix, copies exact mode bits (e.g. 0600).
  * On Windows, synchronizes mode bits and preserves owner-only ACLs if the destination had restricted ACLs.
+ * Fails closed by throwing if permissions or ACLs cannot be preserved on an existing destination file.
  *
  * @param existingPath - The original destination file path.
  * @param tempPath - The temporary file that will replace the destination.
@@ -43,55 +44,59 @@ export function preserveDestinationPermissions(
   existingPath: string,
   tempPath: string,
 ): void {
+  if (!fs.existsSync(existingPath)) {
+    return;
+  }
+
+  const existingStats = fs.statSync(existingPath);
+
+  if (process.platform === "win32") {
+    try {
+      fs.chmodSync(tempPath, existingStats.mode & 0o777);
+    } catch (err) {
+      const msg = `Could not synchronize file mode on Windows from ${existingPath} to ${tempPath}: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error(msg);
+      throw new Error(msg, { cause: err });
+    }
+
+    const username = process.env.USERNAME || process.env.USER;
+    if (!username) {
+      throw new Error(
+        `Could not determine Windows username to verify and preserve destination ACL from ${existingPath}`,
+      );
+    }
+
+    try {
+      const output = childProcess.execFileSync("icacls.exe", [existingPath], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      const isInheritanceDisabled =
+        output.includes("(I)") === false && output.includes(":");
+      const nonOwnerAces = parseWindowsNonOwnerAces(
+        output,
+        username,
+        existingPath,
+      );
+      if (isInheritanceDisabled || nonOwnerAces.length === 0) {
+        enforceWindowsOwnerOnlyAcl(tempPath);
+      }
+    } catch (err) {
+      const msg = `Could not verify or preserve Windows ACL from ${existingPath} to ${tempPath}: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error(msg);
+      throw new Error(msg, { cause: err });
+    }
+    return;
+  }
+
+  // Unix / macOS: copy exact file mode bits (e.g. 0600)
+  const existingMode = existingStats.mode & 0o777;
   try {
-    if (!fs.existsSync(existingPath)) {
-      return;
-    }
-
-    const existingStats = fs.statSync(existingPath);
-
-    if (process.platform === "win32") {
-      try {
-        fs.chmodSync(tempPath, existingStats.mode & 0o777);
-      } catch {
-        // best-effort chmod on Windows
-      }
-
-      try {
-        const username = process.env.USERNAME || process.env.USER;
-        if (username) {
-          const output = childProcess.execFileSync(
-            "icacls.exe",
-            [existingPath],
-            {
-              encoding: "utf8",
-              stdio: ["ignore", "pipe", "ignore"],
-            },
-          );
-          const isInheritanceDisabled =
-            output.includes("(I)") === false && output.includes(":");
-          const nonOwnerAces = parseWindowsNonOwnerAces(
-            output,
-            username,
-            existingPath,
-          );
-          if (isInheritanceDisabled || nonOwnerAces.length === 0) {
-            enforceWindowsOwnerOnlyAcl(tempPath);
-          }
-        }
-      } catch {
-        // best-effort icacls on Windows
-      }
-      return;
-    }
-
-    // Unix / macOS: copy exact file mode bits (e.g. 0600)
-    const existingMode = existingStats.mode & 0o777;
     fs.chmodSync(tempPath, existingMode);
   } catch (err) {
-    logger.debug(
-      `Could not preserve destination permissions from ${existingPath} to ${tempPath}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const msg = `Could not enforce mode 0${existingMode.toString(8)} on temporary file ${tempPath}: ${err instanceof Error ? err.message : String(err)}`;
+    logger.error(msg);
+    throw new Error(msg, { cause: err });
   }
 }
 
@@ -491,7 +496,14 @@ export async function listPickerSessionMediaItems(
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
-    () => client.sessions.listMediaItems(sessionId, { pageSize, pageToken }),
+    async () => {
+      quotaManager.checkQuota(false);
+      quotaManager.recordRequest(false);
+      return await client.sessions.listMediaItems(sessionId, {
+        pageSize,
+        pageToken,
+      });
+    },
     { maxRetries: 3, initialDelayMs: 1000 },
     "list picker media",
   );
@@ -628,14 +640,12 @@ export async function downloadPickerMedia(
       let foundMatchingId = false;
 
       do {
-        quotaManager.checkQuota(false);
         const page = await listPickerSessionMediaItems(
           oauth2Client,
           options.sessionId,
           100,
           pageToken,
         );
-        quotaManager.recordRequest(false);
 
         for (const p of page.photos) {
           const urlMatches =
@@ -652,10 +662,8 @@ export async function downloadPickerMedia(
             filename = filename || p.filename;
             if (!mimeType) mimeType = p.mimeType;
             if (!mediaItemId) mediaItemId = p.id;
-            // Prefer fresh processing status from session over caller-supplied status
-            if (p.processingStatus) {
-              itemProcessingStatus = p.processingStatus;
-            }
+            // Unconditionally assign fresh processing status from session so absent status clears stale caller input
+            itemProcessingStatus = p.processingStatus;
             sessionResolvedIsVideo =
               Boolean(p.mediaMetadata?.video) ||
               Boolean(p.mimeType?.toLowerCase().startsWith("video/")) ||
@@ -699,18 +707,16 @@ export async function downloadPickerMedia(
     }
 
     const searchId = options.mediaItemId;
-    // Lookup media item in Picker session with per-page quota accounting
+    // Lookup media item in Picker session with per-attempt quota accounting in listPickerSessionMediaItems
     let pageToken: string | undefined;
     let foundPhoto: PhotoItem | undefined;
     do {
-      quotaManager.checkQuota(false);
       const page = await listPickerSessionMediaItems(
         oauth2Client,
         options.sessionId,
         100,
         pageToken,
       );
-      quotaManager.recordRequest(false);
 
       foundPhoto = page.photos.find((p) => p.id === searchId);
       if (foundPhoto) break;
@@ -727,10 +733,8 @@ export async function downloadPickerMedia(
     filename = filename || foundPhoto.filename;
     mimeType = mimeType || foundPhoto.mimeType;
     mediaItemId = foundPhoto.id;
-    // Prefer fresh processing status from session over caller-supplied status
-    if (foundPhoto.processingStatus) {
-      itemProcessingStatus = foundPhoto.processingStatus;
-    }
+    // Unconditionally assign fresh processing status from session so absent status clears stale caller input
+    itemProcessingStatus = foundPhoto.processingStatus;
     sessionResolvedIsVideo =
       Boolean(foundPhoto.mediaMetadata?.video) ||
       Boolean(foundPhoto.mimeType?.toLowerCase().startsWith("video/")) ||
@@ -775,8 +779,11 @@ export async function downloadPickerMedia(
       );
     }
     if (itemProcessingStatus !== "READY") {
+      const guidance = options.sessionId
+        ? "Please poll the session until status is READY before downloading bytes."
+        : 'Please poll the session until status is READY, or pass processingStatus: "READY" if status has already been verified.';
       throw new Error(
-        `Video ${mediaItemId || filename || "item"} cannot be downloaded: video processingStatus is ${itemProcessingStatus ? `"${itemProcessingStatus}"` : "not specified (unknown)"}. Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY, or pass processingStatus: "READY" if status has already been verified.`,
+        `Video ${mediaItemId || filename || "item"} cannot be downloaded: video processingStatus is ${itemProcessingStatus ? `"${itemProcessingStatus}"` : "not specified (unknown)"}. Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). ${guidance}`,
       );
     }
     if (!downloadUrl.includes("=dv")) {

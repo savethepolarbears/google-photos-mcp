@@ -2040,14 +2040,12 @@ Key rules:
     }
 
     // Selection complete — fetch items
-    quotaManager.checkQuota(false);
     const { photos, nextPageToken } = await listPickerSessionMediaItems(
       oauth2Client,
       args.sessionId,
       args.pageSize ?? 25,
       args.pageToken,
     );
-    quotaManager.recordRequest(false);
 
     return {
       content: [
