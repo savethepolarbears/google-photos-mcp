@@ -1,7 +1,7 @@
 import { OAuth2Client } from "google-auth-library";
 import axios from "axios";
 import { readFile } from "fs/promises";
-import { PhotoItem, SearchParams, NewMediaItemResult } from "../types.js";
+import { PhotoItem, SearchParams, NewMediaItemResult, PickerSession } from "../types.js";
 import { getPhotoClient, getPickerClient, toError } from "../client.js";
 import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
 import { getPhotoLocation } from "../../utils/location.js";
@@ -288,14 +288,14 @@ export async function batchCreateMediaItems(
  */
 export async function createPickerSession(
   oauth2Client: OAuth2Client,
-): Promise<{ id: string; pickerUri: string }> {
+): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
     () => client.sessions.create(),
     { maxRetries: 3, initialDelayMs: 1000 },
     "create picker session",
   );
-  return response.data as { id: string; pickerUri: string };
+  return response.data as PickerSession;
 }
 
 /**
@@ -304,18 +304,14 @@ export async function createPickerSession(
 export async function getPickerSession(
   oauth2Client: OAuth2Client,
   sessionId: string,
-): Promise<{ id: string; pickerUri: string; mediaItemsSet: boolean }> {
+): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
     () => client.sessions.get(sessionId),
     { maxRetries: 3, initialDelayMs: 1000 },
     "get picker session",
   );
-  return response.data as {
-    id: string;
-    pickerUri: string;
-    mediaItemsSet: boolean;
-  };
+  return response.data as PickerSession;
 }
 
 interface PickerMediaItem {

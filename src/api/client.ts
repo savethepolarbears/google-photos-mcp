@@ -12,19 +12,24 @@ import {
 } from "./types.js";
 
 /**
+ * Shared HTTPS Agent with keep-alive to reuse TCP/TLS connections
+ * across Google Photos Library API and Picker API requests.
+ */
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000, // Send keep-alive packets every 30s
+  maxSockets: 50, // Max concurrent connections per host
+  maxFreeSockets: 10, // Max idle connections to keep open
+  timeout: 60000, // Socket idle timeout (60s)
+});
+
+/**
  * Axios instance configured for Google Photos API
  */
 const photosApi = axios.create({
   baseURL: "https://photoslibrary.googleapis.com/v1",
   timeout: 15000,
-  // Optimization: Enable keep-alive to reuse TCP connections for better performance
-  httpsAgent: new https.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 30000, // Send keep-alive packets every 30s
-    maxSockets: 50, // Max concurrent connections per host
-    maxFreeSockets: 10, // Max idle connections to keep open
-    timeout: 60000, // Socket idle timeout (60s)
-  }),
+  httpsAgent,
 });
 
 /**
@@ -50,6 +55,13 @@ export function toError(error: unknown, context: string): Error {
         `Google Photos API ${context} failed (${status}): ${message}. ` +
           "NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. " +
           "For full photo library access, please use the Google Photos Picker API.",
+      );
+    }
+
+    if (status === 401) {
+      return new Error(
+        `Google Photos API ${context} failed (401): Unauthorized (${message}). ` +
+          "Authentication token may have expired or is invalid. Use the start_auth tool or visit /auth to re-authenticate.",
       );
     }
 
@@ -296,6 +308,7 @@ export function getPhotoClient(auth: OAuth2Client) {
 const pickerApi = axios.create({
   baseURL: "https://photospicker.googleapis.com/v1",
   timeout: 15000,
+  httpsAgent,
 });
 
 /**

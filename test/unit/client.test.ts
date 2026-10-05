@@ -31,6 +31,17 @@ describe("toError", () => {
     expect(result.message).toContain("Picker API");
   });
 
+  it("wraps Axios 401 Unauthorized with re-authentication advice", () => {
+    const axiosErr = createMockAxiosError(401, "Unauthorized", {
+      error: { message: "Request had invalid authentication credentials" },
+    });
+    const result = toError(axiosErr, "list media items");
+
+    expect(result.message).toContain("401");
+    expect(result.message).toContain("Unauthorized");
+    expect(result.message).toContain("start_auth");
+  });
+
   it("wraps Axios 404 error without scope deprecation notice", () => {
     const axiosErr = createMockAxiosError(404, "Not Found");
     const result = toError(axiosErr, "get photo");

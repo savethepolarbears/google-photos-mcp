@@ -1802,10 +1802,13 @@ Key rules:
             {
               sessionId: session.id,
               pickerUri: session.pickerUri,
+              pollingConfig: session.pollingConfig,
+              expireTime: session.expireTime,
               instructions: [
                 "1. Open the pickerUri in a browser to select photos from your library.",
-                "2. After selecting, call poll_picker_session with the sessionId to check completion.",
-                "3. Once mediaItemsSet is true, poll_picker_session returns the selected items.",
+                "2. (Optional) You can append '/autoclose' to the pickerUri to close the tab automatically after selection.",
+                "3. After selecting, call poll_picker_session with the sessionId to check completion.",
+                "4. Once mediaItemsSet is true, poll_picker_session returns the selected items.",
               ],
             },
             null,
@@ -1842,6 +1845,8 @@ Key rules:
                 sessionId: session.id,
                 pickerUri: session.pickerUri,
                 mediaItemsSet: false,
+                pollingConfig: session.pollingConfig,
+                expireTime: session.expireTime,
                 message:
                   "User has not finished selecting photos yet. Call again after the user completes selection.",
               },
