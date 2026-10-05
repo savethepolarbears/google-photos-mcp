@@ -39,6 +39,14 @@ vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../../src/utils/quotaManager.js", () => ({
+  quotaManager: {
+    checkQuota: vi.fn(),
+    recordRequest: vi.fn(),
+    getStats: vi.fn(),
+  },
+}));
+
 import axios from "axios";
 import {
   listAlbumPhotos,
@@ -52,7 +60,9 @@ import {
   deletePickerSession,
   listPickerSessionMediaItems,
   downloadPickerMedia,
+  isAllowedGooglePhotosMediaUrl,
 } from "../../src/api/repositories/photosRepository.js";
+import { quotaManager } from "../../src/utils/quotaManager.js";
 import { getPhotoClient, getPickerClient } from "../../src/api/client.js";
 import type { OAuth2Client } from "google-auth-library";
 
@@ -543,6 +553,281 @@ describe("Picker API repositories", () => {
       await expect(downloadPickerMedia(mockOAuth2Client, {})).rejects.toThrow(
         "Either baseUrl or both sessionId and mediaItemId must be provided",
       );
+    });
+
+    it("rejects untrusted or non-HTTPS domains to prevent token exfiltration", async () => {
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "http://photos.google.com/sample-photo",
+        }),
+      ).rejects.toThrow("Invalid or untrusted baseUrl");
+
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://attacker.com/steal-token",
+        }),
+      ).rejects.toThrow("Invalid or untrusted baseUrl");
+
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://evil-googleusercontent.com/photo",
+        }),
+      ).rejects.toThrow("Invalid or untrusted baseUrl");
+    });
+
+    it("infers video downloads (=dv) from MIME type when isVideo is omitted", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-item-1",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/video-url",
+                    filename: "clip.mp4",
+                    mimeType: "video/mp4",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Buffer.from("video-bytes"),
+        headers: { "content-type": "video/mp4" },
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-v",
+        mediaItemId: "video-item-1",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mimeType).toBe("video/mp4");
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/video-url=dv",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("infers video downloads (=dv) from filename extension when isVideo is omitted", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "mov-item-2",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/mov-url",
+                    filename: "vacation.mov",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Buffer.from("mov-bytes"),
+        headers: {},
+      });
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-mov",
+        mediaItemId: "mov-item-2",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.mimeType).toBe("video/mp4");
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/mov-url=dv",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("defaults omitted dimension to maintain aspect ratio without failing with 0", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Buffer.from("image-bytes"),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      // Width only
+      await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/sample-photo",
+        width: 800,
+      });
+      expect(axiosGetSpy).toHaveBeenLastCalledWith(
+        "https://lh3.googleusercontent.com/sample-photo=w800-h800",
+        expect.anything(),
+      );
+
+      // Height only
+      await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/sample-photo",
+        height: 600,
+      });
+      expect(axiosGetSpy).toHaveBeenLastCalledWith(
+        "https://lh3.googleusercontent.com/sample-photo=w600-h600",
+        expect.anything(),
+      );
+
+      // Both width and height
+      await downloadPickerMedia(mockOAuthClient, {
+        baseUrl: "https://lh3.googleusercontent.com/sample-photo",
+        width: 1200,
+        height: 900,
+      });
+      expect(axiosGetSpy).toHaveBeenLastCalledWith(
+        "https://lh3.googleusercontent.com/sample-photo=w1200-h900",
+        expect.anything(),
+      );
+
+      axiosGetSpy.mockRestore();
+    });
+
+    it("accounts for each paginated lookup page and media download in quota tracking", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi
+            .fn()
+            // Page 1: item not found, next page token returned
+            .mockResolvedValueOnce({
+              data: {
+                mediaItems: [
+                  {
+                    id: "other-item-1",
+                    mediaFile: {
+                      baseUrl: "https://lh3.googleusercontent.com/other-1",
+                    },
+                  },
+                ],
+                nextPageToken: "page-2-token",
+              },
+            })
+            // Page 2: item found
+            .mockResolvedValueOnce({
+              data: {
+                mediaItems: [
+                  {
+                    id: "target-item-2",
+                    mediaFile: {
+                      baseUrl: "https://lh3.googleusercontent.com/target-2",
+                      filename: "target.jpg",
+                      mimeType: "image/jpeg",
+                    },
+                  },
+                ],
+              },
+            }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Buffer.from("image-data"),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      vi.mocked(quotaManager.checkQuota).mockClear();
+      vi.mocked(quotaManager.recordRequest).mockClear();
+
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "paginated-sess",
+        mediaItemId: "target-item-2",
+      });
+
+      expect(result.success).toBe(true);
+      // Quota checked for page 1 and page 2 (metadata: isMediaRequest = false)
+      expect(quotaManager.checkQuota).toHaveBeenCalledWith(false);
+      expect(quotaManager.recordRequest).toHaveBeenCalledWith(false);
+      // Quota checked for media download (media: isMediaRequest = true)
+      expect(quotaManager.checkQuota).toHaveBeenCalledWith(true);
+      expect(quotaManager.recordRequest).toHaveBeenCalledWith(true);
+
+      // Total calls: 2 metadata calls + 1 media call = 3 quota checks & records
+      expect(quotaManager.checkQuota).toHaveBeenCalledTimes(3);
+      expect(quotaManager.recordRequest).toHaveBeenCalledTimes(3);
+
+      axiosGetSpy.mockRestore();
+    });
+  });
+
+  describe("isAllowedGooglePhotosMediaUrl", () => {
+    it("returns true for official Google Photos domains over HTTPS", () => {
+      expect(
+        isAllowedGooglePhotosMediaUrl(
+          "https://lh3.googleusercontent.com/lr/ANi1O8-photo",
+        ),
+      ).toBe(true);
+      expect(
+        isAllowedGooglePhotosMediaUrl("https://photos.google.com/photo/123"),
+      ).toBe(true);
+      expect(
+        isAllowedGooglePhotosMediaUrl(
+          "https://photoslibrary.googleapis.com/v1/mediaItems/xyz",
+        ),
+      ).toBe(true);
+    });
+
+    it("returns false for non-HTTPS or untrusted domains", () => {
+      expect(
+        isAllowedGooglePhotosMediaUrl("http://lh3.googleusercontent.com/test"),
+      ).toBe(false);
+      expect(isAllowedGooglePhotosMediaUrl("https://evil.com/test")).toBe(
+        false,
+      );
+      expect(
+        isAllowedGooglePhotosMediaUrl("https://not-googleusercontent.com/test"),
+      ).toBe(false);
     });
   });
 });

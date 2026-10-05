@@ -20,6 +20,33 @@ import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
 import { getPhotoLocation } from "../../utils/location.js";
 import { withRetry } from "../../utils/retry.js";
 import logger from "../../utils/logger.js";
+import { quotaManager } from "../../utils/quotaManager.js";
+
+/**
+ * Validates that a baseUrl uses HTTPS and targets an official Google Photos media host.
+ * Protects against SSRF and OAuth bearer token exfiltration.
+ *
+ * @param urlString - The URL string to validate.
+ * @returns True if valid HTTPS Google Photos media URL.
+ */
+export function isAllowedGooglePhotosMediaUrl(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === "photoslibrary.googleapis.com" ||
+      host === "googleusercontent.com" ||
+      host.endsWith(".googleusercontent.com") ||
+      host === "photos.google.com" ||
+      host.endsWith(".photos.google.com")
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Photo repository for CRUD operations
@@ -459,16 +486,19 @@ export async function downloadPickerMedia(
     }
 
     const searchId = options.mediaItemId;
-    // Lookup media item in Picker session
+    // Lookup media item in Picker session with per-page quota accounting
     let pageToken: string | undefined;
     let foundPhoto: PhotoItem | undefined;
     do {
+      quotaManager.checkQuota(false);
       const page = await listPickerSessionMediaItems(
         oauth2Client,
         options.sessionId,
         100,
         pageToken,
       );
+      quotaManager.recordRequest(false);
+
       foundPhoto = page.photos.find(
         (p) => p.id === searchId || p.id.endsWith(searchId),
       );
@@ -488,22 +518,37 @@ export async function downloadPickerMedia(
     mediaItemId = foundPhoto.id;
   }
 
-  if (
-    !targetBaseUrl.startsWith("http://") &&
-    !targetBaseUrl.startsWith("https://")
-  ) {
-    throw new Error(`Invalid baseUrl format: ${targetBaseUrl}`);
+  // Restrict downloads to official HTTPS Google Photos media domains
+  if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
+    throw new Error(
+      `Invalid or untrusted baseUrl: must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com). Received: ${targetBaseUrl}`,
+    );
   }
 
+  // Infer video downloads from MIME type, filename, or explicit options.isVideo
+  const isVideo =
+    options.isVideo !== undefined
+      ? options.isVideo
+      : Boolean(mimeType?.toLowerCase().startsWith("video/")) ||
+        Boolean(
+          filename
+            ?.toLowerCase()
+            .match(/\.(mp4|mov|avi|wmv|mkv|webm|m4v|3gp|flv)$/),
+        );
+
   let downloadUrl = targetBaseUrl;
-  if (options.isVideo) {
+  if (isVideo) {
     if (!downloadUrl.includes("=dv")) {
       downloadUrl = `${downloadUrl}=dv`;
     }
-  } else if (options.width || options.height) {
-    const w = options.width ?? 0;
-    const h = options.height ?? 0;
-    downloadUrl = `${downloadUrl}=w${w}-h${h}`;
+  } else if (options.width !== undefined || options.height !== undefined) {
+    // Google Photos requires both maximum width and maximum height (=w{w}-h{h}).
+    // If only one is provided, default the other dimension to maintain aspect ratio.
+    const w = options.width ?? options.height;
+    const h = options.height ?? options.width;
+    if (w !== undefined && h !== undefined) {
+      downloadUrl = `${downloadUrl}=w${w}-h${h}`;
+    }
   } else if (
     options.downloadOriginal !== false &&
     !downloadUrl.endsWith("=d")
@@ -512,6 +557,7 @@ export async function downloadPickerMedia(
   }
 
   try {
+    quotaManager.checkQuota(true);
     const headers = await getAuthorizedHeaders(oauth2Client);
     const response = await withRetry(
       async () =>
@@ -524,6 +570,7 @@ export async function downloadPickerMedia(
       { maxRetries: 3, initialDelayMs: 1000 },
       "download picker media",
     );
+    quotaManager.recordRequest(true);
 
     const buffer = Buffer.from(response.data);
     const responseContentType = response.headers?.["content-type"];
@@ -532,7 +579,7 @@ export async function downloadPickerMedia(
         ? responseContentType
         : undefined) ||
       mimeType ||
-      (options.isVideo ? "video/mp4" : "image/jpeg");
+      (isVideo ? "video/mp4" : "image/jpeg");
 
     let savedTo: string | undefined;
     if (options.savePath) {

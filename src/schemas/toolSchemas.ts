@@ -240,7 +240,32 @@ export const deletePickerSessionSchema = z.object({
  */
 export const downloadPickerMediaSchema = z
   .object({
-    baseUrl: z.string().min(1, "baseUrl cannot be empty").optional(),
+    baseUrl: z
+      .string()
+      .min(1, "baseUrl cannot be empty")
+      .refine(
+        (val) => {
+          try {
+            const u = new URL(val);
+            if (u.protocol !== "https:") return false;
+            const host = u.hostname.toLowerCase();
+            return (
+              host === "photoslibrary.googleapis.com" ||
+              host === "googleusercontent.com" ||
+              host.endsWith(".googleusercontent.com") ||
+              host === "photos.google.com" ||
+              host.endsWith(".photos.google.com")
+            );
+          } catch {
+            return false;
+          }
+        },
+        {
+          message:
+            "baseUrl must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com)",
+        },
+      )
+      .optional(),
     sessionId: z.string().min(1, "sessionId cannot be empty").optional(),
     mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
     downloadOriginal: z.boolean().optional(),

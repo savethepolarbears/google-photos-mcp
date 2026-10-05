@@ -704,18 +704,17 @@ export class GooglePhotosMCPCore {
               width: {
                 type: "number",
                 description:
-                  "Optional custom width dimension (appends =w{width})",
+                  "Optional custom maximum width dimension in pixels (if supplied without height, height defaults to width to constrain bounding box aspect ratio)",
               },
               height: {
                 type: "number",
                 description:
-                  "Optional custom height dimension (appends =h{height})",
+                  "Optional custom maximum height dimension in pixels (if supplied without width, width defaults to height to constrain bounding box aspect ratio)",
               },
               isVideo: {
                 type: "boolean",
                 description:
-                  "Whether the item is a video (appends =dv for download). Defaults to false.",
-                default: false,
+                  "Whether the item is a video (appends =dv for download). If omitted, media type is automatically inferred from item MIME type and filename.",
               },
               savePath: {
                 type: "string",
@@ -1975,10 +1974,8 @@ Key rules:
       request.params.arguments,
       downloadPickerMediaSchema,
     );
-    quotaManager.checkQuota(true);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const result = await downloadPickerMedia(oauth2Client, args);
-    quotaManager.recordRequest(true);
 
     return {
       content: [

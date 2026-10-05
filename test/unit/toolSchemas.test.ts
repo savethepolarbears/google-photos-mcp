@@ -512,6 +512,35 @@ describe("downloadPickerMediaSchema", () => {
     );
   });
 
+  it("rejects non-HTTPS baseUrl", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "http://photos.google.com/sample",
+      }),
+    ).toThrow(
+      "baseUrl must be an HTTPS URL on an official Google Photos media domain",
+    );
+  });
+
+  it("rejects untrusted domains for baseUrl", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://evil-site.com/image.jpg",
+      }),
+    ).toThrow(
+      "baseUrl must be an HTTPS URL on an official Google Photos media domain",
+    );
+  });
+
+  it("accepts valid googleusercontent.com subdomain baseUrl", () => {
+    const result = downloadPickerMediaSchema.parse({
+      baseUrl: "https://lh3.googleusercontent.com/lr/sample-photo",
+    });
+    expect(result.baseUrl).toBe(
+      "https://lh3.googleusercontent.com/lr/sample-photo",
+    );
+  });
+
   it("rejects when only mediaItemId is provided without sessionId or baseUrl", () => {
     expect(() =>
       downloadPickerMediaSchema.parse({ mediaItemId: "item-123" }),
