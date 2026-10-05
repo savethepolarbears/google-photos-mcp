@@ -566,4 +566,82 @@ describe("downloadPickerMediaSchema", () => {
       "Either baseUrl or both sessionId and mediaItemId must be provided",
     );
   });
+
+  it("accepts maximum allowed dimension 16383 for width and height", () => {
+    const result = downloadPickerMediaSchema.parse({
+      baseUrl: "https://photos.google.com/sample",
+      isVideo: false,
+      width: 16383,
+      height: 16383,
+    });
+    expect(result.width).toBe(16383);
+    expect(result.height).toBe(16383);
+  });
+
+  it("rejects width above Google's 16383 limit", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        width: 16384,
+      }),
+    ).toThrow("width cannot exceed 16383");
+  });
+
+  it("rejects height above Google's 16383 limit", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        height: 16384,
+      }),
+    ).toThrow("height cannot exceed 16383");
+  });
+
+  it("rejects non-positive or non-integer width and height", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        width: 0,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        height: -10,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        width: 100.5,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects includeBase64: false when savePath is omitted", () => {
+    expect(() =>
+      downloadPickerMediaSchema.parse({
+        baseUrl: "https://photos.google.com/sample",
+        isVideo: false,
+        includeBase64: false,
+      }),
+    ).toThrow("savePath must be provided when includeBase64 is false");
+  });
+
+  it("accepts includeBase64: false when savePath is provided", () => {
+    const result = downloadPickerMediaSchema.parse({
+      baseUrl: "https://photos.google.com/sample",
+      isVideo: false,
+      savePath: "/tmp/photo.jpg",
+      includeBase64: false,
+    });
+    expect(result.includeBase64).toBe(false);
+    expect(result.savePath).toBe("/tmp/photo.jpg");
+  });
 });

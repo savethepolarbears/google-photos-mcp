@@ -270,8 +270,18 @@ export const downloadPickerMediaSchema = z
     mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
     mimeType: z.string().min(1, "mimeType cannot be empty").optional(),
     downloadOriginal: z.boolean().optional(),
-    width: z.number().int().positive().optional(),
-    height: z.number().int().positive().optional(),
+    width: z
+      .number()
+      .int("width must be an integer")
+      .positive("width must be positive")
+      .max(16383, "width cannot exceed 16383")
+      .optional(),
+    height: z
+      .number()
+      .int("height must be an integer")
+      .positive("height must be positive")
+      .max(16383, "height cannot exceed 16383")
+      .optional(),
     isVideo: z.boolean().optional(),
     savePath: z.string().min(1).optional(),
     includeBase64: z.boolean().optional(),
@@ -293,5 +303,11 @@ export const downloadPickerMediaSchema = z
     {
       message:
         "When supplying baseUrl without sessionId, either isVideo or mimeType must be specified to infer correct download parameters (=d or =dv)",
+    },
+  )
+  .refine(
+    (data) => !(data.includeBase64 === false && !data.savePath),
+    {
+      message: "savePath must be provided when includeBase64 is false",
     },
   );

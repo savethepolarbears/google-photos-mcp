@@ -676,7 +676,7 @@ export class GooglePhotosMCPCore {
         {
           name: "download_picker_media",
           description:
-            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath.",
+            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) per Google Photos API base-URL specifications.",
           inputSchema: {
             type: "object",
             properties: {
@@ -703,23 +703,23 @@ export class GooglePhotosMCPCore {
               downloadOriginal: {
                 type: "boolean",
                 description:
-                  "Whether to download full-resolution original media (appends =d or =dv). Defaults to true. If false and dimensions are omitted, defaults to 2048x2048.",
+                  "Whether to download full-resolution original media (appends =d for images). Defaults to true. Note: For videos, Google Photos base URLs exclusively provide a high-quality transcoded MP4 stream via =dv; original unmodified video files cannot be retrieved via baseUrl. If false and dimensions are omitted for images, defaults to 2048x2048 preview.",
                 default: true,
               },
               width: {
                 type: "number",
                 description:
-                  "Optional custom maximum width dimension in pixels (if supplied without height, height defaults to width to constrain bounding box aspect ratio)",
+                  "Optional custom maximum width dimension in pixels (range: 1-16383). If supplied without height, height defaults to width to constrain bounding box aspect ratio.",
               },
               height: {
                 type: "number",
                 description:
-                  "Optional custom maximum height dimension in pixels (if supplied without width, width defaults to height to constrain bounding box aspect ratio)",
+                  "Optional custom maximum height dimension in pixels (range: 1-16383). If supplied without width, width defaults to height to constrain bounding box aspect ratio.",
               },
               isVideo: {
                 type: "boolean",
                 description:
-                  "Whether the item is a video (appends =dv for download). If omitted and sessionId is provided, it is automatically inferred from session metadata. If baseUrl is used alone without sessionId, either isVideo or mimeType must be specified.",
+                  "Whether the item is a video (appends =dv to download a high-quality transcoded MP4 stream). If omitted and sessionId is provided, it is automatically inferred from session metadata. If baseUrl is used alone without sessionId, either isVideo or mimeType must be specified.",
               },
               savePath: {
                 type: "string",
@@ -729,7 +729,7 @@ export class GooglePhotosMCPCore {
               includeBase64: {
                 type: "boolean",
                 description:
-                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. Capped at 10MB to prevent memory exhaustion.",
+                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. If set to false, savePath is required. Capped at 10MB to prevent memory exhaustion.",
               },
             },
           },

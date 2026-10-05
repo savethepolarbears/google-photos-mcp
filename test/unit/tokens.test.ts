@@ -187,11 +187,30 @@ describe("tokens.ts — AUTH-01", () => {
       }).not.toThrow();
     });
 
-    it("throws if chmodSync fails to enforce 0600 permissions on an unowned file", () => {
-      if (process.platform !== "win32") return;
-      expect(() => enforceOwnerOnlyPermissions("/dev/null")).toThrow(
-        "Could not enforce 0600 permissions",
+    it("throws if chmodSync fails to enforce 0600 permissions on non-Windows", async () => {
+      if (process.platform === "win32") return;
+      const fsPromises = await import("node:fs/promises");
+      const fsSync = await import("node:fs");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-chmod-fail-"),
       );
+      const testFile = path.join(tmpDir, "test.db");
+      await fsPromises.writeFile(testFile, "data", { mode: 0o644 });
+
+      const chmodSpy = vi
+        .spyOn(fsSync.default, "chmodSync")
+        .mockImplementation(() => {
+          throw new Error("EPERM: operation not permitted");
+        });
+
+      try {
+        expect(() => enforceOwnerOnlyPermissions(testFile)).toThrow(
+          "Could not enforce 0600 permissions",
+        );
+      } finally {
+        chmodSpy.mockRestore();
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it("does not alter permissions of an existing directory when hardening token files", async () => {

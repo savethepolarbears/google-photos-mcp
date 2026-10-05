@@ -594,6 +594,36 @@ describe("Picker API repositories", () => {
       );
     });
 
+    it("rejects includeBase64: false when savePath is omitted", async () => {
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          isVideo: false,
+          includeBase64: false,
+        }),
+      ).rejects.toThrow(
+        "savePath must be provided when includeBase64 is false",
+      );
+    });
+
+    it("rejects width and height outside 1-16383 range in downloadPickerMedia", async () => {
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          isVideo: false,
+          width: 20000,
+        }),
+      ).rejects.toThrow("width must be an integer between 1 and 16383");
+
+      await expect(
+        downloadPickerMedia(mockOAuth2Client, {
+          baseUrl: "https://photos.google.com/sample-photo",
+          isVideo: false,
+          height: 0,
+        }),
+      ).rejects.toThrow("height must be an integer between 1 and 16383");
+    });
+
     it("infers video downloads (=dv) from MIME type when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
@@ -636,6 +666,7 @@ describe("Picker API repositories", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
       expect(result.mimeType).toBe("video/mp4");
       expect(axiosGetSpy).toHaveBeenCalledWith(
         "https://lh3.googleusercontent.com/video-url=dv",
@@ -686,6 +717,7 @@ describe("Picker API repositories", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
       expect(result.mimeType).toBe("video/mp4");
       expect(axiosGetSpy).toHaveBeenCalledWith(
         "https://lh3.googleusercontent.com/mov-url=dv",
@@ -737,6 +769,7 @@ describe("Picker API repositories", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
       expect(result.filename).toBe("sunset.mp4");
       expect(result.mimeType).toBe("video/mp4");
       expect(axiosGetSpy).toHaveBeenCalledWith(
@@ -767,6 +800,7 @@ describe("Picker API repositories", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
       expect(result.mimeType).toBe("video/webm");
       expect(axiosGetSpy).toHaveBeenCalledWith(
         "https://lh3.googleusercontent.com/direct-video=dv",

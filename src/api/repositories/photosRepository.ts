@@ -443,6 +443,13 @@ export interface DownloadPickerMediaOptions {
   sessionId?: string;
   mediaItemId?: string;
   mimeType?: string;
+  /**
+   * Whether to download full-resolution original media (appends '=d' for images).
+   * Note: For videos, Google Photos base URLs exclusively return a high-quality
+   * transcoded MP4 stream via '=dv'; original unmodified video files cannot be
+   * retrieved via baseUrl. If false and dimensions are omitted for images,
+   * defaults to '=w2048-h2048'.
+   */
   downloadOriginal?: boolean;
   width?: number;
   height?: number;
@@ -462,6 +469,12 @@ export interface DownloadPickerMediaResult {
   size: number;
   savedTo?: string;
   base64Data?: string;
+  /**
+   * Indicates whether the returned media bytes are transcoded rather than original.
+   * True for videos (downloaded via '=dv'), as Google Photos base URLs exclusively
+   * return transcoded MP4 streams rather than original video files.
+   */
+  isTranscoded?: boolean;
 }
 
 /**
@@ -476,6 +489,30 @@ export async function downloadPickerMedia(
   oauth2Client: OAuth2Client,
   options: DownloadPickerMediaOptions,
 ): Promise<DownloadPickerMediaResult> {
+  if (options.includeBase64 === false && !options.savePath) {
+    throw new Error(
+      "savePath must be provided when includeBase64 is false",
+    );
+  }
+
+  if (
+    options.width !== undefined &&
+    (options.width < 1 ||
+      options.width > 16383 ||
+      !Number.isInteger(options.width))
+  ) {
+    throw new Error("width must be an integer between 1 and 16383");
+  }
+
+  if (
+    options.height !== undefined &&
+    (options.height < 1 ||
+      options.height > 16383 ||
+      !Number.isInteger(options.height))
+  ) {
+    throw new Error("height must be an integer between 1 and 16383");
+  }
+
   let targetBaseUrl = options.baseUrl;
   let filename: string | undefined;
   let mimeType: string | undefined = options.mimeType;
@@ -655,13 +692,18 @@ export async function downloadPickerMedia(
         base64Data = fileBuffer.toString("base64");
       }
     } else {
-      // Direct in-memory / base64 path — enforce MAX_BASE64_BYTES to prevent heap spikes
+      // Direct in-memory path: honor includeBase64 (defaults to true when savePath is omitted)
+      const shouldIncludeBase64 = options.includeBase64 !== false;
       const contentLengthHeader = response.headers?.["content-length"];
       const declaredLength = contentLengthHeader
         ? parseInt(String(contentLengthHeader), 10)
         : undefined;
 
-      if (declaredLength && declaredLength > MAX_BASE64_BYTES) {
+      if (
+        shouldIncludeBase64 &&
+        declaredLength &&
+        declaredLength > MAX_BASE64_BYTES
+      ) {
         if (typeof stream.destroy === "function") {
           stream.destroy();
         }
@@ -675,20 +717,24 @@ export async function downloadPickerMedia(
       for await (const chunk of stream as unknown as AsyncIterable<Buffer>) {
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         totalBytes += buf.length;
-        if (totalBytes > MAX_BASE64_BYTES) {
-          if (typeof stream.destroy === "function") {
-            stream.destroy();
+        if (shouldIncludeBase64) {
+          if (totalBytes > MAX_BASE64_BYTES) {
+            if (typeof stream.destroy === "function") {
+              stream.destroy();
+            }
+            throw new Error(
+              `Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.`,
+            );
           }
-          throw new Error(
-            `Media item size exceeds maximum allowable base64 response limit of 10MB. Please specify 'savePath' to stream large media directly to disk.`,
-          );
+          chunks.push(buf);
         }
-        chunks.push(buf);
       }
 
-      const buffer = Buffer.concat(chunks);
-      size = buffer.length;
-      base64Data = buffer.toString("base64");
+      size = totalBytes;
+      if (shouldIncludeBase64) {
+        const buffer = Buffer.concat(chunks);
+        base64Data = buffer.toString("base64");
+      }
     }
 
     return {
@@ -699,6 +745,7 @@ export async function downloadPickerMedia(
       size,
       savedTo,
       base64Data,
+      ...(isVideo ? { isTranscoded: true } : {}),
     };
   } catch (error) {
     const message = toError(error, "download picker media").message;
