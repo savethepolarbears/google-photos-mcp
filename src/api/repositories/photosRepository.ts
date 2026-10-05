@@ -641,7 +641,7 @@ export async function downloadPickerMedia(
       }
 
       const fileWriteStream = createWriteStream(resolvedPath);
-      await pipeline(stream, fileWriteStream);
+      await pipeline(stream as unknown as NodeJS.ReadableStream, fileWriteStream);
       savedTo = resolvedPath;
       size = fs.statSync(resolvedPath).size;
 
@@ -672,7 +672,7 @@ export async function downloadPickerMedia(
 
       const chunks: Buffer[] = [];
       let totalBytes = 0;
-      for await (const chunk of stream) {
+      for await (const chunk of stream as unknown as AsyncIterable<Buffer>) {
         const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         totalBytes += buf.length;
         if (totalBytes > MAX_BASE64_BYTES) {
