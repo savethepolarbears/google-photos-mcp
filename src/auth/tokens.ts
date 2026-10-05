@@ -14,6 +14,7 @@ import KeyvSqlite from "@keyv/sqlite";
 import config from "../utils/config.js";
 import fs from "fs";
 import path from "path";
+import childProcess from "child_process";
 import logger from "../utils/logger.js";
 
 export interface TokenData {
@@ -27,19 +28,59 @@ export interface TokenData {
 }
 
 /**
- * Enforces restrictive owner-only (0600) permissions on the SQLite database
- * and any companion journaling files (-wal, -shm, -journal).
+ * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
+ * Strips inherited permissions and grants full control exclusively to the current user.
+ *
+ * @param targetPath - The path to the file or directory.
+ */
+export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
+  const username = process.env.USERNAME || process.env.USER;
+  if (!username) {
+    throw new Error(
+      `Could not determine Windows username to enforce owner-only ACL on ${targetPath}`,
+    );
+  }
+  try {
+    const isDir =
+      fs.existsSync(targetPath) && fs.statSync(targetPath).isDirectory();
+    const permissionSpec = isDir
+      ? `${username}:(OI)(CI)(F)`
+      : `${username}:(F)`;
+    childProcess.execFileSync(
+      "icacls.exe",
+      [targetPath, "/inheritance:r", "/grant:r", permissionSpec],
+      { stdio: "ignore" },
+    );
+    logger.debug(`Enforced Windows owner-only ACL on ${targetPath}`);
+  } catch (err) {
+    const msg = `Could not enforce owner-only ACL on Windows for ${targetPath}: ${err instanceof Error ? err.message : String(err)}`;
+    logger.error(msg);
+    throw new Error(msg, { cause: err });
+  }
+}
+
+/**
+ * Enforces restrictive owner-only permissions (0600 on Unix, owner-only ACL on Windows)
+ * on the SQLite database and any companion journaling files (-wal, -shm, -journal).
  *
  * @param filePath - The path to the SQLite database file.
  */
 export function enforceOwnerOnlyPermissions(filePath: string): void {
-  if (process.platform === "win32") return;
   const filesToCheck = [
     filePath,
     `${filePath}-wal`,
     `${filePath}-shm`,
     `${filePath}-journal`,
   ];
+
+  if (process.platform === "win32") {
+    for (const file of filesToCheck) {
+      if (fs.existsSync(file)) {
+        enforceWindowsOwnerOnlyAcl(file);
+      }
+    }
+    return;
+  }
 
   for (const file of filesToCheck) {
     if (fs.existsSync(file)) {
@@ -58,19 +99,24 @@ export function enforceOwnerOnlyPermissions(filePath: string): void {
   }
 }
 
-// Pre-create directory (0700) and file (0600) before KeyvSqlite opens it to prevent permissive umask creation.
-// Only enforce 0700 permissions when the directory is created specifically for token storage.
+// Pre-create directory (0700 on Unix, owner-only ACL on Windows) and file (0600 on Unix, owner-only ACL on Windows)
+// before KeyvSqlite opens it to prevent permissive umask creation.
+// Only enforce restrictive permissions when the directory is created specifically for token storage.
 // Never alter permissions of pre-existing directories (e.g. project root or shared checkout).
-if (process.platform !== "win32" && config.tokens.dbPath) {
+if (config.tokens.dbPath) {
   const dir = path.dirname(config.tokens.dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-    try {
-      fs.chmodSync(dir, 0o700);
-    } catch (err) {
-      const msg = `Could not enforce 0700 permissions on newly created token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
-      logger.error(msg);
-      throw new Error(msg, { cause: err });
+    if (process.platform === "win32") {
+      enforceWindowsOwnerOnlyAcl(dir);
+    } else {
+      try {
+        fs.chmodSync(dir, 0o700);
+      } catch (err) {
+        const msg = `Could not enforce 0700 permissions on newly created token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
+        logger.error(msg);
+        throw new Error(msg, { cause: err });
+      }
     }
   }
   if (!fs.existsSync(config.tokens.dbPath)) {

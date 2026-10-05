@@ -409,6 +409,7 @@ describe("GooglePhotosMCPCore", () => {
         filename: "test.jpg",
         description: "A test photo",
         baseUrl: "https://example.com/test",
+        mimeType: "image/jpeg",
         productUrl: "https://photos.google.com/p1",
         mediaMetadata: {
           creationTime: "2024-01-01",
@@ -425,6 +426,8 @@ describe("GooglePhotosMCPCore", () => {
             description: string;
             dateCreated: string;
             url: string;
+            baseUrl: string;
+            mimeType?: string;
             webUrl: string;
             width: string;
             height: string;
@@ -437,6 +440,9 @@ describe("GooglePhotosMCPCore", () => {
       expect(result.filename).toBe("test.jpg");
       expect(result.description).toBe("A test photo");
       expect(result.dateCreated).toBe("2024-01-01");
+      expect(result.url).toBe("https://example.com/test");
+      expect(result.baseUrl).toBe("https://example.com/test");
+      expect(result.mimeType).toBe("image/jpeg");
       expect(result.width).toBe("1000");
     });
 

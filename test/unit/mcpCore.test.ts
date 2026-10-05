@@ -386,6 +386,7 @@ describe("GooglePhotosMCPCore", () => {
             id: "p1",
             filename: "photo.jpg",
             baseUrl: "https://url",
+            mimeType: "image/jpeg",
             productUrl: "https://url",
           },
         ],
@@ -400,6 +401,9 @@ describe("GooglePhotosMCPCore", () => {
       expect(parsed.mediaItemsSet).toBe(true);
       expect(parsed.count).toBe(1);
       expect(parsed.photos).toHaveLength(1);
+      expect(parsed.photos[0].baseUrl).toBe("https://url");
+      expect(parsed.photos[0].url).toBe("https://url");
+      expect(parsed.photos[0].mimeType).toBe("image/jpeg");
     });
 
     it("dispatches delete_picker_session and returns success response", async () => {

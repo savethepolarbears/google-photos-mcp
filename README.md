@@ -67,7 +67,7 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 - ⚡ Streamable HTTP transport (MCP 2025-06-18 spec)
 - 🔗 HTTPS Keep-Alive with connection pooling
-- 🔒 Hardened local SQLite token storage (`tokens.db` via Keyv) with owner-only (0600) file permissions
+- 🔒 Hardened local SQLite token storage (`tokens.db` via Keyv) with owner-only permissions (0600 on Unix, explicit user-only ACLs via `icacls` on Windows)
 - 📊 Quota management with automatic per-request and per-page tracking
 - 🔄 Automatic token refresh with race-condition prevention
 

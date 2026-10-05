@@ -54,11 +54,13 @@ vi.mock("keyv", () => {
   };
 });
 
+import childProcess from "node:child_process";
 import {
   saveTokens,
   getFirstAvailableTokens,
   getTokens,
   enforceOwnerOnlyPermissions,
+  enforceWindowsOwnerOnlyAcl,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
 
@@ -233,6 +235,126 @@ describe("tokens.ts — AUTH-01", () => {
         expect(fileStats.mode & 0o777).toBe(0o600);
       }
       await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("enforces owner-only ACL on Windows using icacls.exe", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalUser = process.env.USER;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [
+            "C:\\token-storage\\tokens.db",
+            "/inheritance:r",
+            "/grant:r",
+            "testwinuser:(F)",
+          ],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        process.env.USER = originalUser;
+      }
+    });
+
+    it("enforces inheritance container/object owner-only ACL on Windows for directories", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-win-dir-"),
+      );
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl(tmpDir);
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [tmpDir, "/inheritance:r", "/grant:r", "testwinuser:(OI)(CI)(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws if icacls.exe fails on Windows", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockImplementation(() => {
+          throw new Error("Access is denied");
+        });
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        expect(() =>
+          enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db"),
+        ).toThrow(
+          "Could not enforce owner-only ACL on Windows for C:\\token-storage\\tokens.db: Access is denied",
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("throws if Windows username cannot be determined", () => {
+      const originalUsername = process.env.USERNAME;
+      const originalUser = process.env.USER;
+      delete process.env.USERNAME;
+      delete process.env.USER;
+
+      try {
+        expect(() =>
+          enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db"),
+        ).toThrow("Could not determine Windows username");
+      } finally {
+        process.env.USERNAME = originalUsername;
+        process.env.USER = originalUser;
+      }
+    });
+
+    it("enforceOwnerOnlyPermissions invokes enforceWindowsOwnerOnlyAcl when platform is win32", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-win-enforce-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      await fsPromises.writeFile(testDb, "dummy-sqlite");
+
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        Object.defineProperty(process, "platform", { value: "win32" });
+        enforceOwnerOnlyPermissions(testDb);
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          [testDb, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

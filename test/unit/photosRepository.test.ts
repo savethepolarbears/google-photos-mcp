@@ -780,6 +780,89 @@ describe("Picker API repositories", () => {
       axiosGetSpy.mockRestore();
     });
 
+    it("rejects when baseUrl is not found in session and isVideo/mimeType are omitted", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "unrelated-item",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/unrelated",
+                    filename: "unrelated.jpg",
+                    mimeType: "image/jpeg",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/different-item",
+          sessionId: "sess-mismatch",
+        }),
+      ).rejects.toThrow(
+        "Could not find matching media item for baseUrl in Picker session sess-mismatch",
+      );
+    });
+
+    it("requires exact mediaItemId equality and rejects suffix-only matches in session lookup", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "prefix-item-123",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/prefix-url",
+                    filename: "prefix.jpg",
+                    mimeType: "image/jpeg",
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      // searchId is "123", which matches .endsWith("123") of "prefix-item-123", but is not equal
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-exact",
+          mediaItemId: "123",
+        }),
+      ).rejects.toThrow(
+        "Media item 123 not found in Picker session sess-exact",
+      );
+    });
+
     it("infers video download when baseUrl is provided with mimeType video/*", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi

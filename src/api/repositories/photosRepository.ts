@@ -529,6 +529,7 @@ export async function downloadPickerMedia(
     if (options.sessionId && options.isVideo === undefined && !mimeType) {
       // If baseUrl was provided with sessionId but without media type, lookup session to infer media type
       let pageToken: string | undefined;
+      let foundInSession = false;
       do {
         quotaManager.checkQuota(false);
         const page = await listPickerSessionMediaItems(
@@ -549,10 +550,17 @@ export async function downloadPickerMedia(
           filename = found.filename;
           mimeType = found.mimeType;
           if (!mediaItemId) mediaItemId = found.id;
+          foundInSession = true;
           break;
         }
         pageToken = page.nextPageToken;
       } while (pageToken);
+
+      if (!foundInSession) {
+        throw new Error(
+          `Could not find matching media item for baseUrl in Picker session ${options.sessionId}. Please provide isVideo or mimeType to specify the media type directly.`,
+        );
+      }
     } else if (
       !options.sessionId &&
       options.isVideo === undefined &&
@@ -583,9 +591,7 @@ export async function downloadPickerMedia(
       );
       quotaManager.recordRequest(false);
 
-      foundPhoto = page.photos.find(
-        (p) => p.id === searchId || p.id.endsWith(searchId),
-      );
+      foundPhoto = page.photos.find((p) => p.id === searchId);
       if (foundPhoto) break;
       pageToken = page.nextPageToken;
     } while (pageToken);

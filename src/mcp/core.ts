@@ -83,6 +83,8 @@ interface FormattedPhoto {
   description: string;
   dateCreated: string;
   url: string;
+  baseUrl: string;
+  mimeType?: string;
   webUrl: string;
   width: string;
   height: string;
@@ -652,7 +654,7 @@ export class GooglePhotosMCPCore {
         {
           name: "poll_picker_session",
           description:
-            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items. Call repeatedly until mediaItemsSet is true.",
+            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items (including baseUrl and mimeType for use in download_picker_media). Call repeatedly until mediaItemsSet is true.",
           inputSchema: {
             type: "object",
             properties: {
@@ -698,7 +700,7 @@ export class GooglePhotosMCPCore {
               mimeType: {
                 type: "string",
                 description:
-                  "Optional MIME type (e.g. 'video/mp4' or 'image/jpeg') used to infer download parameters when baseUrl is provided without sessionId",
+                  "Optional MIME type (e.g. 'video/mp4' or 'image/jpeg') returned by poll_picker_session, used to infer download parameters when baseUrl is provided without sessionId",
               },
               downloadOriginal: {
                 type: "boolean",
@@ -2071,6 +2073,8 @@ Key rules:
       description: photo.description || "",
       dateCreated: photo.mediaMetadata?.creationTime || "",
       url: photo.baseUrl,
+      baseUrl: photo.baseUrl,
+      mimeType: photo.mimeType,
       webUrl: photo.productUrl,
       width: photo.mediaMetadata?.width || "",
       height: photo.mediaMetadata?.height || "",
