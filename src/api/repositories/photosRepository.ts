@@ -539,6 +539,7 @@ export async function downloadPickerMedia(
   let mimeType: string | undefined = options.mimeType;
   let mediaItemId = options.mediaItemId;
   let itemProcessingStatus = options.processingStatus;
+  let sessionResolvedIsVideo: boolean | undefined;
 
   if (targetBaseUrl) {
     // Restrict downloads to official HTTPS Google Photos media domains immediately
@@ -584,6 +585,14 @@ export async function downloadPickerMedia(
             if (p.processingStatus) {
               itemProcessingStatus = p.processingStatus;
             }
+            sessionResolvedIsVideo =
+              Boolean(p.mediaMetadata?.video) ||
+              Boolean(p.mimeType?.toLowerCase().startsWith("video/")) ||
+              Boolean(
+                p.filename
+                  ?.toLowerCase()
+                  .match(/\.(mp4|mov|avi|wmv|mkv|webm|m4v|3gp|flv)$/),
+              );
             foundInSession = true;
             break;
           }
@@ -651,6 +660,14 @@ export async function downloadPickerMedia(
     if (foundPhoto.processingStatus) {
       itemProcessingStatus = foundPhoto.processingStatus;
     }
+    sessionResolvedIsVideo =
+      Boolean(foundPhoto.mediaMetadata?.video) ||
+      Boolean(foundPhoto.mimeType?.toLowerCase().startsWith("video/")) ||
+      Boolean(
+        foundPhoto.filename
+          ?.toLowerCase()
+          .match(/\.(mp4|mov|avi|wmv|mkv|webm|m4v|3gp|flv)$/),
+      );
 
     if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
       throw new Error(
@@ -659,16 +676,20 @@ export async function downloadPickerMedia(
     }
   }
 
-  // Infer video downloads from MIME type, filename, or explicit options.isVideo
+  // Infer video downloads: for calls that resolve an item from sessionId, derive the media
+  // type authoritatively from the matched session item. Reserve caller override (options.isVideo)
+  // for the baseUrl-only form.
   const isVideo =
-    options.isVideo !== undefined
-      ? options.isVideo
-      : Boolean(mimeType?.toLowerCase().startsWith("video/")) ||
-        Boolean(
-          filename
-            ?.toLowerCase()
-            .match(/\.(mp4|mov|avi|wmv|mkv|webm|m4v|3gp|flv)$/),
-        );
+    sessionResolvedIsVideo !== undefined
+      ? sessionResolvedIsVideo
+      : options.isVideo !== undefined
+        ? options.isVideo
+        : Boolean(mimeType?.toLowerCase().startsWith("video/")) ||
+          Boolean(
+            filename
+              ?.toLowerCase()
+              .match(/\.(mp4|mov|avi|wmv|mkv|webm|m4v|3gp|flv)$/),
+          );
 
   let downloadUrl = targetBaseUrl;
   if (isVideo) {

@@ -29,7 +29,8 @@ export interface TokenData {
 
 /**
  * Enforces restrictive owner-only ACLs on Windows using icacls.exe.
- * Strips inherited permissions and grants full control exclusively to the current user.
+ * Atomically strips inherited permissions and grants full control exclusively to the current user
+ * in a single command invocation, preventing any exposure window to inherited DACL permissions.
  *
  * @param targetPath - The path to the file or directory.
  */
@@ -47,12 +48,7 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
       ? `${username}:(OI)(CI)(F)`
       : `${username}:(F)`;
 
-    // 1. Reset permissions to remove any pre-existing explicit ACEs granted to other users/groups
-    childProcess.execFileSync("icacls.exe", [targetPath, "/reset"], {
-      stdio: "ignore",
-    });
-
-    // 2. Strip inherited permissions and grant full control exclusively to the current user
+    // Apply restrictive DACL atomically in a single invocation without resetting to inherited ACLs
     childProcess.execFileSync(
       "icacls.exe",
       [targetPath, "/inheritance:r", "/grant:r", permissionSpec],
@@ -112,14 +108,33 @@ export function enforceOwnerOnlyPermissions(filePath: string): void {
 // Never alter permissions of pre-existing directories (e.g. project root or shared checkout).
 if (config.tokens.dbPath) {
   const dir = path.dirname(config.tokens.dbPath);
+  let createdFile = false;
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     if (process.platform === "win32") {
-      enforceWindowsOwnerOnlyAcl(dir);
+      try {
+        enforceWindowsOwnerOnlyAcl(dir);
+      } catch (err) {
+        if (fs.existsSync(dir)) {
+          try {
+            fs.rmdirSync(dir);
+          } catch {
+            // best-effort cleanup
+          }
+        }
+        throw err;
+      }
     } else {
       try {
         fs.chmodSync(dir, 0o700);
       } catch (err) {
+        if (fs.existsSync(dir)) {
+          try {
+            fs.rmdirSync(dir);
+          } catch {
+            // best-effort cleanup
+          }
+        }
         const msg = `Could not enforce 0700 permissions on newly created token directory ${dir}: ${err instanceof Error ? err.message : String(err)}`;
         logger.error(msg);
         throw new Error(msg, { cause: err });
@@ -129,8 +144,20 @@ if (config.tokens.dbPath) {
   if (!fs.existsSync(config.tokens.dbPath)) {
     const fd = fs.openSync(config.tokens.dbPath, "w", 0o600);
     fs.closeSync(fd);
+    createdFile = true;
   }
-  enforceOwnerOnlyPermissions(config.tokens.dbPath);
+  try {
+    enforceOwnerOnlyPermissions(config.tokens.dbPath);
+  } catch (err) {
+    if (createdFile && fs.existsSync(config.tokens.dbPath)) {
+      try {
+        fs.unlinkSync(config.tokens.dbPath);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+    throw err;
+  }
 }
 
 // Module-level singleton — one connection, reused across all calls.

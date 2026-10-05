@@ -1063,6 +1063,118 @@ describe("Picker API repositories", () => {
       );
     });
 
+    it("prefers session video type over caller isVideo: false when resolving from session", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-auth-type",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/video-auth-url",
+                    filename: "clip.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "READY",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("video-bytes")),
+        headers: { "content-type": "video/mp4" },
+      });
+
+      // Caller passes isVideo: false, but session item is actually a video
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-video-precedence",
+        mediaItemId: "video-auth-type",
+        isVideo: false,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBe(true);
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/video-auth-url=dv",
+        expect.anything(),
+      );
+      axiosGetSpy.mockRestore();
+    });
+
+    it("prefers session photo type over caller isVideo: true when resolving from session", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "photo-auth-type",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/photo-auth-url",
+                    filename: "image.jpg",
+                    mimeType: "image/jpeg",
+                    mediaFileMetadata: {
+                      photoMetadata: {},
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      const axiosGetSpy = vi.spyOn(axios, "get").mockResolvedValue({
+        data: Readable.from(Buffer.from("image-bytes")),
+        headers: { "content-type": "image/jpeg" },
+      });
+
+      // Caller passes isVideo: true, but session item is actually an image
+      const result = await downloadPickerMedia(mockOAuthClient, {
+        sessionId: "sess-photo-precedence",
+        mediaItemId: "photo-auth-type",
+        isVideo: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.isTranscoded).toBeUndefined();
+      expect(axiosGetSpy).toHaveBeenCalledWith(
+        "https://lh3.googleusercontent.com/photo-auth-url=d",
+        expect.anything(),
+      );
+      axiosGetSpy.mockRestore();
+    });
+
     it("infers video downloads (=dv) from filename extension when isVideo is omitted in session lookup", async () => {
       const mockOAuthClient = {
         getRequestHeaders: vi
