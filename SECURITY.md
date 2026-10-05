@@ -36,5 +36,5 @@ This server implements several proactive defense-in-depth measures:
 
 1. **Local DNS Rebinding Protection**: The HTTP server restricts allowed Host headers to `127.0.0.1` and `[::1]`.
 2. **Absence of CORS Middleware**: Cross-Origin Resource Sharing is intentionally disabled to prevent malicious web pages in the user's browser from issuing cross-origin requests to the local MCP server.
-3. **Secure Token Storage**: Authentication tokens are stored securely using OS-level keychain mechanisms (`keytar`) or encrypted SQLite rather than plaintext configuration files.
+3. **Local Token Storage & Access Controls**: Authentication tokens are stored locally in SQLite (`tokens.db` via `@keyv/sqlite`) as JSON documents. Designed for single-user local MCP execution, the database does not employ at-rest file-level encryption; access security relies on standard OS filesystem user permissions (readable only by the local user running the MCP process). The database file is excluded from version control via `.gitignore`, and token values are never emitted to logs.
 4. **Environment Isolation**: Sensitive configuration values and credentials are strictly loaded via `.env` and kept out of version control.

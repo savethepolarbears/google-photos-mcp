@@ -116,4 +116,4 @@ npm run test:security # Security tests only
 
 - **Auth Dependency**: Authentication must be completed in HTTP mode first (`npm start`). Switch to STDIO mode (`npm run stdio`) only after tokens are acquired.
 - **Quota Management**: The project tracks Google Photos API quotas. Respect the `quotaManager` limits.
-- **Tokens**: Stored securely via OS keychain (`keytar` dependency via `src/auth/secureTokenStorage.ts`).
+- **Tokens**: Stored in a local SQLite file (`tokens.db` via `@keyv/sqlite`) under user-scoped filesystem permissions. Never logged or committed to git.
