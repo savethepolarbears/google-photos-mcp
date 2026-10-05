@@ -48,6 +48,7 @@ export {
   uploadMedia,
   createPickerSession,
   getPickerSession,
+  deletePickerSession,
   listPickerSessionMediaItems,
 } from "./repositories/photosRepository.js";
 

@@ -213,6 +213,13 @@ export const createAlbumWithMediaSchema = z.object({
 export const describeFilterCapabilitiesSchema = z.object({}).optional();
 
 /**
+ * Schema for create_picker_session tool arguments
+ */
+export const createPickerSessionSchema = z.object({
+  maxItemCount: z.number().int().min(1).max(2000).optional(),
+});
+
+/**
  * Schema for poll_picker_session tool arguments
  */
 export const pollPickerSessionSchema = z.object({
@@ -220,3 +227,11 @@ export const pollPickerSessionSchema = z.object({
   pageSize: z.number().int().min(1).max(100).optional(),
   pageToken: z.string().optional(),
 });
+
+/**
+ * Schema for delete_picker_session tool arguments
+ */
+export const deletePickerSessionSchema = z.object({
+  sessionId: z.string().min(1, "Session ID is required"),
+});
+

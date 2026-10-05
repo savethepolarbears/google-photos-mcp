@@ -321,10 +321,17 @@ const pickerApi = axios.create({
 export function getPickerClient(auth: OAuth2Client) {
   return {
     sessions: {
-      create: async () => {
+      create: async (options?: { maxItemCount?: number }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.post("/sessions", {}, { headers });
+          const body = options?.maxItemCount
+            ? {
+                pickingConfig: {
+                  maxItemCount: options.maxItemCount.toString(),
+                },
+              }
+            : {};
+          const response = await pickerApi.post("/sessions", body, { headers });
           return { data: response.data };
         } catch (error) {
           throw toError(error, "picker.sessions.create");
@@ -339,6 +346,17 @@ export function getPickerClient(auth: OAuth2Client) {
           return { data: response.data };
         } catch (error) {
           throw toError(error, "picker.sessions.get");
+        }
+      },
+      delete: async (sessionId: string) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await pickerApi.delete(`/sessions/${sessionId}`, {
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, "picker.sessions.delete");
         }
       },
       listMediaItems: async (

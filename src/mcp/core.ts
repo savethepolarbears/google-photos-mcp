@@ -33,6 +33,7 @@ import {
   patchAlbum,
   createPickerSession,
   getPickerSession,
+  deletePickerSession,
   listPickerSessionMediaItems,
 } from "../api/photos.js";
 import { searchPhotos } from "../api/repositories/photosRepository.js";
@@ -54,7 +55,9 @@ import {
   setCoverPhotoSchema,
   createAlbumWithMediaSchema,
   contentCategoryEnum,
+  createPickerSessionSchema,
   pollPickerSessionSchema,
+  deletePickerSessionSchema,
 } from "../schemas/toolSchemas.js";
 import { quotaManager } from "../utils/quotaManager.js";
 
@@ -633,7 +636,13 @@ export class GooglePhotosMCPCore {
             "Create a Google Photos Picker session. Returns a pickerUri the user must open in their browser to select photos from their FULL library (not just app-created data). After the user selects photos, use poll_picker_session to retrieve them.",
           inputSchema: {
             type: "object",
-            properties: {},
+            properties: {
+              maxItemCount: {
+                type: "number",
+                description:
+                  "Optional maximum number of media items the user can pick (1-2000, default 2000)",
+              },
+            },
           },
         },
         {
@@ -655,6 +664,21 @@ export class GooglePhotosMCPCore {
               pageToken: {
                 type: "string",
                 description: "Token for pagination",
+              },
+            },
+            required: ["sessionId"],
+          },
+        },
+        {
+          name: "delete_picker_session",
+          description:
+            "Delete and clean up a Google Photos Picker session. It is recommended best practice to delete sessions once media items are retrieved or if the session has timed out, avoiding hitting session limit quotas.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              sessionId: {
+                type: "string",
+                description: "The Picker session ID to delete",
               },
             },
             required: ["sessionId"],
@@ -754,10 +778,13 @@ export class GooglePhotosMCPCore {
           return this.handleDescribeFilterCapabilities();
 
         case "create_picker_session":
-          return await this.handleCreatePickerSession(tokens);
+          return await this.handleCreatePickerSession(request, tokens);
 
         case "poll_picker_session":
           return await this.handlePollPickerSession(request, tokens);
+
+        case "delete_picker_session":
+          return await this.handleDeletePickerSession(request, tokens);
 
         default:
           throw new McpError(
@@ -769,12 +796,20 @@ export class GooglePhotosMCPCore {
       if (error instanceof McpError) {
         throw error;
       }
+      const message = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : null;
+      const fullMessage =
+        cause && !message.includes(cause) ? `${message}: ${cause}` : message;
+
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: error instanceof Error ? error.message : String(error),
+            text: fullMessage,
           },
         ],
       };
@@ -1789,10 +1824,20 @@ Key rules:
   /**
    * Creates a new Picker session so the user can select photos from their full library.
    */
-  private async handleCreatePickerSession(tokens: TokenData) {
+  private async handleCreatePickerSession(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments || {},
+      createPickerSessionSchema,
+    );
     quotaManager.checkQuota(false);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
-    const session = await createPickerSession(oauth2Client);
+    const session = await createPickerSession(
+      oauth2Client,
+      args.maxItemCount ? { maxItemCount: args.maxItemCount } : undefined,
+    );
     quotaManager.recordRequest(false);
     return {
       content: [
@@ -1809,7 +1854,42 @@ Key rules:
                 "2. (Optional) You can append '/autoclose' to the pickerUri to close the tab automatically after selection.",
                 "3. After selecting, call poll_picker_session with the sessionId to check completion.",
                 "4. Once mediaItemsSet is true, poll_picker_session returns the selected items.",
+                "5. After retrieving items, call delete_picker_session to clean up the session.",
               ],
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Deletes a Picker session after media items are retrieved or if the session timed out.
+   */
+  private async handleDeletePickerSession(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments,
+      deletePickerSessionSchema,
+    );
+    quotaManager.checkQuota(false);
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    await deletePickerSession(oauth2Client, args.sessionId);
+    quotaManager.recordRequest(false);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              success: true,
+              sessionId: args.sessionId,
+              message: "Picker session deleted successfully.",
             },
             null,
             2,

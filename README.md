@@ -179,7 +179,7 @@ npx @modelcontextprotocol/inspector node dist/index.js        # HTTP
 npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 ```
 
-## Available tools (19)
+## Available tools (20)
 
 ### Search & browse
 
@@ -212,6 +212,7 @@ npx @modelcontextprotocol/inspector node dist/index.js --stdio # STDIO
 | --- | --- |
 | `create_picker_session` | Start a Picker session for full library access |
 | `poll_picker_session` | Check session status and retrieve selected photos |
+| `delete_picker_session` | Delete and clean up a Picker session |
 
 ### Auth
 
@@ -226,9 +227,9 @@ AI clients can read Google Photos entities directly as MCP resources:
 
 | URI | Description |
 | --- | --- |
-| `photos://albums` | List of all user albums in Google Photos |
-| `photos://albums/{albumId}` | Metadata and media item listing for a specific album |
-| `photos://media-items/{mediaItemId}` | Detailed metadata, base URL, and properties for a photo or video |
+| `google-photos://albums` | List of all user albums in Google Photos |
+| `google-photos://albums/{albumId}` | Metadata and media item listing for a specific album |
+| `google-photos://media/{mediaItemId}` | Detailed metadata, base URL, and properties for a photo or video |
 
 ## MCP Prompts (3)
 
@@ -274,7 +275,7 @@ This project is a Model Context Protocol (MCP) server intended to be run locally
 src/
 ├── index.ts              # HTTP entry point
 ├── dxt-server.ts         # STDIO/DXT entry point
-├── mcp/core.ts           # All tool handlers (19 tools)
+├── mcp/core.ts           # All tool handlers (20 tools)
 ├── api/
 │   ├── client.ts         # REST client (Library + Picker)
 │   ├── photos.ts         # Facade module (re-exports)

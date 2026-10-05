@@ -1,7 +1,12 @@
 import { OAuth2Client } from "google-auth-library";
 import axios from "axios";
 import { readFile } from "fs/promises";
-import { PhotoItem, SearchParams, NewMediaItemResult, PickerSession } from "../types.js";
+import {
+  PhotoItem,
+  SearchParams,
+  NewMediaItemResult,
+  PickerSession,
+} from "../types.js";
 import { getPhotoClient, getPickerClient, toError } from "../client.js";
 import { enrichPhotosWithLocation } from "../enrichment/locationEnricher.js";
 import { getPhotoLocation } from "../../utils/location.js";
@@ -56,7 +61,7 @@ export async function searchPhotos(
   } catch (error) {
     const message = toError(error, "search photos").message;
     logger.error(`Failed to search photos: ${message}`);
-    throw new Error("Failed to search photos", { cause: error });
+    throw new Error(`Failed to search photos: ${message}`, { cause: error });
   }
 }
 
@@ -91,7 +96,9 @@ export async function listAlbumPhotos(
   } catch (error) {
     const message = toError(error, "list album photos").message;
     logger.error(`Failed to list album photos: ${message}`);
-    throw new Error("Failed to list album photos", { cause: error });
+    throw new Error(`Failed to list album photos: ${message}`, {
+      cause: error,
+    });
   }
 }
 
@@ -123,7 +130,7 @@ export async function listMediaItems(
   } catch (error) {
     const message = toError(error, "list media items").message;
     logger.error(`Failed to list media items: ${message}`);
-    throw new Error("Failed to list media items", { cause: error });
+    throw new Error(`Failed to list media items: ${message}`, { cause: error });
   }
 }
 
@@ -177,7 +184,7 @@ export async function getPhoto(
   } catch (error) {
     const message = toError(error, "get photo").message;
     logger.error(`Failed to get photo: ${message}`);
-    throw new Error("Failed to get photo", { cause: error });
+    throw new Error(`Failed to get photo: ${message}`, { cause: error });
   }
 }
 
@@ -201,10 +208,10 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
     const buffer = Buffer.from(response.data);
     return buffer.toString("base64");
   } catch (error) {
-    logger.error(
-      `Failed to download photo: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    throw new Error("Failed to download photo", { cause: error });
+    const message =
+      error instanceof Error ? error.message : toError(error, "download photo").message;
+    logger.error(`Failed to download photo: ${message}`);
+    throw new Error(`Failed to download photo: ${message}`, { cause: error });
   }
 }
 
@@ -242,10 +249,10 @@ export async function uploadMedia(
       uploadToken,
     };
   } catch (error) {
-    logger.error(
-      `Failed to upload media: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    throw new Error("Failed to upload media", { cause: error });
+    const message =
+      error instanceof Error ? error.message : toError(error, "upload media").message;
+    logger.error(`Failed to upload media: ${message}`);
+    throw new Error(`Failed to upload media: ${message}`, { cause: error });
   }
 }
 
@@ -273,10 +280,12 @@ export async function batchCreateMediaItems(
 
     return { mediaItems: response.data.newMediaItemResults || [] };
   } catch (error) {
-    logger.error(
-      `Failed to batch create media items: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    throw new Error("Failed to batch create media items", { cause: error });
+    const message =
+      error instanceof Error
+        ? error.message
+        : toError(error, "batch create media items").message;
+    logger.error(`Failed to batch create media items: ${message}`);
+    throw new Error(`Failed to batch create media items: ${message}`, { cause: error });
   }
 }
 
@@ -288,10 +297,11 @@ export async function batchCreateMediaItems(
  */
 export async function createPickerSession(
   oauth2Client: OAuth2Client,
+  options?: { maxItemCount?: number },
 ): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
   const response = await withRetry(
-    () => client.sessions.create(),
+    () => client.sessions.create(options),
     { maxRetries: 3, initialDelayMs: 1000 },
     "create picker session",
   );
@@ -314,13 +324,36 @@ export async function getPickerSession(
   return response.data as PickerSession;
 }
 
+/**
+ * Deletes a Picker session after media items are retrieved or if the session timed out.
+ */
+export async function deletePickerSession(
+  oauth2Client: OAuth2Client,
+  sessionId: string,
+): Promise<void> {
+  const client = getPickerClient(oauth2Client);
+  await withRetry(
+    () => client.sessions.delete(sessionId),
+    { maxRetries: 3, initialDelayMs: 1000 },
+    "delete picker session",
+  );
+}
+
 interface PickerMediaItem {
   id?: string;
+  createTime?: string;
+  type?: "PHOTO" | "VIDEO" | "TYPE_UNSPECIFIED";
   mediaFile?: {
     mediaFileId?: string;
     filename?: string;
     baseUrl?: string;
     mimeType?: string;
+    mediaFileMetadata?: {
+      width?: number;
+      height?: number;
+      photoMetadata?: Record<string, unknown>;
+      videoMetadata?: Record<string, unknown>;
+    };
   };
 }
 
@@ -344,11 +377,16 @@ export async function listPickerSessionMediaItems(
   const items = (response.data.mediaItems || []) as PickerMediaItem[];
 
   const photos = items.map((item) => ({
-    id: item.mediaFile?.mediaFileId ?? item.id ?? "",
+    id: item.id ?? item.mediaFile?.mediaFileId ?? "",
     filename: item.mediaFile?.filename ?? "",
     baseUrl: item.mediaFile?.baseUrl ?? "",
     productUrl: item.mediaFile?.baseUrl ?? "",
     mimeType: item.mediaFile?.mimeType,
+    mediaMetadata: {
+      creationTime: item.createTime,
+      width: item.mediaFile?.mediaFileMetadata?.width?.toString(),
+      height: item.mediaFile?.mediaFileMetadata?.height?.toString(),
+    },
   })) as PhotoItem[];
 
   return { photos, nextPageToken: response.data.nextPageToken };

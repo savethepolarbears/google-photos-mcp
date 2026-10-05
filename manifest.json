@@ -103,6 +103,10 @@
     {
       "name": "poll_picker_session",
       "description": "Poll an active Google Photos Picker session to retrieve selected media items"
+    },
+    {
+      "name": "delete_picker_session",
+      "description": "Delete and clean up an active or timed-out Google Photos Picker session"
     }
   ],
   "user_config": {

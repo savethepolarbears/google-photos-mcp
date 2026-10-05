@@ -26,6 +26,7 @@ vi.mock("../../src/api/photos.js", () => ({
   listMediaItems: vi.fn(),
   createPickerSession: vi.fn(),
   getPickerSession: vi.fn(),
+  deletePickerSession: vi.fn(),
   listPickerSessionMediaItems: vi.fn(),
 }));
 
@@ -154,6 +155,7 @@ describe("GooglePhotosMCPCore", () => {
       expect(names).toContain("start_auth");
       expect(names).toContain("create_picker_session");
       expect(names).toContain("poll_picker_session");
+      expect(names).toContain("delete_picker_session");
       // Deprecated sharing tools should NOT be present
       expect(names).not.toContain("share_album");
       expect(names).not.toContain("unshare_album");
@@ -360,6 +362,20 @@ describe("GooglePhotosMCPCore", () => {
       expect(parsed.mediaItemsSet).toBe(true);
       expect(parsed.count).toBe(1);
       expect(parsed.photos).toHaveLength(1);
+    });
+
+    it("dispatches delete_picker_session and returns success response", async () => {
+      const { deletePickerSession } = await import("../../src/api/photos.js");
+      vi.mocked(deletePickerSession).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool(
+        callToolReq("delete_picker_session", { sessionId: "sess-1" }),
+      );
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.sessionId).toBe("sess-1");
+      expect(parsed.message).toContain("deleted successfully");
     });
   });
 

@@ -44,7 +44,7 @@ export async function listAlbums(
   } catch (error) {
     const message = toError(error, "list albums").message;
     logger.error(`Failed to list albums: ${message}`);
-    throw new Error("Failed to list albums", { cause: error });
+    throw new Error(`Failed to list albums: ${message}`, { cause: error });
   }
 }
 
@@ -81,7 +81,7 @@ export async function getAlbum(
   } catch (error) {
     const message = toError(error, "get album").message;
     logger.error(`Failed to get album: ${message}`);
-    throw new Error("Failed to get album", { cause: error });
+    throw new Error(`Failed to get album: ${message}`, { cause: error });
   }
 }
 
@@ -110,7 +110,7 @@ export async function createAlbum(
   } catch (error) {
     const message = toError(error, "create album").message;
     logger.error(`Failed to create album: ${message}`);
-    throw new Error("Failed to create album", { cause: error });
+    throw new Error(`Failed to create album: ${message}`, { cause: error });
   }
 }
 
@@ -173,7 +173,7 @@ export async function addEnrichment(
   } catch (error) {
     const message = toError(error, "add enrichment").message;
     logger.error(`Failed to add enrichment: ${message}`);
-    throw new Error("Failed to add enrichment", { cause: error });
+    throw new Error(`Failed to add enrichment: ${message}`, { cause: error });
   }
 }
 
@@ -216,7 +216,7 @@ export async function patchAlbum(
   } catch (error) {
     const message = toError(error, "patch album").message;
     logger.error(`Failed to patch album: ${message}`);
-    throw new Error("Failed to patch album", { cause: error });
+    throw new Error(`Failed to patch album: ${message}`, { cause: error });
   }
 }
 
@@ -245,6 +245,6 @@ export async function batchAddMediaItemsToAlbum(
   } catch (error) {
     const message = toError(error, "batch add media items to album").message;
     logger.error(`Failed to add media items to album: ${message}`);
-    throw new Error("Failed to add media items to album", { cause: error });
+    throw new Error(`Failed to add media items to album: ${message}`, { cause: error });
   }
 }

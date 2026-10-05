@@ -19,6 +19,9 @@ import {
   setCoverPhotoSchema,
   createAlbumWithMediaSchema,
   describeFilterCapabilitiesSchema,
+  createPickerSessionSchema,
+  pollPickerSessionSchema,
+  deletePickerSessionSchema,
 } from "../../src/schemas/toolSchemas.js";
 
 describe("searchPhotosSchema", () => {
@@ -396,3 +399,64 @@ describe("describeFilterCapabilitiesSchema", () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe("createPickerSessionSchema", () => {
+  it("accepts empty object {}", () => {
+    const result = createPickerSessionSchema.parse({});
+    expect(result.maxItemCount).toBeUndefined();
+  });
+
+  it("accepts valid maxItemCount within range (1-2000)", () => {
+    const result = createPickerSessionSchema.parse({ maxItemCount: 50 });
+    expect(result.maxItemCount).toBe(50);
+  });
+
+  it("rejects maxItemCount less than 1", () => {
+    expect(() => createPickerSessionSchema.parse({ maxItemCount: 0 })).toThrow();
+  });
+
+  it("rejects maxItemCount greater than 2000", () => {
+    expect(() =>
+      createPickerSessionSchema.parse({ maxItemCount: 2001 }),
+    ).toThrow();
+  });
+});
+
+describe("pollPickerSessionSchema", () => {
+  it("accepts valid sessionId", () => {
+    const result = pollPickerSessionSchema.parse({ sessionId: "sess-123" });
+    expect(result.sessionId).toBe("sess-123");
+    expect(result.pageSize).toBeUndefined();
+  });
+
+  it("accepts valid pagination arguments", () => {
+    const result = pollPickerSessionSchema.parse({
+      sessionId: "sess-123",
+      pageSize: 50,
+      pageToken: "next-page",
+    });
+    expect(result.pageSize).toBe(50);
+    expect(result.pageToken).toBe("next-page");
+  });
+
+  it("rejects missing sessionId", () => {
+    expect(() => pollPickerSessionSchema.parse({})).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => pollPickerSessionSchema.parse({ sessionId: "" })).toThrow();
+  });
+});
+
+describe("deletePickerSessionSchema", () => {
+  it("accepts valid sessionId", () => {
+    const result = deletePickerSessionSchema.parse({ sessionId: "sess-123" });
+    expect(result.sessionId).toBe("sess-123");
+  });
+
+  it("rejects missing or empty sessionId", () => {
+    expect(() => deletePickerSessionSchema.parse({})).toThrow();
+    expect(() => deletePickerSessionSchema.parse({ sessionId: "" })).toThrow();
+  });
+});
+

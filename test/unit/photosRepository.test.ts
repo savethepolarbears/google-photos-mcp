@@ -8,7 +8,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Mock dependencies
 vi.mock("../../src/api/client.js", () => ({
   getPhotoClient: vi.fn(),
-  toError: vi.fn((err: unknown, ctx: string) => new Error(`${ctx}: ${err}`)),
+  getPickerClient: vi.fn(),
+  toError: vi.fn((err: unknown, ctx: string) => {
+    if (err instanceof Error) {
+      return new Error(`Google Photos API ${ctx} failed: ${err.message}`);
+    }
+    return new Error(`${ctx}: ${err}`);
+  }),
 }));
 
 vi.mock("../../src/utils/retry.js", () => ({
@@ -38,8 +44,12 @@ import {
   listMediaItems,
   uploadMedia,
   batchCreateMediaItems,
+  createPickerSession,
+  getPickerSession,
+  deletePickerSession,
+  listPickerSessionMediaItems,
 } from "../../src/api/repositories/photosRepository.js";
-import { getPhotoClient } from "../../src/api/client.js";
+import { getPhotoClient, getPickerClient } from "../../src/api/client.js";
 import type { OAuth2Client } from "google-auth-library";
 
 const mockOAuth2Client = {} as OAuth2Client;
@@ -200,6 +210,25 @@ describe("listMediaItems", () => {
     const result = await listMediaItems(mockOAuth2Client, 25);
     expect(result.photos).toEqual([]);
   });
+
+  it("preserves 401 unauthorized guidance in thrown error", async () => {
+    const mockClient = {
+      mediaItems: {
+        list: vi.fn().mockRejectedValue(
+          new Error(
+            "Unauthorized (401). Use the start_auth tool or visit /auth to re-authenticate.",
+          ),
+        ),
+      },
+    };
+    vi.mocked(getPhotoClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPhotoClient>,
+    );
+
+    await expect(listMediaItems(mockOAuth2Client, 25)).rejects.toThrow(
+      "Use the start_auth tool or visit /auth to re-authenticate",
+    );
+  });
 });
 
 describe("uploadMedia", () => {
@@ -284,3 +313,105 @@ describe("batchCreateMediaItems", () => {
     expect(result.mediaItems[0].mediaItem?.id).toBe("new-media-id");
   });
 });
+
+describe("Picker API repositories", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("createPickerSession calls sessions.create and returns session", async () => {
+    const mockClient = {
+      sessions: {
+        create: vi.fn().mockResolvedValue({
+          data: {
+            id: "sess-123",
+            pickerUri: "https://photos.google.com/picker",
+            pollingConfig: { pollInterval: "3s", timeoutIn: "300s" },
+          },
+        }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    const result = await createPickerSession(mockOAuth2Client, {
+      maxItemCount: 10,
+    });
+    expect(result.id).toBe("sess-123");
+    expect(mockClient.sessions.create).toHaveBeenCalledWith({
+      maxItemCount: 10,
+    });
+  });
+
+  it("getPickerSession calls sessions.get with sessionId", async () => {
+    const mockClient = {
+      sessions: {
+        get: vi.fn().mockResolvedValue({
+          data: { id: "sess-123", mediaItemsSet: true },
+        }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    const result = await getPickerSession(mockOAuth2Client, "sess-123");
+    expect(result.id).toBe("sess-123");
+    expect(result.mediaItemsSet).toBe(true);
+  });
+
+  it("deletePickerSession calls sessions.delete with sessionId", async () => {
+    const mockClient = {
+      sessions: {
+        delete: vi.fn().mockResolvedValue({ data: {} }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    await deletePickerSession(mockOAuth2Client, "sess-123");
+    expect(mockClient.sessions.delete).toHaveBeenCalledWith("sess-123");
+  });
+
+  it("listPickerSessionMediaItems maps media items correctly", async () => {
+    const mockClient = {
+      sessions: {
+        listMediaItems: vi.fn().mockResolvedValue({
+          data: {
+            mediaItems: [
+              {
+                id: "picked-1",
+                createTime: "2026-01-01T00:00:00Z",
+                mediaFile: {
+                  filename: "sample.jpg",
+                  baseUrl: "https://photos.google.com/sample",
+                  mimeType: "image/jpeg",
+                  mediaFileMetadata: { width: 1920, height: 1080 },
+                },
+              },
+            ],
+            nextPageToken: "next-token",
+          },
+        }),
+      },
+    };
+    vi.mocked(getPickerClient).mockReturnValue(
+      mockClient as unknown as ReturnType<typeof getPickerClient>,
+    );
+
+    const result = await listPickerSessionMediaItems(
+      mockOAuth2Client,
+      "sess-123",
+      25,
+    );
+    expect(result.photos).toHaveLength(1);
+    expect(result.photos[0].id).toBe("picked-1");
+    expect(result.photos[0].filename).toBe("sample.jpg");
+    expect(result.photos[0].mediaMetadata?.width).toBe("1920");
+    expect(result.photos[0].mediaMetadata?.height).toBe("1080");
+    expect(result.nextPageToken).toBe("next-token");
+  });
+});
+
