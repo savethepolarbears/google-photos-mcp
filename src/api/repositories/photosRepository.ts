@@ -395,7 +395,15 @@ interface PickerMediaItem {
       width?: number;
       height?: number;
       photoMetadata?: Record<string, unknown>;
-      videoMetadata?: Record<string, unknown>;
+      videoMetadata?: {
+        fps?: number;
+        processingStatus?:
+          | "UNSPECIFIED"
+          | "PROCESSING"
+          | "READY"
+          | "FAILED"
+          | string;
+      };
     };
   };
 }
@@ -419,18 +427,30 @@ export async function listPickerSessionMediaItems(
 
   const items = (response.data.mediaItems || []) as PickerMediaItem[];
 
-  const photos = items.map((item) => ({
-    id: item.id ?? item.mediaFile?.mediaFileId ?? "",
-    filename: item.mediaFile?.filename ?? "",
-    baseUrl: item.mediaFile?.baseUrl ?? "",
-    productUrl: item.mediaFile?.baseUrl ?? "",
-    mimeType: item.mediaFile?.mimeType,
-    mediaMetadata: {
-      creationTime: item.createTime,
-      width: item.mediaFile?.mediaFileMetadata?.width?.toString(),
-      height: item.mediaFile?.mediaFileMetadata?.height?.toString(),
-    },
-  })) as PhotoItem[];
+  const photos = items.map((item) => {
+    const videoMetadata = item.mediaFile?.mediaFileMetadata?.videoMetadata;
+    const processingStatus = videoMetadata?.processingStatus;
+    const photo: PhotoItem = {
+      id: item.id ?? item.mediaFile?.mediaFileId ?? "",
+      filename: item.mediaFile?.filename ?? "",
+      baseUrl: item.mediaFile?.baseUrl ?? "",
+      productUrl: item.mediaFile?.baseUrl ?? "",
+      mimeType: item.mediaFile?.mimeType,
+      processingStatus,
+      mediaMetadata: {
+        creationTime: item.createTime,
+        width: item.mediaFile?.mediaFileMetadata?.width?.toString(),
+        height: item.mediaFile?.mediaFileMetadata?.height?.toString(),
+        video: videoMetadata
+          ? {
+              status: processingStatus,
+              fps: videoMetadata.fps,
+            }
+          : undefined,
+      },
+    };
+    return photo;
+  });
 
   return { photos, nextPageToken: response.data.nextPageToken };
 }
@@ -443,6 +463,7 @@ export interface DownloadPickerMediaOptions {
   sessionId?: string;
   mediaItemId?: string;
   mimeType?: string;
+  processingStatus?: string;
   /**
    * Whether to download full-resolution original media (appends '=d' for images).
    * Note: For videos, Google Photos base URLs exclusively return a high-quality
@@ -517,6 +538,7 @@ export async function downloadPickerMedia(
   let filename: string | undefined;
   let mimeType: string | undefined = options.mimeType;
   let mediaItemId = options.mediaItemId;
+  let itemProcessingStatus = options.processingStatus;
 
   if (targetBaseUrl) {
     // Restrict downloads to official HTTPS Google Photos media domains immediately
@@ -550,6 +572,7 @@ export async function downloadPickerMedia(
           filename = found.filename;
           mimeType = found.mimeType;
           if (!mediaItemId) mediaItemId = found.id;
+          if (!itemProcessingStatus) itemProcessingStatus = found.processingStatus;
           foundInSession = true;
           break;
         }
@@ -606,6 +629,7 @@ export async function downloadPickerMedia(
     filename = foundPhoto.filename;
     mimeType = foundPhoto.mimeType;
     mediaItemId = foundPhoto.id;
+    if (!itemProcessingStatus) itemProcessingStatus = foundPhoto.processingStatus;
 
     if (!isAllowedGooglePhotosMediaUrl(targetBaseUrl)) {
       throw new Error(
@@ -627,6 +651,16 @@ export async function downloadPickerMedia(
 
   let downloadUrl = targetBaseUrl;
   if (isVideo) {
+    if (itemProcessingStatus === "PROCESSING") {
+      throw new Error(
+        `Video ${mediaItemId || filename || "item"} is currently being processed by Google Photos (processingStatus: "PROCESSING"). Video bytes can only be requested once processing status is READY. Please poll the session again later before downloading.`,
+      );
+    }
+    if (itemProcessingStatus === "FAILED") {
+      throw new Error(
+        `Video ${mediaItemId || filename || "item"} failed processing in Google Photos (processingStatus: "FAILED"). Video bytes cannot be retrieved.`,
+      );
+    }
     if (!downloadUrl.includes("=dv")) {
       downloadUrl = `${downloadUrl}=dv`;
     }

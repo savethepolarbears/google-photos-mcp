@@ -52,7 +52,15 @@ export interface PhotoItem {
       apertureFNumber?: number;
       isoEquivalent?: number;
     };
+    video?: {
+      cameraMake?: string;
+      cameraModel?: string;
+      fps?: number;
+      status?: "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED" | string;
+    };
   };
+  /** Processing status for videos in Google Photos Picker API (UNSPECIFIED, PROCESSING, READY, FAILED) */
+  processingStatus?: "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED" | string;
   /** Location data (enriched from descriptions or EXIF) */
   locationData?: {
     latitude?: number;

@@ -46,6 +46,13 @@ export function enforceWindowsOwnerOnlyAcl(targetPath: string): void {
     const permissionSpec = isDir
       ? `${username}:(OI)(CI)(F)`
       : `${username}:(F)`;
+
+    // 1. Reset permissions to remove any pre-existing explicit ACEs granted to other users/groups
+    childProcess.execFileSync("icacls.exe", [targetPath, "/reset"], {
+      stdio: "ignore",
+    });
+
+    // 2. Strip inherited permissions and grant full control exclusively to the current user
     childProcess.execFileSync(
       "icacls.exe",
       [targetPath, "/inheritance:r", "/grant:r", permissionSpec],

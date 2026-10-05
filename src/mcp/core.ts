@@ -85,6 +85,7 @@ interface FormattedPhoto {
   url: string;
   baseUrl: string;
   mimeType?: string;
+  processingStatus?: string;
   webUrl: string;
   width: string;
   height: string;
@@ -654,7 +655,7 @@ export class GooglePhotosMCPCore {
         {
           name: "poll_picker_session",
           description:
-            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items (including baseUrl and mimeType for use in download_picker_media). Call repeatedly until mediaItemsSet is true.",
+            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items (including baseUrl, mimeType, and video processingStatus for use in download_picker_media). Call repeatedly until mediaItemsSet is true.",
           inputSchema: {
             type: "object",
             properties: {
@@ -678,7 +679,7 @@ export class GooglePhotosMCPCore {
         {
           name: "download_picker_media",
           description:
-            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) per Google Photos API base-URL specifications.",
+            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId. Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) and require video processingStatus to be READY before downloading.",
           inputSchema: {
             type: "object",
             properties: {
@@ -701,6 +702,11 @@ export class GooglePhotosMCPCore {
                 type: "string",
                 description:
                   "Optional MIME type (e.g. 'video/mp4' or 'image/jpeg') returned by poll_picker_session, used to infer download parameters when baseUrl is provided without sessionId",
+              },
+              processingStatus: {
+                type: "string",
+                description:
+                  "Optional video processing status (e.g. 'READY', 'PROCESSING', 'FAILED') returned by poll_picker_session. Videos currently 'PROCESSING' cannot be downloaded until ready.",
               },
               downloadOriginal: {
                 type: "boolean",
@@ -2075,6 +2081,7 @@ Key rules:
       url: photo.baseUrl,
       baseUrl: photo.baseUrl,
       mimeType: photo.mimeType,
+      processingStatus: photo.processingStatus,
       webUrl: photo.productUrl,
       width: photo.mediaMetadata?.width || "",
       height: photo.mediaMetadata?.height || "",

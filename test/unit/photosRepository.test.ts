@@ -411,6 +411,23 @@ describe("Picker API repositories", () => {
                   mediaFileMetadata: { width: 1920, height: 1080 },
                 },
               },
+              {
+                id: "video-picked-2",
+                createTime: "2026-01-02T00:00:00Z",
+                mediaFile: {
+                  filename: "sample.mp4",
+                  baseUrl: "https://photos.google.com/video-sample",
+                  mimeType: "video/mp4",
+                  mediaFileMetadata: {
+                    width: 1920,
+                    height: 1080,
+                    videoMetadata: {
+                      fps: 30,
+                      processingStatus: "PROCESSING",
+                    },
+                  },
+                },
+              },
             ],
             nextPageToken: "next-token",
           },
@@ -426,11 +443,16 @@ describe("Picker API repositories", () => {
       "sess-123",
       25,
     );
-    expect(result.photos).toHaveLength(1);
+    expect(result.photos).toHaveLength(2);
     expect(result.photos[0].id).toBe("picked-1");
     expect(result.photos[0].filename).toBe("sample.jpg");
     expect(result.photos[0].mediaMetadata?.width).toBe("1920");
     expect(result.photos[0].mediaMetadata?.height).toBe("1080");
+
+    expect(result.photos[1].id).toBe("video-picked-2");
+    expect(result.photos[1].processingStatus).toBe("PROCESSING");
+    expect(result.photos[1].mediaMetadata?.video?.status).toBe("PROCESSING");
+    expect(result.photos[1].mediaMetadata?.video?.fps).toBe(30);
     expect(result.nextPageToken).toBe("next-token");
   });
 
@@ -674,6 +696,106 @@ describe("Picker API repositories", () => {
       );
 
       axiosGetSpy.mockRestore();
+    });
+
+    it("rejects video download when video processingStatus is PROCESSING with retry guidance", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-proc-1",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/video-proc",
+                    filename: "processing.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "PROCESSING",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-proc",
+          mediaItemId: "video-proc-1",
+        }),
+      ).rejects.toThrow(
+        'Video video-proc-1 is currently being processed by Google Photos (processingStatus: "PROCESSING"). Video bytes can only be requested once processing status is READY. Please poll the session again later before downloading.',
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          baseUrl: "https://lh3.googleusercontent.com/video-proc",
+          mimeType: "video/mp4",
+          processingStatus: "PROCESSING",
+        }),
+      ).rejects.toThrow("processingStatus: \"PROCESSING\"");
+    });
+
+    it("rejects video download when video processingStatus is FAILED", async () => {
+      const mockOAuthClient = {
+        getRequestHeaders: vi
+          .fn()
+          .mockResolvedValue(
+            new Map([["authorization", "Bearer test-picker-token"]]),
+          ),
+      } as unknown as OAuth2Client;
+
+      const mockClient = {
+        sessions: {
+          listMediaItems: vi.fn().mockResolvedValue({
+            data: {
+              mediaItems: [
+                {
+                  id: "video-fail-1",
+                  mediaFile: {
+                    baseUrl: "https://lh3.googleusercontent.com/video-fail",
+                    filename: "corrupt.mp4",
+                    mimeType: "video/mp4",
+                    mediaFileMetadata: {
+                      videoMetadata: {
+                        processingStatus: "FAILED",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          }),
+        },
+      };
+      vi.mocked(getPickerClient).mockReturnValue(
+        mockClient as unknown as ReturnType<typeof getPickerClient>,
+      );
+
+      await expect(
+        downloadPickerMedia(mockOAuthClient, {
+          sessionId: "sess-fail",
+          mediaItemId: "video-fail-1",
+        }),
+      ).rejects.toThrow(
+        'Video video-fail-1 failed processing in Google Photos (processingStatus: "FAILED"). Video bytes cannot be retrieved.',
+      );
     });
 
     it("infers video downloads (=dv) from filename extension when isVideo is omitted in session lookup", async () => {

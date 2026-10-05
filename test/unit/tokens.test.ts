@@ -247,7 +247,14 @@ describe("tokens.ts — AUTH-01", () => {
 
       try {
         enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db", "/reset"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
           "icacls.exe",
           [
             "C:\\token-storage\\tokens.db",
@@ -277,7 +284,14 @@ describe("tokens.ts — AUTH-01", () => {
 
       try {
         enforceWindowsOwnerOnlyAcl(tmpDir);
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [tmpDir, "/reset"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
           "icacls.exe",
           [tmpDir, "/inheritance:r", "/grant:r", "testwinuser:(OI)(CI)(F)"],
           { stdio: "ignore" },
@@ -344,7 +358,14 @@ describe("tokens.ts — AUTH-01", () => {
       try {
         Object.defineProperty(process, "platform", { value: "win32" });
         enforceOwnerOnlyPermissions(testDb);
-        expect(execSpy).toHaveBeenCalledWith(
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [testDb, "/reset"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
           "icacls.exe",
           [testDb, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
           { stdio: "ignore" },

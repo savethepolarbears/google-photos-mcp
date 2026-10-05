@@ -269,6 +269,7 @@ export const downloadPickerMediaSchema = z
     sessionId: z.string().min(1, "sessionId cannot be empty").optional(),
     mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
     mimeType: z.string().min(1, "mimeType cannot be empty").optional(),
+    processingStatus: z.string().optional(),
     downloadOriginal: z.boolean().optional(),
     width: z
       .number()
