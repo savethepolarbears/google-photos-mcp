@@ -43,9 +43,31 @@ vi.mock("../../src/utils/logger.js", () => ({
  * This avoids TS2445 "protected member" errors while keeping tests type-safe.
  */
 
-type TestableCore = {
-  [K in keyof GooglePhotosMCPCore]: GooglePhotosMCPCore[K];
-} & Record<string, unknown>;
+type TestableCore = GooglePhotosMCPCore & {
+  handleListResources: () => Promise<{
+    resources: Array<{ uri: string; name: string; description?: string; mimeType?: string }>;
+    resourceTemplates?: Array<{ uriTemplate: string; name: string; description?: string; mimeType?: string }>;
+  }>;
+  handleReadResource: (request: { params: { uri: string } }) => Promise<{
+    contents: Array<{ uri: string; mimeType?: string; text?: string }>;
+  }>;
+  handleListTools: () => Promise<{
+    tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+  }>;
+  handleCallTool: (request: ReturnType<typeof callToolReq>) => Promise<{
+    content?: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }>;
+  handleListPrompts: () => Promise<{
+    prompts: Array<{ name: string; description?: string; arguments?: unknown[] }>;
+  }>;
+  handleGetPrompt: (request: {
+    params: { name: string; arguments?: Record<string, string> };
+  }) => Promise<{
+    description?: string;
+    messages: Array<{ role: string; content: { type: string; text: string } }>;
+  }>;
+};
 
 /** Helper to build a CallToolRequest-shaped object with required `method` field. */
 function callToolReq(name: string, args: Record<string, unknown> = {}) {

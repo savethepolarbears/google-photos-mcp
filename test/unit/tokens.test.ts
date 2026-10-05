@@ -44,11 +44,11 @@ vi.mock("keyv", () => {
         store.delete(`${this.namespace}:${key}`);
       }
       async clear(): Promise<void> {
-        for (const k of store.keys()) {
+        store.forEach((_, k) => {
           if (k.startsWith(`${this.namespace}:`)) {
             store.delete(k);
           }
-        }
+        });
       }
     },
   };
