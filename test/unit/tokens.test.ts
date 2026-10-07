@@ -44,20 +44,29 @@ vi.mock("keyv", () => {
         store.delete(`${this.namespace}:${key}`);
       }
       async clear(): Promise<void> {
-        for (const k of store.keys()) {
+        store.forEach((_, k) => {
           if (k.startsWith(`${this.namespace}:`)) {
             store.delete(k);
           }
-        }
+        });
       }
     },
   };
 });
 
+import childProcess from "node:child_process";
+import Keyv from "keyv";
 import {
   saveTokens,
   getFirstAvailableTokens,
   getTokens,
+  enforceOwnerOnlyPermissions,
+  enforceWindowsOwnerOnlyAcl,
+  parseWindowsNonOwnerAces,
+  parseWindowsOwnerDenyAces,
+  hasWindowsExplicitDenyAces,
+  getWindowsCurrentOwnerInfo,
+  precreateAndHardenTokenStorage,
 } from "../../src/auth/tokens.js";
 import type { TokenData } from "../../src/auth/tokens.js";
 
@@ -95,6 +104,90 @@ describe("tokens.ts — AUTH-01", () => {
     it("getTokens returns null for an unknown userId", async () => {
       const result = await getTokens("nobody");
       expect(result).toBeNull();
+    });
+
+    it("serializes concurrent saveTokens calls so writes execute sequentially", async () => {
+      const callLog: string[] = [];
+      const originalSet = Keyv.prototype.set;
+
+      let resolveFirstSet: () => void = () => {};
+      const firstSetBlocker = new Promise<void>((resolve) => {
+        resolveFirstSet = resolve;
+      });
+
+      let callCount = 0;
+      const setSpy = vi
+        .spyOn(Keyv.prototype, "set")
+        .mockImplementation(async function (
+          this: unknown,
+          key: string,
+          value: unknown,
+        ) {
+          callCount++;
+          const current = callCount;
+          callLog.push(`start-${current}`);
+          if (current === 1) {
+            // Block the first write until explicitly resolved
+            await firstSetBlocker;
+          }
+          callLog.push(`end-${current}`);
+          return originalSet.call(this, key, value);
+        });
+
+      try {
+        const token1 = makeToken({ userId: "user-concurrent-1" });
+        const token2 = makeToken({ userId: "user-concurrent-2" });
+
+        // Trigger both writes concurrently
+        const promise1 = saveTokens("user-concurrent-1", token1);
+        const promise2 = saveTokens("user-concurrent-2", token2);
+
+        // Yield event loop
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // With serialization, write 2 must NOT have started yet while write 1 is blocked!
+        expect(callLog).toEqual(["start-1"]);
+
+        // Unblock the first write
+        resolveFirstSet();
+
+        await Promise.all([promise1, promise2]);
+
+        // Write 1 starts, ends, then write 2 starts, ends
+        expect(callLog).toEqual(["start-1", "end-1", "start-2", "end-2"]);
+      } finally {
+        setSpy.mockRestore();
+      }
+    });
+
+    it("executes queued saveTokens even if previous saveTokens rejected", async () => {
+      let failFirst = true;
+      const originalSet = Keyv.prototype.set;
+      const setSpy = vi
+        .spyOn(Keyv.prototype, "set")
+        .mockImplementation(async function (
+          this: unknown,
+          key: string,
+          value: unknown,
+        ) {
+          if (failFirst) {
+            failFirst = false;
+            throw new Error("Simulated token write failure");
+          }
+          return originalSet.call(this, key, value);
+        });
+
+      try {
+        const token1 = makeToken({ userId: "user-fail" });
+        const token2 = makeToken({ userId: "user-succeed" });
+
+        await expect(saveTokens("user-fail", token1)).rejects.toThrow(
+          "Simulated token write failure",
+        );
+        await expect(saveTokens("user-succeed", token2)).resolves.not.toThrow();
+      } finally {
+        setSpy.mockRestore();
+      }
     });
   });
 
@@ -146,6 +239,630 @@ describe("tokens.ts — AUTH-01", () => {
         f.startsWith("tokens.json.backup"),
       );
       expect(backupFiles).toHaveLength(0);
+    });
+  });
+
+  describe("enforceOwnerOnlyPermissions", () => {
+    it("restricts permissions to 0600 on file and sidecars", async () => {
+      const fs = await import("node:fs/promises");
+      const tmpDir = await fs.mkdtemp(path.join(process.cwd(), "test-perms-"));
+      const dbFile = path.join(tmpDir, "test.db");
+      const walFile = path.join(tmpDir, "test.db-wal");
+      const shmFile = path.join(tmpDir, "test.db-shm");
+      const journalFile = path.join(tmpDir, "test.db-journal");
+
+      await fs.writeFile(dbFile, "db-content", { mode: 0o644 });
+      await fs.writeFile(walFile, "wal-content", { mode: 0o644 });
+      await fs.writeFile(shmFile, "shm-content", { mode: 0o644 });
+      await fs.writeFile(journalFile, "journal-content", { mode: 0o644 });
+
+      enforceOwnerOnlyPermissions(dbFile);
+
+      if (process.platform !== "win32") {
+        const dbStats = await fs.stat(dbFile);
+        const walStats = await fs.stat(walFile);
+        const shmStats = await fs.stat(shmFile);
+        const journalStats = await fs.stat(journalFile);
+
+        expect(dbStats.mode & 0o777).toBe(0o600);
+        expect(walStats.mode & 0o777).toBe(0o600);
+        expect(shmStats.mode & 0o777).toBe(0o600);
+        expect(journalStats.mode & 0o777).toBe(0o600);
+      }
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("handles non-existent sidecar files gracefully", () => {
+      expect(() => {
+        enforceOwnerOnlyPermissions("/path/to/nonexistent/db.sqlite");
+      }).not.toThrow();
+    });
+
+    it("throws if chmodSync fails to enforce 0600 permissions on non-Windows", async () => {
+      if (process.platform === "win32") return;
+      const fsPromises = await import("node:fs/promises");
+      const fsSync = await import("node:fs");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-chmod-fail-"),
+      );
+      const testFile = path.join(tmpDir, "test.db");
+      await fsPromises.writeFile(testFile, "data", { mode: 0o644 });
+
+      const chmodSpy = vi
+        .spyOn(fsSync.default, "chmodSync")
+        .mockImplementation(() => {
+          throw new Error("EPERM: operation not permitted");
+        });
+
+      try {
+        expect(() => enforceOwnerOnlyPermissions(testFile)).toThrow(
+          "Could not enforce 0600 permissions",
+        );
+      } finally {
+        chmodSpy.mockRestore();
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not alter permissions of an existing directory when hardening token files", async () => {
+      const fs = await import("node:fs/promises");
+      const tmpDir = await fs.mkdtemp(
+        path.join(process.cwd(), "test-dir-perms-"),
+      );
+      if (process.platform !== "win32") {
+        await fs.chmod(tmpDir, 0o755);
+        const statsBefore = await fs.stat(tmpDir);
+        expect(statsBefore.mode & 0o777).toBe(0o755);
+
+        const dbFile = path.join(tmpDir, "tokens.db");
+        await fs.writeFile(dbFile, "data", { mode: 0o644 });
+        enforceOwnerOnlyPermissions(dbFile);
+
+        const statsAfter = await fs.stat(tmpDir);
+        expect(statsAfter.mode & 0o777).toBe(0o755);
+        const fileStats = await fs.stat(dbFile);
+        expect(fileStats.mode & 0o777).toBe(0o600);
+      }
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("enforces owner-only ACL on Windows using icacls.exe", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalUser = process.env.USER;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [
+            "C:\\token-storage\\tokens.db",
+            "/inheritance:r",
+            "/grant:r",
+            "testwinuser:(F)",
+          ],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        process.env.USER = originalUser;
+      }
+    });
+
+    it("removes non-owner explicit ACEs when discovered in icacls query", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValueOnce(Buffer.from(""))
+        .mockReturnValueOnce(
+          Buffer.from(
+            "C:\\token-storage\\tokens.db testwinuser:(F)\r\n" +
+              "                           DOMAIN\\OtherUser:(R)\r\n" +
+              "                           BUILTIN\\Users:(M)\r\n" +
+              "Successfully processed 1 files; Failed processing 0 files\r\n",
+          ),
+        )
+        .mockReturnValue(Buffer.from(""));
+
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db");
+        expect(execSpy).toHaveBeenCalledTimes(5);
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [
+            "C:\\token-storage\\tokens.db",
+            "/inheritance:r",
+            "/grant:r",
+            "testwinuser:(F)",
+          ],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          3,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db", "/remove", "DOMAIN\\OtherUser"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          4,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db", "/remove", "BUILTIN\\Users"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          5,
+          "icacls.exe",
+          ["C:\\token-storage\\tokens.db"],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("parses non-owner ACEs accurately from icacls output", () => {
+      const sample =
+        "C:\\tokens.db DOMAIN\\testwinuser:(F)\r\n" +
+        "             NT AUTHORITY\\SYSTEM:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n" +
+        "             testwinuser:(F)\r\n" +
+        "Successfully processed 1 files;\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        "DOMAIN\\testwinuser",
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual(["NT AUTHORITY\\SYSTEM", "BUILTIN\\Users"]);
+    });
+
+    it("identifies accounts with identical leaf usernames from other domains as non-owners", () => {
+      const sample =
+        "C:\\tokens.db CORP\\alice:(F)\r\n" +
+        "             OTHERDOMAIN\\alice:(F)\r\n" +
+        "             MACHINE\\alice:(F)\r\n" +
+        "             alice:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        { username: "alice", qualifiedName: "CORP\\alice" },
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual([
+        "OTHERDOMAIN\\alice",
+        "MACHINE\\alice",
+        "BUILTIN\\Users",
+      ]);
+    });
+
+    it("compares Windows ACL principals by exact SID", () => {
+      const sample =
+        "C:\\tokens.db *S-1-5-21-1001:(F)\r\n" +
+        "             *S-1-5-21-9999:(F)\r\n" +
+        "             BUILTIN\\Users:(R)\r\n";
+
+      const nonOwners = parseWindowsNonOwnerAces(
+        sample,
+        { username: "alice", sid: "S-1-5-21-1001" },
+        "C:\\tokens.db",
+      );
+      expect(nonOwners).toEqual(["*S-1-5-21-9999", "BUILTIN\\Users"]);
+    });
+
+    it("detects explicit Windows deny ACEs accurately from icacls output", () => {
+      // Case 1: Explicit deny ACE present alongside inherited allows
+      const sampleExplicitDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            DOMAIN\\Contractors:(DENY)(R)\r\n" +
+        "            BUILTIN\\Users:(I)(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleExplicitDeny)).toBe(true);
+
+      // Case 2: Explicit deny ACE with (N) (No Access)
+      const sampleNoAccessDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            BUILTIN\\Guests:(N)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleNoAccessDeny)).toBe(true);
+
+      // Case 3: Inherited deny ACE (should NOT be treated as explicit)
+      const sampleInheritedDeny =
+        "C:\\file.jpg DOMAIN\\alice:(I)(F)\r\n" +
+        "            BUILTIN\\Guests:(I)(DENY)(R)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleInheritedDeny)).toBe(false);
+
+      // Case 4: Only allow ACEs (no deny ACEs)
+      const sampleAllowsOnly =
+        "C:\\file.jpg DOMAIN\\alice:(F)\r\n" +
+        "            BUILTIN\\Users:(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+      expect(hasWindowsExplicitDenyAces(sampleAllowsOnly)).toBe(false);
+    });
+
+    it("identifies explicit Windows deny ACEs belonging to the owner", () => {
+      const sample =
+        "C:\\tokens.db CORP\\alice:(DENY)(R)\r\n" +
+        "             CORP\\alice:(F)\r\n" +
+        "             *S-1-5-21-1001:(N)\r\n" +
+        "             alice:(I)(DENY)(R)\r\n" +
+        "             DOMAIN\\Contractors:(DENY)(R)\r\n" +
+        "             BUILTIN\\Users:(RX)\r\n" +
+        "Successfully processed 1 files;\r\n";
+
+      const ownerDenyIdentities = parseWindowsOwnerDenyAces(
+        sample,
+        { username: "alice", qualifiedName: "CORP\\alice", sid: "S-1-5-21-1001" },
+        "C:\\tokens.db",
+      );
+
+      // Should find CORP\alice (explicit deny) and *S-1-5-21-1001 (explicit deny with (N))
+      // Should NOT find alice:(I)(DENY)(R) (inherited)
+      // Should NOT find DOMAIN\Contractors (non-owner deny, handled by parseWindowsNonOwnerAces)
+      // Should NOT find CORP\alice:(F) (allow ACE)
+      expect(ownerDenyIdentities).toEqual(["CORP\\alice", "*S-1-5-21-1001"]);
+    });
+
+    it("removes owner explicit deny ACEs via /remove:d and re-applies owner grant", () => {
+      const execSpy = vi.spyOn(childProcess, "execFileSync");
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "alice";
+
+      execSpy.mockImplementation((cmd, args) => {
+        if (args && args.length === 1 && args[0] === "C:\\tokens.db") {
+          // If called before removals:
+          if (!execSpy.mock.calls.some((c) => c[1]?.[1] === "/remove:d")) {
+            return (
+              "C:\\tokens.db alice:(DENY)(R)\r\n" +
+              "             alice:(F)\r\n" +
+              "             BUILTIN\\Users:(RX)\r\n" +
+              "Successfully processed 1 files;\r\n"
+            );
+          }
+          // After removals:
+          return (
+            "C:\\tokens.db alice:(F)\r\n" +
+            "Successfully processed 1 files;\r\n"
+          );
+        }
+        return Buffer.from("");
+      });
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+
+        // Verify /remove was called for non-owner
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/remove", "BUILTIN\\Users"],
+          { stdio: "ignore" },
+        );
+
+        // Verify /remove:d was called for owner deny
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/remove:d", "alice"],
+          { stdio: "ignore" },
+        );
+
+        // Verify /grant:r was re-applied
+        expect(execSpy).toHaveBeenCalledWith(
+          "icacls.exe",
+          ["C:\\tokens.db", "/grant:r", "alice:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("throws and fails closed if owner deny ACEs cannot be removed on Windows", () => {
+      const execSpy = vi.spyOn(childProcess, "execFileSync");
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "alice";
+
+      execSpy.mockImplementation((cmd, args) => {
+        if (args && args.length === 1 && args[0] === "C:\\tokens.db") {
+          return (
+            "C:\\tokens.db alice:(DENY)(R)\r\n" +
+            "             alice:(F)\r\n" +
+            "Successfully processed 1 files;\r\n"
+          );
+        }
+        return Buffer.from("");
+      });
+
+      try {
+        expect(() => enforceWindowsOwnerOnlyAcl("C:\\tokens.db")).toThrow(
+          "Failed to remove owner deny ACEs for alice on C:\\tokens.db",
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("enforces owner-only ACL on Windows using SID when available", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalSid = process.env.USER_SID;
+      process.env.USERNAME = "alice";
+      process.env.USER_SID = "S-1-5-21-1001";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          ["C:\\tokens.db", "/inheritance:r", "/grant:r", "*S-1-5-21-1001:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        if (originalSid) process.env.USER_SID = originalSid;
+        else delete process.env.USER_SID;
+      }
+    });
+
+    it("enforces owner-only ACL on Windows using qualified principal DOMAIN\\user", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      const originalDomain = process.env.USERDOMAIN;
+      process.env.USERNAME = "alice";
+      process.env.USERDOMAIN = "CORP";
+
+      try {
+        enforceWindowsOwnerOnlyAcl("C:\\tokens.db");
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          ["C:\\tokens.db", "/inheritance:r", "/grant:r", "CORP\\alice:(F)"],
+          { stdio: "ignore" },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        if (originalDomain) process.env.USERDOMAIN = originalDomain;
+        else delete process.env.USERDOMAIN;
+      }
+    });
+
+    it("resolves Windows owner info via environment variables and whoami.exe", () => {
+      const originalUsername = process.env.USERNAME;
+      const originalDomain = process.env.USERDOMAIN;
+      const originalSid = process.env.USER_SID;
+      const originalMock = process.env.MOCK_WINDOWS_WHOAMI;
+
+      process.env.USERNAME = "alice";
+      process.env.USERDOMAIN = "CORPDOM";
+      delete process.env.USER_SID;
+      delete process.env.MOCK_WINDOWS_WHOAMI;
+
+      try {
+        const infoEnv = getWindowsCurrentOwnerInfo();
+        expect(infoEnv.username).toBe("alice");
+        expect(infoEnv.qualifiedName).toBe("CORPDOM\\alice");
+        expect(infoEnv.sid).toBeUndefined();
+
+        // Now test whoami resolution
+        const execSpy = vi
+          .spyOn(childProcess, "execFileSync")
+          .mockReturnValue(Buffer.from('"CORPDOM\\alice","S-1-5-21-9999"\r\n'));
+        process.env.MOCK_WINDOWS_WHOAMI = "true";
+
+        try {
+          const infoWhoami = getWindowsCurrentOwnerInfo();
+          expect(infoWhoami.username).toBe("alice");
+          expect(infoWhoami.qualifiedName).toBe("CORPDOM\\alice");
+          expect(infoWhoami.sid).toBe("S-1-5-21-9999");
+          expect(execSpy).toHaveBeenCalledWith(
+            "whoami.exe",
+            ["/user", "/fo", "csv", "/nh"],
+            expect.any(Object),
+          );
+        } finally {
+          execSpy.mockRestore();
+        }
+      } finally {
+        process.env.USERNAME = originalUsername;
+        if (originalDomain) process.env.USERDOMAIN = originalDomain;
+        else delete process.env.USERDOMAIN;
+        if (originalSid) process.env.USER_SID = originalSid;
+        else delete process.env.USER_SID;
+        if (originalMock) process.env.MOCK_WINDOWS_WHOAMI = originalMock;
+        else delete process.env.MOCK_WINDOWS_WHOAMI;
+      }
+    });
+
+    it("enforces inheritance container/object owner-only ACL on Windows for directories", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-win-dir-"),
+      );
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        enforceWindowsOwnerOnlyAcl(tmpDir);
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [tmpDir, "/inheritance:r", "/grant:r", "testwinuser:(OI)(CI)(F)"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          [tmpDir],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("throws if icacls.exe fails on Windows", () => {
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockImplementation(() => {
+          throw new Error("Access is denied");
+        });
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        expect(() =>
+          enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db"),
+        ).toThrow(
+          "Could not enforce owner-only ACL on Windows for C:\\token-storage\\tokens.db: Access is denied",
+        );
+      } finally {
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+      }
+    });
+
+    it("throws if Windows username cannot be determined", () => {
+      const originalUsername = process.env.USERNAME;
+      const originalUser = process.env.USER;
+      delete process.env.USERNAME;
+      delete process.env.USER;
+
+      try {
+        expect(() =>
+          enforceWindowsOwnerOnlyAcl("C:\\token-storage\\tokens.db"),
+        ).toThrow("Could not determine Windows username");
+      } finally {
+        process.env.USERNAME = originalUsername;
+        process.env.USER = originalUser;
+      }
+    });
+
+    it("enforceOwnerOnlyPermissions invokes enforceWindowsOwnerOnlyAcl when platform is win32", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-win-enforce-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      await fsPromises.writeFile(testDb, "dummy-sqlite");
+
+      const execSpy = vi
+        .spyOn(childProcess, "execFileSync")
+        .mockReturnValue(Buffer.from(""));
+      const originalPlatform = process.platform;
+      const originalUsername = process.env.USERNAME;
+      process.env.USERNAME = "testwinuser";
+
+      try {
+        Object.defineProperty(process, "platform", { value: "win32" });
+        enforceOwnerOnlyPermissions(testDb);
+        expect(execSpy).toHaveBeenNthCalledWith(
+          1,
+          "icacls.exe",
+          [testDb, "/inheritance:r", "/grant:r", "testwinuser:(F)"],
+          { stdio: "ignore" },
+        );
+        expect(execSpy).toHaveBeenNthCalledWith(
+          2,
+          "icacls.exe",
+          [testDb],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+        );
+      } finally {
+        Object.defineProperty(process, "platform", { value: originalPlatform });
+        execSpy.mockRestore();
+        process.env.USERNAME = originalUsername;
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("precreateAndHardenTokenStorage", () => {
+    it("pre-creates database and sidecars (-journal, -wal, -shm) with 0600 permissions", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-precreate-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      const journalFile = `${testDb}-journal`;
+      const walFile = `${testDb}-wal`;
+      const shmFile = `${testDb}-shm`;
+
+      try {
+        precreateAndHardenTokenStorage(testDb);
+
+        expect(existsSync(testDb)).toBe(true);
+        expect(existsSync(journalFile)).toBe(true);
+        expect(existsSync(walFile)).toBe(true);
+        expect(existsSync(shmFile)).toBe(true);
+
+        if (process.platform !== "win32") {
+          const dbStat = await fsPromises.stat(testDb);
+          const journalStat = await fsPromises.stat(journalFile);
+          const walStat = await fsPromises.stat(walFile);
+          const shmStat = await fsPromises.stat(shmFile);
+
+          expect(dbStat.mode & 0o777).toBe(0o600);
+          expect(journalStat.mode & 0o777).toBe(0o600);
+          expect(walStat.mode & 0o777).toBe(0o600);
+          expect(shmStat.mode & 0o777).toBe(0o600);
+        }
+      } finally {
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("pre-creates missing sidecars when database file already exists", async () => {
+      const fsPromises = await import("node:fs/promises");
+      const tmpDir = await fsPromises.mkdtemp(
+        path.join(process.cwd(), "test-precreate-exist-"),
+      );
+      const testDb = path.join(tmpDir, "tokens.db");
+      await fsPromises.writeFile(testDb, "existing-sqlite-data", { mode: 0o600 });
+
+      try {
+        precreateAndHardenTokenStorage(testDb);
+
+        expect(existsSync(`${testDb}-journal`)).toBe(true);
+        expect(existsSync(`${testDb}-wal`)).toBe(true);
+        expect(existsSync(`${testDb}-shm`)).toBe(true);
+      } finally {
+        await fsPromises.rm(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

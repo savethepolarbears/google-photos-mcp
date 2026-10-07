@@ -35,6 +35,7 @@ vi.mock("../../src/utils/logger.js", () => ({
 }));
 
 import { setupAuthRoutes } from "../../src/auth/routes.js";
+import { enforceOwnerOnlyPermissions } from "../../src/auth/tokens.js";
 
 describe("Security Tests", () => {
   let app: express.Express;
@@ -305,9 +306,7 @@ describe("Security Tests", () => {
   });
 
   describe("File Security (REAL tests replacing stubs)", () => {
-    it("token file permissions should be restrictive", async () => {
-      // Verify that the saveTokensSecure function sets 0o600 permissions
-      // by checking the module source for chmod/writeFile with mode
+    it("token file permissions should be restrictive (0600)", async () => {
       const fs = await import("fs/promises");
       const tmpDir = await fs.mkdtemp("/tmp/sec-test-");
       const tmpFile = path.join(tmpDir, "test-tokens.json");
@@ -321,6 +320,34 @@ describe("Security Tests", () => {
       expect(mode).toBe(0o600);
 
       // Cleanup
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("enforceOwnerOnlyPermissions restricts permissive SQLite database and sidecars to 0600", async () => {
+      const fs = await import("fs/promises");
+      const tmpDir = await fs.mkdtemp("/tmp/sec-perms-");
+      const dbFile = path.join(tmpDir, "tokens.db");
+      const walFile = path.join(tmpDir, "tokens.db-wal");
+      const shmFile = path.join(tmpDir, "tokens.db-shm");
+
+      // Create files with permissive permissions (0644)
+      await fs.writeFile(dbFile, "sqlite-db", { mode: 0o644 });
+      await fs.writeFile(walFile, "sqlite-wal", { mode: 0o644 });
+      await fs.writeFile(shmFile, "sqlite-shm", { mode: 0o644 });
+
+      // Enforce owner-only permissions
+      enforceOwnerOnlyPermissions(dbFile);
+
+      if (process.platform !== "win32") {
+        const dbStats = await fs.stat(dbFile);
+        const walStats = await fs.stat(walFile);
+        const shmStats = await fs.stat(shmFile);
+
+        expect(dbStats.mode & 0o777).toBe(0o600);
+        expect(walStats.mode & 0o777).toBe(0o600);
+        expect(shmStats.mode & 0o777).toBe(0o600);
+      }
+
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
   });

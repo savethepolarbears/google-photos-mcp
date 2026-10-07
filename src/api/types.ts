@@ -52,7 +52,15 @@ export interface PhotoItem {
       apertureFNumber?: number;
       isoEquivalent?: number;
     };
+    video?: {
+      cameraMake?: string;
+      cameraModel?: string;
+      fps?: number;
+      status?: "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED" | string;
+    };
   };
+  /** Processing status for videos in Google Photos Picker API (UNSPECIFIED, PROCESSING, READY, FAILED) */
+  processingStatus?: "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED" | string;
   /** Location data (enriched from descriptions or EXIF) */
   locationData?: {
     latitude?: number;
@@ -139,4 +147,23 @@ export interface SearchParams {
   orderBy?: string;
   /** Whether to include archived media items (requestBody root-level per Google API spec) */
   includeArchivedMedia?: boolean;
+}
+
+/**
+ * Represents a session in the Google Photos Picker API
+ */
+export interface PickerSession {
+  /** Unique session identifier */
+  id: string;
+  /** Secure URI for user to select photos */
+  pickerUri: string;
+  /** Whether the user has completed selection */
+  mediaItemsSet?: boolean;
+  /** Polling interval and timeout suggestions from Google */
+  pollingConfig?: {
+    pollInterval?: string;
+    timeoutIn?: string;
+  };
+  /** Timestamp when the session expires */
+  expireTime?: string;
 }

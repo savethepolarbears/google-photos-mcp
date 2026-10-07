@@ -4,6 +4,9 @@
     "src/api/__tests__/**"
   ],
   "ignoreDependencies": [],
+  "ignoreBinaries": [
+    "icacls.exe"
+  ],
   "entry": [
     "src/dxt-server.ts",
     "test/**/*.test.ts",

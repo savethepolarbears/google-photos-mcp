@@ -97,7 +97,7 @@ describe("GooglePhotosMCPCore", () => {
   });
 
   describe("handleListTools", () => {
-    it("returns all 8 tool definitions", async () => {
+    it("returns all 21 tool definitions", async () => {
       // Access the protected method via the server's handler
       // We invoke it through the class's internal method
       const result = await (
@@ -106,7 +106,7 @@ describe("GooglePhotosMCPCore", () => {
         }
       ).handleListTools();
 
-      expect(result.tools).toHaveLength(19);
+      expect(result.tools).toHaveLength(21);
       const toolNames = result.tools.map(
         (t: unknown) => (t as { name: string }).name,
       );
@@ -117,6 +117,10 @@ describe("GooglePhotosMCPCore", () => {
       expect(toolNames).toContain("list_albums");
       expect(toolNames).toContain("get_album");
       expect(toolNames).toContain("list_album_photos");
+      expect(toolNames).toContain("create_picker_session");
+      expect(toolNames).toContain("poll_picker_session");
+      expect(toolNames).toContain("download_picker_media");
+      expect(toolNames).toContain("delete_picker_session");
     });
 
     it("each tool has name, description, and inputSchema", async () => {
@@ -405,6 +409,7 @@ describe("GooglePhotosMCPCore", () => {
         filename: "test.jpg",
         description: "A test photo",
         baseUrl: "https://example.com/test",
+        mimeType: "image/jpeg",
         productUrl: "https://photos.google.com/p1",
         mediaMetadata: {
           creationTime: "2024-01-01",
@@ -421,6 +426,8 @@ describe("GooglePhotosMCPCore", () => {
             description: string;
             dateCreated: string;
             url: string;
+            baseUrl: string;
+            mimeType?: string;
             webUrl: string;
             width: string;
             height: string;
@@ -433,6 +440,9 @@ describe("GooglePhotosMCPCore", () => {
       expect(result.filename).toBe("test.jpg");
       expect(result.description).toBe("A test photo");
       expect(result.dateCreated).toBe("2024-01-01");
+      expect(result.url).toBe("https://example.com/test");
+      expect(result.baseUrl).toBe("https://example.com/test");
+      expect(result.mimeType).toBe("image/jpeg");
       expect(result.width).toBe("1000");
     });
 

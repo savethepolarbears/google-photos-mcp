@@ -27,10 +27,12 @@ credentials.json
 tokens.db
 tokens.db-shm
 tokens.db-wal
+tokens.db-journal
 
 # keyv SQLite adapter files (generic guard)
 *.db-shm
 *.db-wal
+*.db-journal
 
 # Logs
 logs/

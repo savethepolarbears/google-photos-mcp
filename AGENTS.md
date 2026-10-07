@@ -23,6 +23,7 @@ npm start             # Run compiled HTTP server
 npm run stdio         # Run compiled STDIO server
 npx tsc --noEmit      # Type-check without emitting (MUST PASS)
 npm run lint          # ESLint check (MUST PASS)
+npm run lint:md       # Markdown lint check (MUST PASS)
 npm test              # Run all tests via Vitest (MUST PASS)
 npm run test:watch    # Interactive TDD mode
 npm run test:coverage # Coverage report
@@ -40,10 +41,17 @@ npm run test:security # Security tests only
 1. **Transport Layers**: The server supports both STDIO (for Claude Desktop) and Streamable HTTP (for Cursor and other clients).
 2. **Entry Points**: `src/index.ts` (HTTP) and `src/dxt-server.ts` (STDIO/DXT).
    - **Crucial Rule**: Entry points call `super.registerHandlers()` and **must not override** `ListResourcesRequestSchema` or `ListPromptsRequestSchema`.
-3. **Tool Handlers**: All tool logic is centralized in `src/mcp/core.ts`. Tool arguments are strictly validated using Zod schemas (`src/schemas/toolSchemas.js`).
+3. **Tool Handlers**: All tool logic is centralized in `src/mcp/core.ts`. Tool arguments are strictly validated using Zod schemas (`src/schemas/toolSchemas.ts`).
 4. **API Integration**:
    - Low-level Google Photos API calls are in `src/api/repositories/`.
-   - The Picker API (`create_picker_session` / `poll_picker_session`) uses a separate OAuth scope (`photospicker.mediaitems.readonly`) and REST endpoints.
+   - The Picker API (`create_picker_session`, `poll_picker_session`, `download_picker_media`, `delete_picker_session`) uses a separate OAuth scope (`photospicker.mediaitems.readonly`) and REST endpoints.
+   - **`download_picker_media` Rules**:
+     - **Dimension Limits**: `width` and `height` must be positive integers constrained to the range 1–16,383 per Google Photos Picker base-URL specifications.
+     - **Video Transcoding & Processing Status**: Google Photos base URLs exclusively return high-quality transcoded MP4 streams (`=dv`). Unmodified original video files are not exposed via base URLs; downloads for video return `isTranscoded: true`. Video bytes can only be requested once video `processingStatus` is explicitly `READY`.
+     - **Storage & In-Memory Safety**: In-memory base64 responses are strictly capped at 10MB to prevent heap exhaustion; binary payloads exceeding ~7.5MB raw (which expand to >10MB in base64) are rejected with guidance to use `savePath` (`savePath` streams directly to disk with O(1) memory). When `includeBase64: false` is supplied, `savePath` is required. The Axios response stream is destroyed immediately if destination file preparation or streaming fails to prevent socket leaks.
+     - **Origin Security**: Target base URLs are restricted to HTTPS on official Google Photos media domains (`*.googleusercontent.com`, `*.photos.google.com`, `photoslibrary.googleapis.com`) to eliminate SSRF and token exfiltration risks.
+     - **Session & ID Resolution**: `poll_picker_session` preserves and returns `baseUrl`, `mimeType`, and `processingStatus` so clients can pass them directly to `download_picker_media`. When querying a session by `mediaItemId`, matching requires exact equality (`p.id === searchId`). When `baseUrl` is supplied with `sessionId`, the server verifies the item exists in the session before downloading; if both `baseUrl` and `mediaItemId` are provided, both must identify the same item. If unmatched, it throws an error rather than silently defaulting to an image.
+   - **Token Permissions**: Restrictive owner-only permissions (`0600` on Unix, explicit owner-only ACLs via `icacls.exe` on Windows) are strictly enforced on `tokens.db` and sidecars (`-wal`, `-shm`, `-journal`), with `0700` (or container-inherit user ACL on Windows) on newly created token storage directories. Token store writes are serialized through an internal mutex queue to ensure atomic sidecar precreation, write, and permission enforcement without concurrency races.
    - **`uploadMedia` Rule**: It receives `albumId` directly—items are added to the album at creation time. No separate `batchAddMediaItemsToAlbum` call needed in `create_album_with_media`.
    - **Filter Rule**: `includeArchivedMedia` is a root-level filter boolean, not a feature filter entry. The API rejects `INCLUDE_ARCHIVED` in `featureFilter`.
 5. **Security**: CORS middleware has been removed for security (to prevent drive-by attacks on localhost). The local Express server uses an `allowedHosts` array for DNS rebinding protection (`127.0.0.1` and `[::1]`). Do not add CORS back.
@@ -55,7 +63,7 @@ npm run test:security # Security tests only
 - **Language**: TypeScript 6.0+ (Strict Mode)
 - **Runtime**: Node.js 22.22+
 - **Package Manager**: npm 11.11+
-- **Frameworks/Libs**: Express 5.0+, @modelcontextprotocol/sdk 1.29+, Zod 4.4+, Vitest 4.1+
+- **Frameworks/Libs**: Express 5.0+, @modelcontextprotocol/sdk 1.32+, Zod 4.6+, Vitest 4.1+
 - **Module System**: ESM (`"type": "module"` in package.json)
 
 ---
@@ -69,7 +77,7 @@ npm run test:security # Security tests only
 | `src/mcp/core.ts` | All MCP tool definitions, handlers, prompts, and resources |
 | `src/api/` | Google Photos API clients, facades, and search logic |
 | `src/api/repositories/` | Low-level API REST calls (Library API + Picker API) |
-| `src/auth/` | OAuth flows, local token storage (keychain), and refresh management |
+| `src/auth/` | OAuth flows, local SQLite token storage, and refresh management |
 | `src/schemas/` | Zod schemas for all tool argument validation |
 | `src/utils/` | Config, quota tracking, logging, retry logic |
 | `src/views/` | HTML templates for OAuth success/failure |
@@ -104,7 +112,7 @@ npm run test:security # Security tests only
 
 ## 🧪 PR & Review Expectations
 
-1. **Validation Checks**: `npm run lint`, `npx tsc --noEmit`, and `npm test` **MUST** all pass.
+1. **Validation Checks**: `npm run lint`, `npm run lint:md`, `npx tsc --noEmit`, and `npm test` **MUST** all pass.
 2. **Test Coverage**:
    - New features require: Zod validation tests, error handling tests, and integration tests.
    - Touching sensitive operations (auth, files, tokens) requires updating/adding tests in `test/security/`.

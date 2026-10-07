@@ -12,19 +12,24 @@ import {
 } from "./types.js";
 
 /**
+ * Shared HTTPS Agent with keep-alive to reuse TCP/TLS connections
+ * across Google Photos Library API and Picker API requests.
+ */
+export const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000, // Send keep-alive packets every 30s
+  maxSockets: 50, // Max concurrent connections per host
+  maxFreeSockets: 10, // Max idle connections to keep open
+  timeout: 60000, // Socket idle timeout (60s)
+});
+
+/**
  * Axios instance configured for Google Photos API
  */
 const photosApi = axios.create({
   baseURL: "https://photoslibrary.googleapis.com/v1",
   timeout: 15000,
-  // Optimization: Enable keep-alive to reuse TCP connections for better performance
-  httpsAgent: new https.Agent({
-    keepAlive: true,
-    keepAliveMsecs: 30000, // Send keep-alive packets every 30s
-    maxSockets: 50, // Max concurrent connections per host
-    maxFreeSockets: 10, // Max idle connections to keep open
-    timeout: 60000, // Socket idle timeout (60s)
-  }),
+  httpsAgent,
 });
 
 /**
@@ -33,9 +38,14 @@ const photosApi = axios.create({
  *
  * @param error - The original error object.
  * @param context - A string describing what operation failed (e.g., 'search photos').
+ * @param retryable - Whether repeating this operation is safe.
  * @returns A standardized Error object.
  */
-export function toError(error: unknown, context: string): Error {
+export function toError(
+  error: unknown,
+  context: string,
+  retryable = false,
+): Error {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ error?: { message?: string } }>;
     const status = axiosError.response?.status;
@@ -44,18 +54,36 @@ export function toError(error: unknown, context: string): Error {
       axiosError.response?.statusText ||
       axiosError.message;
 
+    let err: Error;
     // Check for 2025 API scope deprecation errors
     if (status === 403 && message?.includes("PERMISSION_DENIED")) {
-      return new Error(
+      err = new Error(
         `Google Photos API ${context} failed (${status}): ${message}. ` +
           "NOTE: As of March 31, 2025, Google Photos API access is limited to app-created content only. " +
           "For full photo library access, please use the Google Photos Picker API.",
       );
+    } else if (status === 401) {
+      err = new Error(
+        `Google Photos API ${context} failed (401): Unauthorized (${message}). ` +
+          "Authentication token may have expired or is invalid. Use the start_auth tool or visit /auth to re-authenticate.",
+      );
+    } else {
+      err = new Error(
+        `Google Photos API ${context} failed${status ? ` (${status})` : ""}: ${message}`,
+      );
     }
 
-    return new Error(
-      `Google Photos API ${context} failed${status ? ` (${status})` : ""}: ${message}`,
-    );
+    if (retryable) {
+      Object.assign(err, {
+        isAxiosError: true,
+        response: axiosError.response,
+        status: axiosError.response?.status,
+        code: axiosError.code,
+        config: axiosError.config,
+      });
+    }
+
+    return err;
   }
 
   if (error instanceof Error) {
@@ -111,7 +139,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "albums.list");
+          throw toError(error, "albums.list", true);
         }
       },
       get: async (params: { albumId: string }) => {
@@ -125,7 +153,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "albums.get");
+          throw toError(error, "albums.get", true);
         }
       },
       create: async (params: { title: string }) => {
@@ -244,7 +272,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.search");
+          throw toError(error, "mediaItems.search", true);
         }
       },
       get: async (params: { mediaItemId: string }) => {
@@ -258,7 +286,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.get");
+          throw toError(error, "mediaItems.get", true);
         }
       },
       list: async (params: { pageSize?: number; pageToken?: string }) => {
@@ -273,7 +301,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.list");
+          throw toError(error, "mediaItems.list", true);
         }
       },
     },
@@ -296,6 +324,7 @@ export function getPhotoClient(auth: OAuth2Client) {
 const pickerApi = axios.create({
   baseURL: "https://photospicker.googleapis.com/v1",
   timeout: 15000,
+  httpsAgent,
 });
 
 /**
@@ -308,10 +337,17 @@ const pickerApi = axios.create({
 export function getPickerClient(auth: OAuth2Client) {
   return {
     sessions: {
-      create: async () => {
+      create: async (options?: { maxItemCount?: number }) => {
         try {
           const headers = await getAuthorizedHeaders(auth);
-          const response = await pickerApi.post("/sessions", {}, { headers });
+          const body = options?.maxItemCount
+            ? {
+                pickingConfig: {
+                  maxItemCount: options.maxItemCount.toString(),
+                },
+              }
+            : {};
+          const response = await pickerApi.post("/sessions", body, { headers });
           return { data: response.data };
         } catch (error) {
           throw toError(error, "picker.sessions.create");
@@ -325,7 +361,18 @@ export function getPickerClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "picker.sessions.get");
+          throw toError(error, "picker.sessions.get", true);
+        }
+      },
+      delete: async (sessionId: string) => {
+        try {
+          const headers = await getAuthorizedHeaders(auth);
+          const response = await pickerApi.delete(`/sessions/${sessionId}`, {
+            headers,
+          });
+          return { data: response.data };
+        } catch (error) {
+          throw toError(error, "picker.sessions.delete", true);
         }
       },
       listMediaItems: async (
@@ -340,7 +387,7 @@ export function getPickerClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "picker.sessions.listMediaItems");
+          throw toError(error, "picker.sessions.listMediaItems", true);
         }
       },
     },

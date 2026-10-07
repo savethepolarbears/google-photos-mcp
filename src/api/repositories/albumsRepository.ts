@@ -2,7 +2,7 @@ import { OAuth2Client } from "google-auth-library";
 import { Album } from "../types.js";
 import { getPhotoClient } from "../client.js";
 import { toError } from "../client.js";
-import { withRetry } from "../../utils/retry.js";
+import { withQuotaRetry } from "../../utils/quotaRetry.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -27,7 +27,7 @@ export async function listAlbums(
     const photosClient = getPhotoClient(oauth2Client);
 
     // Apply retry logic per Google Photos API best practices
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.albums.list({
           pageSize,
@@ -44,7 +44,7 @@ export async function listAlbums(
   } catch (error) {
     const message = toError(error, "list albums").message;
     logger.error(`Failed to list albums: ${message}`);
-    throw new Error("Failed to list albums", { cause: error });
+    throw new Error(`Failed to list albums: ${message}`, { cause: error });
   }
 }
 
@@ -64,7 +64,7 @@ export async function getAlbum(
     const photosClient = getPhotoClient(oauth2Client);
 
     // Apply retry logic per Google Photos API best practices
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.albums.get({
           albumId,
@@ -81,7 +81,7 @@ export async function getAlbum(
   } catch (error) {
     const message = toError(error, "get album").message;
     logger.error(`Failed to get album: ${message}`);
-    throw new Error("Failed to get album", { cause: error });
+    throw new Error(`Failed to get album: ${message}`, { cause: error });
   }
 }
 
@@ -100,7 +100,7 @@ export async function createAlbum(
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () => await photosClient.albums.create({ title }),
       { maxRetries: 3, initialDelayMs: 1000 },
       "create album",
@@ -110,7 +110,7 @@ export async function createAlbum(
   } catch (error) {
     const message = toError(error, "create album").message;
     logger.error(`Failed to create album: ${message}`);
-    throw new Error("Failed to create album", { cause: error });
+    throw new Error(`Failed to create album: ${message}`, { cause: error });
   }
 }
 
@@ -158,7 +158,7 @@ export async function addEnrichment(
             },
           };
 
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.albums.addEnrichment({
           albumId,
@@ -173,7 +173,7 @@ export async function addEnrichment(
   } catch (error) {
     const message = toError(error, "add enrichment").message;
     logger.error(`Failed to add enrichment: ${message}`);
-    throw new Error("Failed to add enrichment", { cause: error });
+    throw new Error(`Failed to add enrichment: ${message}`, { cause: error });
   }
 }
 
@@ -201,7 +201,7 @@ export async function patchAlbum(
 
     const updateMask = Object.keys(patch).join(",");
 
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.albums.patch({
           albumId,
@@ -216,7 +216,7 @@ export async function patchAlbum(
   } catch (error) {
     const message = toError(error, "patch album").message;
     logger.error(`Failed to patch album: ${message}`);
-    throw new Error("Failed to patch album", { cause: error });
+    throw new Error(`Failed to patch album: ${message}`, { cause: error });
   }
 }
 
@@ -236,7 +236,7 @@ export async function batchAddMediaItemsToAlbum(
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
-    await withRetry(
+    await withQuotaRetry(
       async () =>
         await photosClient.albums.batchAddMediaItems({ albumId, mediaItemIds }),
       { maxRetries: 3, initialDelayMs: 1000 },
@@ -245,6 +245,8 @@ export async function batchAddMediaItemsToAlbum(
   } catch (error) {
     const message = toError(error, "batch add media items to album").message;
     logger.error(`Failed to add media items to album: ${message}`);
-    throw new Error("Failed to add media items to album", { cause: error });
+    throw new Error(`Failed to add media items to album: ${message}`, {
+      cause: error,
+    });
   }
 }

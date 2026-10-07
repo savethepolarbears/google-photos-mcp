@@ -213,6 +213,13 @@ export const createAlbumWithMediaSchema = z.object({
 export const describeFilterCapabilitiesSchema = z.object({}).optional();
 
 /**
+ * Schema for create_picker_session tool arguments
+ */
+export const createPickerSessionSchema = z.object({
+  maxItemCount: z.number().int().min(1).max(2000).optional(),
+});
+
+/**
  * Schema for poll_picker_session tool arguments
  */
 export const pollPickerSessionSchema = z.object({
@@ -220,3 +227,92 @@ export const pollPickerSessionSchema = z.object({
   pageSize: z.number().int().min(1).max(100).optional(),
   pageToken: z.string().optional(),
 });
+
+/**
+ * Schema for delete_picker_session tool arguments
+ */
+export const deletePickerSessionSchema = z.object({
+  sessionId: z.string().min(1, "Session ID is required"),
+});
+
+/**
+ * Schema for download_picker_media tool arguments
+ */
+export const downloadPickerMediaSchema = z
+  .object({
+    baseUrl: z
+      .string()
+      .min(1, "baseUrl cannot be empty")
+      .refine(
+        (val) => {
+          try {
+            const u = new URL(val);
+            if (
+              u.protocol !== "https:" ||
+              u.port !== "" ||
+              u.username !== "" ||
+              u.password !== ""
+            ) {
+              return false;
+            }
+            const host = u.hostname.toLowerCase();
+            return (
+              host === "photoslibrary.googleapis.com" ||
+              host === "googleusercontent.com" ||
+              host.endsWith(".googleusercontent.com") ||
+              host === "photos.google.com" ||
+              host.endsWith(".photos.google.com")
+            );
+          } catch {
+            return false;
+          }
+        },
+        {
+          message:
+            "baseUrl must be an HTTPS URL on an official Google Photos media domain (*.googleusercontent.com, *.photos.google.com, photoslibrary.googleapis.com)",
+        },
+      )
+      .optional(),
+    sessionId: z.string().min(1, "sessionId cannot be empty").optional(),
+    mediaItemId: z.string().min(1, "mediaItemId cannot be empty").optional(),
+    mimeType: z.string().min(1, "mimeType cannot be empty").optional(),
+    processingStatus: z.string().optional(),
+    downloadOriginal: z.boolean().optional(),
+    width: z
+      .number()
+      .int("width must be an integer")
+      .positive("width must be positive")
+      .max(16383, "width cannot exceed 16383")
+      .optional(),
+    height: z
+      .number()
+      .int("height must be an integer")
+      .positive("height must be positive")
+      .max(16383, "height cannot exceed 16383")
+      .optional(),
+    isVideo: z.boolean().optional(),
+    savePath: z.string().min(1).optional(),
+    includeBase64: z.boolean().optional(),
+  })
+  .refine(
+    (data) => Boolean(data.baseUrl || (data.sessionId && data.mediaItemId)),
+    {
+      message:
+        "Either baseUrl or both sessionId and mediaItemId must be provided",
+    },
+  )
+  .refine(
+    (data) => {
+      if (data.baseUrl && !data.sessionId) {
+        return data.isVideo !== undefined || Boolean(data.mimeType);
+      }
+      return true;
+    },
+    {
+      message:
+        "When supplying baseUrl without sessionId, either isVideo or mimeType must be specified to infer correct download parameters (=d or =dv)",
+    },
+  )
+  .refine((data) => !(data.includeBase64 === false && !data.savePath), {
+    message: "savePath must be provided when includeBase64 is false",
+  });

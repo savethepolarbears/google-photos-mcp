@@ -28,30 +28,30 @@
   "license": "MIT",
   "dependencies": {
     "@keyv/sqlite": "^4.0.8",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "axios": "^1.18.1",
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "axios": "^1.20.0",
     "dotenv": "^17.4.2",
     "express": "^5.0.1",
-    "google-auth-library": "^10.9.0",
+    "google-auth-library": "^10.9.1",
     "googleapis": "^173.0.0",
     "keyv": "^5.6.0",
     "winston": "^3.17.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/express": "^5.0.6",
-    "@types/node": "^26.1.0",
-    "@types/supertest": "7.2.0",
-    "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^10.6.0",
-    "markdownlint-cli2": "^0.23.0",
-    "prettier": "^3.9.4",
-    "supertest": "^7.0.0",
+    "@types/node": "^26.6.4",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "eslint": "^10.12.0",
+    "markdownlint-cli2": "^0.23.3",
+    "prettier": "^3.9.9",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.63.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "^8.71.0",
+    "vitest": "^4.1.11"
   },
   "overrides": {
     "google-auth-library": "$google-auth-library",
@@ -61,16 +61,16 @@
       }
     },
     "node-gyp": "^10.3.1",
-    "tar": "^7.5.19",
+    "tar": "^7.5.22",
     "@tootallnate/once": "^2.0.0",
-    "hono": "^4.12.25",
-    "fast-uri": "^3.1.2",
+    "hono": "^4.13.13",
+    "fast-uri": "^3.1.8",
     "form-data": "^4.0.6",
-    "ip-address": "^10.1.1",
-    "js-yaml": "^4.1.2",
+    "ip-address": "^10.7.3",
+    "js-yaml": "^4.3.2",
     "linkify-it": "^5.0.1",
-    "markdown-it": "^14.1.2",
-    "qs": "^6.15.2"
+    "markdown-it": "^14.3.2",
+    "qs": "^6.16.0"
   },
   "optionalDependencies": {
     "@rollup/rollup-darwin-x64": "^4.59.0"

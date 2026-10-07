@@ -31,6 +31,17 @@ describe("toError", () => {
     expect(result.message).toContain("Picker API");
   });
 
+  it("wraps Axios 401 Unauthorized with re-authentication advice", () => {
+    const axiosErr = createMockAxiosError(401, "Unauthorized", {
+      error: { message: "Request had invalid authentication credentials" },
+    });
+    const result = toError(axiosErr, "list media items");
+
+    expect(result.message).toContain("401");
+    expect(result.message).toContain("Unauthorized");
+    expect(result.message).toContain("start_auth");
+  });
+
   it("wraps Axios 404 error without scope deprecation notice", () => {
     const axiosErr = createMockAxiosError(404, "Not Found");
     const result = toError(axiosErr, "get photo");
@@ -78,5 +89,25 @@ describe("toError", () => {
     const result = toError(axiosErr, "search");
 
     expect(result.message).toContain("Invalid filter format");
+  });
+
+  it("preserves retry metadata only when the operation is safe to retry", () => {
+    const axiosErr = createMockAxiosError(503, "Service Unavailable");
+    const unsafeResult = toError(axiosErr, "albums.create") as Error & {
+      isAxiosError?: boolean;
+      status?: number;
+      response?: unknown;
+    };
+    const safeResult = toError(axiosErr, "albums.list", true) as Error & {
+      isAxiosError?: boolean;
+      status?: number;
+      response?: unknown;
+    };
+
+    expect(unsafeResult.isAxiosError).toBeUndefined();
+    expect(safeResult.isAxiosError).toBe(true);
+    expect(safeResult.status).toBe(503);
+    expect(safeResult.response).toBeDefined();
+    expect(safeResult.message).toContain("503");
   });
 });

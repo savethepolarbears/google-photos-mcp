@@ -26,7 +26,9 @@ vi.mock("../../src/api/photos.js", () => ({
   listMediaItems: vi.fn(),
   createPickerSession: vi.fn(),
   getPickerSession: vi.fn(),
+  deletePickerSession: vi.fn(),
   listPickerSessionMediaItems: vi.fn(),
+  downloadPickerMedia: vi.fn(),
 }));
 
 vi.mock("../../src/utils/quotaManager.js", () => ({
@@ -42,9 +44,45 @@ vi.mock("../../src/utils/logger.js", () => ({
  * This avoids TS2445 "protected member" errors while keeping tests type-safe.
  */
 
-type TestableCore = {
-  [K in keyof GooglePhotosMCPCore]: GooglePhotosMCPCore[K];
-} & Record<string, unknown>;
+type TestableCore = GooglePhotosMCPCore & {
+  handleListResources: () => Promise<{
+    resources: Array<{
+      uri: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+    }>;
+    resourceTemplates?: Array<{
+      uriTemplate: string;
+      name: string;
+      description?: string;
+      mimeType?: string;
+    }>;
+  }>;
+  handleReadResource: (request: { params: { uri: string } }) => Promise<{
+    contents: Array<{ uri: string; mimeType?: string; text?: string }>;
+  }>;
+  handleListTools: () => Promise<{
+    tools: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+  }>;
+  handleCallTool: (request: ReturnType<typeof callToolReq>) => Promise<{
+    content: Array<{ type: string; text: string }>;
+    isError?: boolean;
+  }>;
+  handleListPrompts: () => Promise<{
+    prompts: Array<{
+      name: string;
+      description?: string;
+      arguments?: unknown[];
+    }>;
+  }>;
+  handleGetPrompt: (request: {
+    params: { name: string; arguments?: Record<string, string> };
+  }) => Promise<{
+    description?: string;
+    messages: Array<{ role: string; content: { type: string; text: string } }>;
+  }>;
+};
 
 /** Helper to build a CallToolRequest-shaped object with required `method` field. */
 function callToolReq(name: string, args: Record<string, unknown> = {}) {
@@ -154,6 +192,8 @@ describe("GooglePhotosMCPCore", () => {
       expect(names).toContain("start_auth");
       expect(names).toContain("create_picker_session");
       expect(names).toContain("poll_picker_session");
+      expect(names).toContain("download_picker_media");
+      expect(names).toContain("delete_picker_session");
       // Deprecated sharing tools should NOT be present
       expect(names).not.toContain("share_album");
       expect(names).not.toContain("unshare_album");
@@ -346,6 +386,7 @@ describe("GooglePhotosMCPCore", () => {
             id: "p1",
             filename: "photo.jpg",
             baseUrl: "https://url",
+            mimeType: "image/jpeg",
             productUrl: "https://url",
           },
         ],
@@ -360,6 +401,45 @@ describe("GooglePhotosMCPCore", () => {
       expect(parsed.mediaItemsSet).toBe(true);
       expect(parsed.count).toBe(1);
       expect(parsed.photos).toHaveLength(1);
+      expect(parsed.photos[0].baseUrl).toBe("https://url");
+      expect(parsed.photos[0].url).toBe("https://url");
+      expect(parsed.photos[0].mimeType).toBe("image/jpeg");
+    });
+
+    it("dispatches delete_picker_session and returns success response", async () => {
+      const { deletePickerSession } = await import("../../src/api/photos.js");
+      vi.mocked(deletePickerSession).mockResolvedValue(undefined as never);
+
+      const result = await instance.handleCallTool(
+        callToolReq("delete_picker_session", { sessionId: "sess-1" }),
+      );
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.sessionId).toBe("sess-1");
+      expect(parsed.message).toContain("deleted successfully");
+    });
+
+    it("dispatches download_picker_media and returns downloaded media result", async () => {
+      const { downloadPickerMedia } = await import("../../src/api/photos.js");
+      vi.mocked(downloadPickerMedia).mockResolvedValue({
+        success: true,
+        filename: "test.jpg",
+        mimeType: "image/jpeg",
+        size: 1024,
+        base64Data: "aGVsbG8=",
+      } as never);
+
+      const result = await instance.handleCallTool(
+        callToolReq("download_picker_media", {
+          baseUrl: "https://photos.google.com/sample",
+          isVideo: false,
+        }),
+      );
+      expect(result.content).toBeDefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.success).toBe(true);
+      expect(parsed.base64Data).toBe("aGVsbG8=");
     });
   });
 

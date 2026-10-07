@@ -48,7 +48,9 @@ export {
   uploadMedia,
   createPickerSession,
   getPickerSession,
+  deletePickerSession,
   listPickerSessionMediaItems,
+  downloadPickerMedia,
 } from "./repositories/photosRepository.js";
 
 // Service exports (High-level)

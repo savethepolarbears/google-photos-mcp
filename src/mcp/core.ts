@@ -33,7 +33,9 @@ import {
   patchAlbum,
   createPickerSession,
   getPickerSession,
+  deletePickerSession,
   listPickerSessionMediaItems,
+  downloadPickerMedia,
 } from "../api/photos.js";
 import { searchPhotos } from "../api/repositories/photosRepository.js";
 import type { SearchFilter } from "../api/types.js";
@@ -54,9 +56,11 @@ import {
   setCoverPhotoSchema,
   createAlbumWithMediaSchema,
   contentCategoryEnum,
+  createPickerSessionSchema,
   pollPickerSessionSchema,
+  deletePickerSessionSchema,
+  downloadPickerMediaSchema,
 } from "../schemas/toolSchemas.js";
-import { quotaManager } from "../utils/quotaManager.js";
 
 /**
  * Formatted photo interfaces for MCP responses
@@ -78,6 +82,9 @@ interface FormattedPhoto {
   description: string;
   dateCreated: string;
   url: string;
+  baseUrl: string;
+  mimeType?: string;
+  processingStatus?: string;
   webUrl: string;
   width: string;
   height: string;
@@ -152,7 +159,8 @@ export class GooglePhotosMCPCore {
         {
           uri: "google-photos://albums",
           name: "Google Photos Albums",
-          description: "List of all Google Photos albums",
+          description:
+            "List of app-created Google Photos albums (photoslibrary.readonly.appcreateddata scope)",
           mimeType: "application/json",
         },
       ],
@@ -160,7 +168,8 @@ export class GooglePhotosMCPCore {
         {
           uriTemplate: "google-photos://albums/{albumId}",
           name: "Google Photos Album",
-          description: "A specific Google Photos album by ID",
+          description:
+            "Metadata for a specific app-created Google Photos album by ID",
           mimeType: "application/json",
         },
         {
@@ -182,9 +191,7 @@ export class GooglePhotosMCPCore {
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     if (uri === "google-photos://albums") {
-      quotaManager.checkQuota(false);
       const data = await listAlbums(oauth2Client);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -198,9 +205,7 @@ export class GooglePhotosMCPCore {
 
     const albumMatch = uri.match(/^google-photos:\/\/albums\/(.+)$/);
     if (albumMatch) {
-      quotaManager.checkQuota(false);
       const album = await getAlbum(oauth2Client, albumMatch[1]);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -214,9 +219,7 @@ export class GooglePhotosMCPCore {
 
     const mediaMatch = uri.match(/^google-photos:\/\/media\/(.+)$/);
     if (mediaMatch) {
-      quotaManager.checkQuota(false);
       const mediaItem = await getPhoto(oauth2Client, mediaMatch[1], false);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -453,7 +456,7 @@ export class GooglePhotosMCPCore {
         {
           name: "list_media_items",
           description:
-            "List all media items in the library (not filtered by album)",
+            "List app-created media items from Google Photos library (not filtered by album). Note: limited to media created by this app under photoslibrary.readonly.appcreateddata scope; use create_picker_session for full-library access.",
           inputSchema: {
             type: "object",
             properties: {
@@ -633,13 +636,19 @@ export class GooglePhotosMCPCore {
             "Create a Google Photos Picker session. Returns a pickerUri the user must open in their browser to select photos from their FULL library (not just app-created data). After the user selects photos, use poll_picker_session to retrieve them.",
           inputSchema: {
             type: "object",
-            properties: {},
+            properties: {
+              maxItemCount: {
+                type: "number",
+                description:
+                  "Optional maximum number of media items the user can pick (1-2000, default 2000)",
+              },
+            },
           },
         },
         {
           name: "poll_picker_session",
           description:
-            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items. Call repeatedly until mediaItemsSet is true.",
+            "Poll a Picker session to check if the user has finished selecting photos. If selection is complete (mediaItemsSet=true), returns the selected media items (including baseUrl, mimeType, and video processingStatus for use in download_picker_media). Call repeatedly until mediaItemsSet is true.",
           inputSchema: {
             type: "object",
             properties: {
@@ -655,6 +664,87 @@ export class GooglePhotosMCPCore {
               pageToken: {
                 type: "string",
                 description: "Token for pagination",
+              },
+            },
+            required: ["sessionId"],
+          },
+        },
+        {
+          name: "download_picker_media",
+          description:
+            "Download photo or video media bytes from a Google Photos Picker session using authenticated OAuth requests. Pass either the item's baseUrl or both sessionId and mediaItemId (if both baseUrl and mediaItemId are supplied with sessionId, they must identify the same item). Returns base64 data and/or writes bytes directly to savePath. Note: Original full-resolution files are downloaded for images (=d); videos are provided as high-quality transcoded MP4 streams (=dv) and require video processingStatus to be explicitly READY before downloading.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              baseUrl: {
+                type: "string",
+                description:
+                  "The baseUrl of the picked media item (returned by poll_picker_session)",
+              },
+              sessionId: {
+                type: "string",
+                description:
+                  "The Picker session ID (required if using mediaItemId instead of baseUrl)",
+              },
+              mediaItemId: {
+                type: "string",
+                description:
+                  "The media item ID within the Picker session (required if using sessionId instead of baseUrl)",
+              },
+              mimeType: {
+                type: "string",
+                description:
+                  "Optional MIME type (e.g. 'video/mp4' or 'image/jpeg') returned by poll_picker_session, used to infer download parameters when baseUrl is provided without sessionId",
+              },
+              processingStatus: {
+                type: "string",
+                description:
+                  "Optional video processing status (e.g. 'READY', 'PROCESSING', 'FAILED') returned by poll_picker_session. Google Photos requires video processingStatus to be explicitly 'READY' before downloading video bytes (=dv).",
+              },
+              downloadOriginal: {
+                type: "boolean",
+                description:
+                  "Whether to download full-resolution original media (appends =d for images). Defaults to true. Note: For videos, Google Photos base URLs exclusively provide a high-quality transcoded MP4 stream via =dv; original unmodified video files cannot be retrieved via baseUrl. If false and dimensions are omitted for images, defaults to 2048x2048 preview.",
+                default: true,
+              },
+              width: {
+                type: "number",
+                description:
+                  "Optional custom maximum width dimension in pixels (range: 1-16383). If supplied without height, height defaults to width to constrain bounding box aspect ratio.",
+              },
+              height: {
+                type: "number",
+                description:
+                  "Optional custom maximum height dimension in pixels (range: 1-16383). If supplied without width, width defaults to height to constrain bounding box aspect ratio.",
+              },
+              isVideo: {
+                type: "boolean",
+                description:
+                  "Whether the item is a video (appends =dv to download a high-quality transcoded MP4 stream). If omitted and sessionId is provided, it is automatically inferred from session metadata. If baseUrl is used alone without sessionId, either isVideo or mimeType must be specified.",
+              },
+              savePath: {
+                type: "string",
+                description:
+                  "Optional local file path to stream the downloaded media bytes directly to disk. Strongly recommended for large files and videos to avoid memory exhaustion.",
+              },
+              includeBase64: {
+                type: "boolean",
+                description:
+                  "Whether to include base64Data in the response. Defaults to true if savePath is omitted, or false if savePath is provided. If set to false, savePath is required. Capped at 10MB (raw media up to ~7.5MB) to prevent memory exhaustion.",
+              },
+            },
+          },
+        },
+        {
+          name: "delete_picker_session",
+          description:
+            "Delete and clean up a Google Photos Picker session. IMPORTANT: Call only after all media items have been retrieved (exhausting nextPageToken pagination) and all required media bytes have been downloaded, or if the session has timed out. Deleting the session immediately terminates access to the selected items.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              sessionId: {
+                type: "string",
+                description: "The Picker session ID to delete",
               },
             },
             required: ["sessionId"],
@@ -754,10 +844,16 @@ export class GooglePhotosMCPCore {
           return this.handleDescribeFilterCapabilities();
 
         case "create_picker_session":
-          return await this.handleCreatePickerSession(tokens);
+          return await this.handleCreatePickerSession(request, tokens);
 
         case "poll_picker_session":
           return await this.handlePollPickerSession(request, tokens);
+
+        case "download_picker_media":
+          return await this.handleDownloadPickerMedia(request, tokens);
+
+        case "delete_picker_session":
+          return await this.handleDeletePickerSession(request, tokens);
 
         default:
           throw new McpError(
@@ -769,12 +865,20 @@ export class GooglePhotosMCPCore {
       if (error instanceof McpError) {
         throw error;
       }
+      const message = error instanceof Error ? error.message : String(error);
+      const cause =
+        error instanceof Error && error.cause instanceof Error
+          ? error.cause.message
+          : null;
+      const fullMessage =
+        cause && !message.includes(cause) ? `${message}: ${cause}` : message;
+
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: error instanceof Error ? error.message : String(error),
+            text: fullMessage,
           },
         ],
       };
@@ -1072,12 +1176,9 @@ export class GooglePhotosMCPCore {
 
   private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, createAlbumSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const album = await createAlbum(oauth2Client, args.title);
-      quotaManager.recordRequest(false);
       return {
         content: [
           {
@@ -1093,7 +1194,6 @@ export class GooglePhotosMCPCore {
 
   private async handleUploadMedia(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, uploadMediaSchema);
-    quotaManager.checkQuota(false);
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await uploadMedia(
@@ -1104,7 +1204,6 @@ export class GooglePhotosMCPCore {
         args.albumId,
         args.description,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -1118,7 +1217,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, addMediaToAlbumSchema);
-    quotaManager.checkQuota(false);
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       await batchAddMediaItemsToAlbum(
@@ -1126,7 +1224,6 @@ export class GooglePhotosMCPCore {
         args.albumId,
         args.mediaItemIds,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [
           {
@@ -1153,8 +1250,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, searchPhotosSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByText(
       oauth2Client,
@@ -1163,8 +1258,6 @@ export class GooglePhotosMCPCore {
       args.pageToken,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1195,8 +1288,6 @@ export class GooglePhotosMCPCore {
       request.params.arguments,
       searchPhotosByLocationSchema,
     );
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByLocation(
       oauth2Client,
@@ -1204,8 +1295,6 @@ export class GooglePhotosMCPCore {
       args.pageSize || 25,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1230,16 +1319,12 @@ export class GooglePhotosMCPCore {
 
   private async handleListAlbums(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, listAlbumsSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { albums, nextPageToken } = await listAlbums(
       oauth2Client,
       args.pageSize || 20,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const albumItems = albums.map((album) => ({
       id: album.id,
@@ -1269,16 +1354,12 @@ export class GooglePhotosMCPCore {
 
   private async handleGetPhoto(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, getPhotoSchema);
-    quotaManager.checkQuota(args.includeBase64 || false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const photo = await getPhoto(
       oauth2Client,
       args.photoId,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(args.includeBase64 || false);
 
     let base64Image: string | undefined;
     if (args.includeBase64 && photo.baseUrl) {
@@ -1302,12 +1383,8 @@ export class GooglePhotosMCPCore {
 
   private async handleGetAlbum(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, getAlbumSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const album = await getAlbum(oauth2Client, args.albumId);
-
-    quotaManager.recordRequest(false);
 
     const result: FormattedAlbum = {
       id: album.id,
@@ -1332,8 +1409,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, listAlbumPhotosSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await listAlbumPhotos(
       oauth2Client,
@@ -1342,8 +1417,6 @@ export class GooglePhotosMCPCore {
       args.pageToken,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1372,16 +1445,12 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, listAlbumsSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await listMediaItems(
       oauth2Client,
       args.pageSize || 25,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map((p) => this.formatPhoto(p));
 
@@ -1411,8 +1480,6 @@ export class GooglePhotosMCPCore {
       request.params.arguments,
       searchMediaByFilterSchema,
     );
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     const filters: SearchFilter = {};
@@ -1451,8 +1518,6 @@ export class GooglePhotosMCPCore {
       includeArchivedMedia,
     });
 
-    quotaManager.recordRequest(false);
-
     return {
       content: [
         {
@@ -1476,8 +1541,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, addEnrichmentSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await addEnrichment(
@@ -1492,7 +1555,6 @@ export class GooglePhotosMCPCore {
         },
         args.position,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -1517,9 +1579,7 @@ export class GooglePhotosMCPCore {
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     // Create the album first
-    quotaManager.checkQuota(false);
     const album = await createAlbum(oauth2Client, args.albumTitle);
-    quotaManager.recordRequest(false);
 
     // Upload each file directly to the album (pass album.id), collecting per-file results
     const uploadResults: Array<{
@@ -1530,7 +1590,6 @@ export class GooglePhotosMCPCore {
     }> = [];
     for (const file of args.files) {
       try {
-        quotaManager.checkQuota(false);
         // Pass album.id so Google adds the item to the album upon creation
         const media = await uploadMedia(
           oauth2Client,
@@ -1540,7 +1599,6 @@ export class GooglePhotosMCPCore {
           album.id,
           file.description,
         );
-        quotaManager.recordRequest(false);
         // uploadMedia returns { mediaItemId, uploadToken } — use the correct property
         uploadResults.push({
           fileName: file.fileName,
@@ -1765,14 +1823,11 @@ Key rules:
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, setCoverPhotoSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await patchAlbum(oauth2Client, args.albumId, {
         coverPhotoMediaItemId: args.mediaItemId,
       });
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -1789,11 +1844,19 @@ Key rules:
   /**
    * Creates a new Picker session so the user can select photos from their full library.
    */
-  private async handleCreatePickerSession(tokens: TokenData) {
-    quotaManager.checkQuota(false);
+  private async handleCreatePickerSession(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments || {},
+      createPickerSessionSchema,
+    );
     const oauth2Client = await this.getAuthenticatedClient(tokens);
-    const session = await createPickerSession(oauth2Client);
-    quotaManager.recordRequest(false);
+    const session = await createPickerSession(
+      oauth2Client,
+      args.maxItemCount ? { maxItemCount: args.maxItemCount } : undefined,
+    );
     return {
       content: [
         {
@@ -1802,15 +1865,76 @@ Key rules:
             {
               sessionId: session.id,
               pickerUri: session.pickerUri,
+              pollingConfig: session.pollingConfig,
+              expireTime: session.expireTime,
               instructions: [
                 "1. Open the pickerUri in a browser to select photos from your library.",
-                "2. After selecting, call poll_picker_session with the sessionId to check completion.",
-                "3. Once mediaItemsSet is true, poll_picker_session returns the selected items.",
+                "2. (Optional) You can append '/autoclose' to the pickerUri to close the tab automatically after selection.",
+                "3. After selecting, call poll_picker_session with the sessionId to check completion.",
+                "4. Once mediaItemsSet is true, poll_picker_session returns the selected items. Paginate using nextPageToken until all pages are retrieved.",
+                "5. Download required media items and bytes using the download_picker_media tool (providing either the media item's baseUrl or sessionId and mediaItemId) before deleting the session.",
+                "6. After all items and bytes are downloaded (or if the session has timed out), call delete_picker_session to clean up the session and release quota.",
               ],
             },
             null,
             2,
           ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Deletes a Picker session after media items are retrieved or if the session timed out.
+   */
+  private async handleDeletePickerSession(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments,
+      deletePickerSessionSchema,
+    );
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    await deletePickerSession(oauth2Client, args.sessionId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(
+            {
+              success: true,
+              sessionId: args.sessionId,
+              message: "Picker session deleted successfully.",
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Downloads media bytes from a Picker session using authenticated OAuth requests.
+   */
+  private async handleDownloadPickerMedia(
+    request: CallToolRequest,
+    tokens: TokenData,
+  ) {
+    const args = validateArgs(
+      request.params.arguments,
+      downloadPickerMediaSchema,
+    );
+    const oauth2Client = await this.getAuthenticatedClient(tokens);
+    const result = await downloadPickerMedia(oauth2Client, args);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2),
         },
       ],
     };
@@ -1827,10 +1951,8 @@ Key rules:
       request.params.arguments,
       pollPickerSessionSchema,
     );
-    quotaManager.checkQuota(false);
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const session = await getPickerSession(oauth2Client, args.sessionId);
-    quotaManager.recordRequest(false);
 
     if (!session.mediaItemsSet) {
       return {
@@ -1842,6 +1964,8 @@ Key rules:
                 sessionId: session.id,
                 pickerUri: session.pickerUri,
                 mediaItemsSet: false,
+                pollingConfig: session.pollingConfig,
+                expireTime: session.expireTime,
                 message:
                   "User has not finished selecting photos yet. Call again after the user completes selection.",
               },
@@ -1854,14 +1978,12 @@ Key rules:
     }
 
     // Selection complete — fetch items
-    quotaManager.checkQuota(false);
     const { photos, nextPageToken } = await listPickerSessionMediaItems(
       oauth2Client,
       args.sessionId,
       args.pageSize ?? 25,
       args.pageToken,
     );
-    quotaManager.recordRequest(false);
 
     return {
       content: [
@@ -1893,6 +2015,9 @@ Key rules:
       description: photo.description || "",
       dateCreated: photo.mediaMetadata?.creationTime || "",
       url: photo.baseUrl,
+      baseUrl: photo.baseUrl,
+      mimeType: photo.mimeType,
+      processingStatus: photo.processingStatus,
       webUrl: photo.productUrl,
       width: photo.mediaMetadata?.width || "",
       height: photo.mediaMetadata?.height || "",

@@ -95,7 +95,7 @@ class QuotaManager {
   }
 
   /**
-   * Records a successful API request.
+   * Records an API request attempt.
    *
    * @param isMediaRequest - Whether this was a media byte request
    * @returns void
