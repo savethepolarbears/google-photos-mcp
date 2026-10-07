@@ -372,7 +372,7 @@ export function getPickerClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "picker.sessions.delete");
+          throw toError(error, "picker.sessions.delete", true);
         }
       },
       listMediaItems: async (
