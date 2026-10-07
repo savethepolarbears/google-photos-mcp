@@ -688,7 +688,9 @@ describe("Picker API repositories", () => {
     });
 
     it("preserves pre-existing destination file and cleans up temporary file when download stream fails", async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-preserve-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "picker-preserve-"),
+      );
       const testFilePath = path.join(tempDir, "existing-file.jpg");
       const existingBytes = Buffer.from("pre-existing-important-data");
       fs.writeFileSync(testFilePath, existingBytes);
@@ -950,7 +952,7 @@ describe("Picker API repositories", () => {
           mimeType: "video/mp4",
           processingStatus: "PROCESSING",
         }),
-      ).rejects.toThrow("processingStatus: \"PROCESSING\"");
+      ).rejects.toThrow('processingStatus: "PROCESSING"');
     });
 
     it("rejects video download when video processingStatus is FAILED", async () => {
@@ -1171,7 +1173,8 @@ describe("Picker API repositories", () => {
                 {
                   id: "video-fresh-ready",
                   mediaFile: {
-                    baseUrl: "https://lh3.googleusercontent.com/fresh-ready-url",
+                    baseUrl:
+                      "https://lh3.googleusercontent.com/fresh-ready-url",
                     filename: "video.mp4",
                     mimeType: "video/mp4",
                     mediaFileMetadata: {
@@ -1444,7 +1447,8 @@ describe("Picker API repositories", () => {
                 {
                   id: "vid-target",
                   mediaFile: {
-                    baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+                    baseUrl:
+                      "https://lh3.googleusercontent.com/session-video-base",
                     filename: "sunset.mp4",
                     mimeType: "video/mp4",
                     mediaFileMetadata: {
@@ -1502,7 +1506,8 @@ describe("Picker API repositories", () => {
                 {
                   id: "vid-target",
                   mediaFile: {
-                    baseUrl: "https://lh3.googleusercontent.com/session-video-base",
+                    baseUrl:
+                      "https://lh3.googleusercontent.com/session-video-base",
                     filename: "sunset.mp4",
                     mimeType: "video/mp4",
                     mediaFileMetadata: {
@@ -1528,7 +1533,7 @@ describe("Picker API repositories", () => {
           processingStatus: "READY",
         }),
       ).rejects.toThrow(
-        'Video vid-target cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.',
+        "Video vid-target cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.",
       );
     });
 
@@ -1549,7 +1554,8 @@ describe("Picker API repositories", () => {
                 {
                   id: "vid-id-lookup",
                   mediaFile: {
-                    baseUrl: "https://lh3.googleusercontent.com/session-video-id",
+                    baseUrl:
+                      "https://lh3.googleusercontent.com/session-video-id",
                     filename: "clip.mp4",
                     mimeType: "video/mp4",
                     mediaFileMetadata: {
@@ -1573,7 +1579,7 @@ describe("Picker API repositories", () => {
           processingStatus: "READY",
         }),
       ).rejects.toThrow(
-        'Video vid-id-lookup cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.',
+        "Video vid-id-lookup cannot be downloaded: video processingStatus is not specified (unknown). Google Photos requires video processingStatus to be explicitly READY before downloading video bytes (=dv). Please poll the session until status is READY before downloading bytes.",
       );
     });
 
@@ -1728,10 +1734,12 @@ describe("Picker API repositories", () => {
           ),
       } as unknown as OAuth2Client;
 
-      const axiosGetSpy = vi.spyOn(axios, "get").mockImplementation(async () => ({
-        data: Readable.from(Buffer.from("image-bytes")),
-        headers: { "content-type": "image/jpeg" },
-      }));
+      const axiosGetSpy = vi
+        .spyOn(axios, "get")
+        .mockImplementation(async () => ({
+          data: Readable.from(Buffer.from("image-bytes")),
+          headers: { "content-type": "image/jpeg" },
+        }));
 
       // Width only
       await downloadPickerMedia(mockOAuthClient, {
@@ -1937,7 +1945,9 @@ describe("Picker API repositories", () => {
     });
 
     it("rejects includeBase64 on saved files between 7.5MB and 10MB raw (e.g. 8MB) where base64 would exceed 10MB", async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "picker-test-8mb-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "picker-test-8mb-"),
+      );
       const testFilePath = path.join(tempDir, "eight-mb.jpg");
       try {
         const mockOAuthClient = {
@@ -2000,9 +2010,7 @@ describe("Picker API repositories", () => {
       expect(result.base64Data?.length).toBeLessThanOrEqual(
         MAX_ENCODED_BASE64_BYTES,
       );
-      expect(result.base64Data?.length).toBe(
-        Math.ceil((1024 * 1024) / 3) * 4,
-      );
+      expect(result.base64Data?.length).toBe(Math.ceil((1024 * 1024) / 3) * 4);
       expect(MAX_RAW_BASE64_BYTES).toBe(7864320);
       axiosGetSpy.mockRestore();
     });
@@ -2192,7 +2200,9 @@ describe("Picker API repositories", () => {
       const originalUsername = process.env.USERNAME;
       process.env.USERNAME = "testwinuser";
 
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-new-dest-test-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "win-new-dest-test-"),
+      );
       const destFile = path.join(tempDir, "nonexistent.jpg");
       const tempFile = path.join(tempDir, "temp.jpg");
 
@@ -2313,7 +2323,9 @@ describe("Picker API repositories", () => {
       const originalUsername = process.env.USERNAME;
       process.env.USERNAME = "testwinuser";
 
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "win-icacls-fail-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "win-icacls-fail-"),
+      );
       const destFile = path.join(tempDir, "dest.jpg");
       const tempFile = path.join(tempDir, "temp.jpg");
 
@@ -2395,7 +2407,9 @@ describe("Picker API repositories", () => {
         throw new Error("EPERM: operation not permitted");
       });
 
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "unix-chmod-fail-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "unix-chmod-fail-"),
+      );
       const destFile = path.join(tempDir, "dest.jpg");
       const tempFile = path.join(tempDir, "temp.jpg");
 
@@ -2413,7 +2427,9 @@ describe("Picker API repositories", () => {
     });
 
     it("aborts downloadPickerMedia, cleans up temp file, and preserves existing destination if permission preservation throws", async () => {
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "abort-perm-test-"));
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "abort-perm-test-"),
+      );
       const destFile = path.join(tempDir, "existing-dest.jpg");
 
       const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
@@ -2445,7 +2461,9 @@ describe("Picker API repositories", () => {
         ).rejects.toThrow();
 
         // Verify existing destination file was NOT replaced or corrupted
-        expect(fs.readFileSync(destFile, "utf8")).toBe("original-protected-data");
+        expect(fs.readFileSync(destFile, "utf8")).toBe(
+          "original-protected-data",
+        );
 
         // Verify no leftover .tmp files exist in directory
         const leftoverFiles = fs.readdirSync(tempDir);
@@ -2487,6 +2505,7 @@ describe("Picker API repositories", () => {
         data: readable,
         headers: { "content-type": "image/jpeg" },
       });
+      const openSpy = vi.spyOn(fs, "openSync");
 
       // Spy on chmodSync to check that it is called on the temp file before streamRead is true
       const chmodSpy = vi
@@ -2512,7 +2531,13 @@ describe("Picker API repositories", () => {
 
         expect(result.success).toBe(true);
         expect(permissionsCheckedBeforeStream).toBe(true);
+        expect(openSpy).toHaveBeenCalledWith(
+          expect.stringContaining(".tmp."),
+          "wx",
+          expect.any(Number),
+        );
       } finally {
+        openSpy.mockRestore();
         chmodSpy.mockRestore();
         axiosGetSpy.mockRestore();
         fs.rmSync(tempDir, { recursive: true, force: true });
@@ -2666,6 +2691,16 @@ describe("Picker API repositories", () => {
       );
       expect(
         isAllowedGooglePhotosMediaUrl("https://not-googleusercontent.com/test"),
+      ).toBe(false);
+      expect(
+        isAllowedGooglePhotosMediaUrl(
+          "https://lh3.googleusercontent.com:8443/test",
+        ),
+      ).toBe(false);
+      expect(
+        isAllowedGooglePhotosMediaUrl(
+          "https://user:pass@lh3.googleusercontent.com/test",
+        ),
       ).toBe(false);
     });
   });

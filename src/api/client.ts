@@ -38,9 +38,14 @@ const photosApi = axios.create({
  *
  * @param error - The original error object.
  * @param context - A string describing what operation failed (e.g., 'search photos').
+ * @param retryable - Whether repeating this operation is safe.
  * @returns A standardized Error object.
  */
-export function toError(error: unknown, context: string): Error {
+export function toError(
+  error: unknown,
+  context: string,
+  retryable = false,
+): Error {
   if (axios.isAxiosError(error)) {
     const axiosError = error as AxiosError<{ error?: { message?: string } }>;
     const status = axiosError.response?.status;
@@ -68,14 +73,15 @@ export function toError(error: unknown, context: string): Error {
       );
     }
 
-    // Preserve retry-relevant Axios metadata so retry utilities (e.g. withRetry) can inspect status and retry
-    Object.assign(err, {
-      isAxiosError: true,
-      response: axiosError.response,
-      status: axiosError.response?.status,
-      code: axiosError.code,
-      config: axiosError.config,
-    });
+    if (retryable) {
+      Object.assign(err, {
+        isAxiosError: true,
+        response: axiosError.response,
+        status: axiosError.response?.status,
+        code: axiosError.code,
+        config: axiosError.config,
+      });
+    }
 
     return err;
   }
@@ -133,7 +139,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "albums.list");
+          throw toError(error, "albums.list", true);
         }
       },
       get: async (params: { albumId: string }) => {
@@ -147,7 +153,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "albums.get");
+          throw toError(error, "albums.get", true);
         }
       },
       create: async (params: { title: string }) => {
@@ -266,7 +272,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.search");
+          throw toError(error, "mediaItems.search", true);
         }
       },
       get: async (params: { mediaItemId: string }) => {
@@ -280,7 +286,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.get");
+          throw toError(error, "mediaItems.get", true);
         }
       },
       list: async (params: { pageSize?: number; pageToken?: string }) => {
@@ -295,7 +301,7 @@ function createPhotosLibraryClient(auth: OAuth2Client) {
           );
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "mediaItems.list");
+          throw toError(error, "mediaItems.list", true);
         }
       },
     },
@@ -355,7 +361,7 @@ export function getPickerClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "picker.sessions.get");
+          throw toError(error, "picker.sessions.get", true);
         }
       },
       delete: async (sessionId: string) => {
@@ -381,7 +387,7 @@ export function getPickerClient(auth: OAuth2Client) {
           });
           return { data: response.data };
         } catch (error) {
-          throw toError(error, "picker.sessions.listMediaItems");
+          throw toError(error, "picker.sessions.listMediaItems", true);
         }
       },
     },

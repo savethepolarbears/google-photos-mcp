@@ -549,6 +549,22 @@ describe("downloadPickerMediaSchema", () => {
     );
   });
 
+  it("rejects nonstandard ports and embedded credentials in baseUrl", () => {
+    for (const baseUrl of [
+      "https://photos.google.com:8443/sample",
+      "https://user:pass@photos.google.com/sample",
+    ]) {
+      expect(() =>
+        downloadPickerMediaSchema.parse({
+          baseUrl,
+          isVideo: false,
+        }),
+      ).toThrow(
+        "baseUrl must be an HTTPS URL on an official Google Photos media domain",
+      );
+    }
+  });
+
   it("accepts valid googleusercontent.com subdomain baseUrl with isVideo", () => {
     const result = downloadPickerMediaSchema.parse({
       baseUrl: "https://lh3.googleusercontent.com/lr/sample-photo",

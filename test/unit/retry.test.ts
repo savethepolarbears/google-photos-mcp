@@ -180,11 +180,12 @@ describe("withRetry", () => {
     expect(result).toBe("ok");
   });
 
-  it("retries on errors normalized by toError when they contain transient Axios metadata", async () => {
+  it("retries safe API errors normalized by toError when they contain transient Axios metadata", async () => {
     const { toError } = await import("../../src/api/client.js");
     const transientErr = toError(
       createMockAxiosError(500, "Internal Server Error"),
-      "picker.sessions.delete",
+      "mediaItems.search",
+      true,
     );
 
     const fn = vi
@@ -195,7 +196,7 @@ describe("withRetry", () => {
     const promise = withRetry(
       fn,
       { maxRetries: 3, initialDelayMs: 100 },
-      "picker.sessions.delete",
+      "mediaItems.search",
     );
     await vi.runAllTimersAsync();
     const result = await promise;
@@ -203,5 +204,24 @@ describe("withRetry", () => {
     expect(result).toBe("recovered");
     expect(fn).toHaveBeenCalledTimes(2);
   });
-});
 
+  it("does not retry non-idempotent API operations after normalized failures", async () => {
+    const { toError } = await import("../../src/api/client.js");
+    const writeError = toError(
+      createMockAxiosError(503, "Service Unavailable"),
+      "albums.create",
+    );
+    const fn = vi.fn().mockRejectedValue(writeError);
+
+    const promise = withRetry(
+      fn,
+      { maxRetries: 3, initialDelayMs: 100 },
+      "create album",
+    );
+    const assertion = expect(promise).rejects.toThrow();
+    await vi.runAllTimersAsync();
+    await assertion;
+
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});

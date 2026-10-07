@@ -5,6 +5,7 @@ import fs, { createWriteStream } from "fs";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import path from "path";
+import { randomUUID } from "crypto";
 import {
   PhotoItem,
   SearchParams,
@@ -27,7 +28,7 @@ import {
   hasWindowsExplicitDenyAces,
   getWindowsCurrentOwnerInfo,
 } from "../../auth/tokens.js";
-import { withRetry } from "../../utils/retry.js";
+import { withQuotaRetry } from "../../utils/quotaRetry.js";
 import logger from "../../utils/logger.js";
 import { quotaManager } from "../../utils/quotaManager.js";
 
@@ -128,7 +129,12 @@ export function preserveDestinationPermissions(
 export function isAllowedGooglePhotosMediaUrl(urlString: string): boolean {
   try {
     const parsed = new URL(urlString);
-    if (parsed.protocol !== "https:") {
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.port !== "" ||
+      parsed.username !== "" ||
+      parsed.password !== ""
+    ) {
       return false;
     }
     const host = parsed.hostname.toLowerCase();
@@ -166,7 +172,7 @@ export async function searchPhotos(
     const photosClient = getPhotoClient(oauth2Client);
 
     // Apply retry logic per Google Photos API best practices
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.mediaItems.search({
           requestBody: {
@@ -249,7 +255,7 @@ export async function listMediaItems(
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   try {
     const photosClient = getPhotoClient(oauth2Client);
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () => await photosClient.mediaItems.list({ pageSize, pageToken }),
       { maxRetries: 3, initialDelayMs: 1000 },
       "list media items",
@@ -283,7 +289,7 @@ export async function getPhoto(
     const photosClient = getPhotoClient(oauth2Client);
 
     // Apply retry logic per Google Photos API best practices
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.mediaItems.get({
           mediaItemId: photoId,
@@ -333,6 +339,8 @@ export async function getPhotoAsBase64(url: string): Promise<string> {
 
   try {
     const fullResUrl = `${url}=d`;
+    quotaManager.checkQuota(true);
+    quotaManager.recordRequest(true);
     const response = await axios.get<ArrayBuffer>(fullResUrl, {
       responseType: "arraybuffer",
     });
@@ -364,13 +372,15 @@ export async function uploadMedia(
     const bytes = await readFile(filePath);
     const photosClient = getPhotoClient(oauth2Client);
 
-    const { uploadToken } = await withRetry(
+    const { uploadToken } = await withQuotaRetry(
       async () =>
         await photosClient.uploads.upload({ bytes, mimeType, fileName }),
       { maxRetries: 3, initialDelayMs: 1000 },
       "upload media bytes",
     );
 
+    quotaManager.checkQuota(false);
+    quotaManager.recordRequest(false);
     const result = await photosClient.mediaItems.batchCreate({
       albumId,
       newMediaItems: [{ uploadToken, fileName, description }],
@@ -406,7 +416,7 @@ export async function batchCreateMediaItems(
   try {
     const photosClient = getPhotoClient(oauth2Client);
 
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () =>
         await photosClient.mediaItems.batchCreate({ newMediaItems, albumId }),
       { maxRetries: 3, initialDelayMs: 1000 },
@@ -437,10 +447,8 @@ export async function createPickerSession(
   options?: { maxItemCount?: number },
 ): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
-  const response = await withRetry(
+  const response = await withQuotaRetry(
     async () => {
-      quotaManager.checkQuota(false);
-      quotaManager.recordRequest(false);
       return await client.sessions.create(options);
     },
     { maxRetries: 3, initialDelayMs: 1000 },
@@ -457,10 +465,8 @@ export async function getPickerSession(
   sessionId: string,
 ): Promise<PickerSession> {
   const client = getPickerClient(oauth2Client);
-  const response = await withRetry(
+  const response = await withQuotaRetry(
     async () => {
-      quotaManager.checkQuota(false);
-      quotaManager.recordRequest(false);
       return await client.sessions.get(sessionId);
     },
     { maxRetries: 3, initialDelayMs: 1000 },
@@ -477,10 +483,8 @@ export async function deletePickerSession(
   sessionId: string,
 ): Promise<void> {
   const client = getPickerClient(oauth2Client);
-  await withRetry(
+  await withQuotaRetry(
     async () => {
-      quotaManager.checkQuota(false);
-      quotaManager.recordRequest(false);
       return await client.sessions.delete(sessionId);
     },
     { maxRetries: 3, initialDelayMs: 1000 },
@@ -504,11 +508,7 @@ interface PickerMediaItem {
       videoMetadata?: {
         fps?: number;
         processingStatus?:
-          | "UNSPECIFIED"
-          | "PROCESSING"
-          | "READY"
-          | "FAILED"
-          | string;
+          "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED" | string;
       };
     };
   };
@@ -525,10 +525,8 @@ export async function listPickerSessionMediaItems(
   pageToken?: string,
 ): Promise<{ photos: PhotoItem[]; nextPageToken?: string }> {
   const client = getPickerClient(oauth2Client);
-  const response = await withRetry(
+  const response = await withQuotaRetry(
     async () => {
-      quotaManager.checkQuota(false);
-      quotaManager.recordRequest(false);
       return await client.sessions.listMediaItems(sessionId, {
         pageSize,
         pageToken,
@@ -638,9 +636,7 @@ export async function downloadPickerMedia(
   options: DownloadPickerMediaOptions,
 ): Promise<DownloadPickerMediaResult> {
   if (options.includeBase64 === false && !options.savePath) {
-    throw new Error(
-      "savePath must be provided when includeBase64 is false",
-    );
+    throw new Error("savePath must be provided when includeBase64 is false");
   }
 
   if (
@@ -735,10 +731,7 @@ export async function downloadPickerMedia(
           `Could not find matching media item for baseUrl in Picker session ${options.sessionId}. Please provide isVideo or mimeType to specify the media type directly.`,
         );
       }
-    } else if (
-      options.isVideo === undefined &&
-      !mimeType
-    ) {
+    } else if (options.isVideo === undefined && !mimeType) {
       throw new Error(
         "When specifying baseUrl without sessionId, either isVideo or mimeType must be provided to determine the correct download parameters (=d or =dv)",
       );
@@ -850,10 +843,8 @@ export async function downloadPickerMedia(
 
   try {
     const headers = await getAuthorizedHeaders(oauth2Client);
-    const response = await withRetry(
+    const response = await withQuotaRetry(
       async () => {
-        quotaManager.checkQuota(true);
-        quotaManager.recordRequest(true);
         return await axios.get<Readable>(downloadUrl, {
           headers,
           responseType: "stream",
@@ -863,6 +854,7 @@ export async function downloadPickerMedia(
       },
       { maxRetries: 3, initialDelayMs: 1000 },
       "download picker media",
+      true,
     );
 
     const stream = response.data as unknown as Readable;
@@ -882,6 +874,7 @@ export async function downloadPickerMedia(
       const resolvedPath = path.resolve(options.savePath);
       const dir = path.dirname(resolvedPath);
       let tempPath: string | undefined;
+      let tempFileCreated = false;
 
       try {
         if (!fs.existsSync(dir)) {
@@ -895,20 +888,17 @@ export async function downloadPickerMedia(
 
         // Stream to a sibling temporary file to preserve any pre-existing destination
         // file if the stream or network aborts mid-transfer.
-        tempPath = path.join(
-          dir,
-          `.tmp.${path.basename(resolvedPath)}.${Date.now()}.${Math.random().toString(36).slice(2)}`,
-        );
+        tempPath = path.join(dir, `.tmp.${randomUUID()}`);
 
         // Pre-create the temporary file and apply destination permissions/ACL
         // before streaming any media bytes to disk, preventing exposure in shared directories.
-        fs.closeSync(
-          fs.openSync(
-            tempPath,
-            "w",
-            existingStats ? existingStats.mode & 0o777 : 0o600,
-          ),
+        const tempFileDescriptor = fs.openSync(
+          tempPath,
+          "wx",
+          existingStats ? existingStats.mode & 0o777 : 0o600,
         );
+        tempFileCreated = true;
+        fs.closeSync(tempFileDescriptor);
         preserveDestinationPermissions(resolvedPath, tempPath);
 
         const fileWriteStream = createWriteStream(tempPath, { flags: "r+" });
@@ -921,7 +911,7 @@ export async function downloadPickerMedia(
         if (typeof stream?.destroy === "function") {
           stream.destroy();
         }
-        if (tempPath && fs.existsSync(tempPath)) {
+        if (tempFileCreated && tempPath && fs.existsSync(tempPath)) {
           try {
             fs.unlinkSync(tempPath);
           } catch {

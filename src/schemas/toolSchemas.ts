@@ -247,7 +247,14 @@ export const downloadPickerMediaSchema = z
         (val) => {
           try {
             const u = new URL(val);
-            if (u.protocol !== "https:") return false;
+            if (
+              u.protocol !== "https:" ||
+              u.port !== "" ||
+              u.username !== "" ||
+              u.password !== ""
+            ) {
+              return false;
+            }
             const host = u.hostname.toLowerCase();
             return (
               host === "photoslibrary.googleapis.com" ||
@@ -306,9 +313,6 @@ export const downloadPickerMediaSchema = z
         "When supplying baseUrl without sessionId, either isVideo or mimeType must be specified to infer correct download parameters (=d or =dv)",
     },
   )
-  .refine(
-    (data) => !(data.includeBase64 === false && !data.savePath),
-    {
-      message: "savePath must be provided when includeBase64 is false",
-    },
-  );
+  .refine((data) => !(data.includeBase64 === false && !data.savePath), {
+    message: "savePath must be provided when includeBase64 is false",
+  });

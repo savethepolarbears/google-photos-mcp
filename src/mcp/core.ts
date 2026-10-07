@@ -61,7 +61,6 @@ import {
   deletePickerSessionSchema,
   downloadPickerMediaSchema,
 } from "../schemas/toolSchemas.js";
-import { quotaManager } from "../utils/quotaManager.js";
 
 /**
  * Formatted photo interfaces for MCP responses
@@ -192,9 +191,7 @@ export class GooglePhotosMCPCore {
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     if (uri === "google-photos://albums") {
-      quotaManager.checkQuota(false);
       const data = await listAlbums(oauth2Client);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -208,9 +205,7 @@ export class GooglePhotosMCPCore {
 
     const albumMatch = uri.match(/^google-photos:\/\/albums\/(.+)$/);
     if (albumMatch) {
-      quotaManager.checkQuota(false);
       const album = await getAlbum(oauth2Client, albumMatch[1]);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -224,9 +219,7 @@ export class GooglePhotosMCPCore {
 
     const mediaMatch = uri.match(/^google-photos:\/\/media\/(.+)$/);
     if (mediaMatch) {
-      quotaManager.checkQuota(false);
       const mediaItem = await getPhoto(oauth2Client, mediaMatch[1], false);
-      quotaManager.recordRequest(false);
       return {
         contents: [
           {
@@ -1183,12 +1176,9 @@ export class GooglePhotosMCPCore {
 
   private async handleCreateAlbum(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, createAlbumSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const album = await createAlbum(oauth2Client, args.title);
-      quotaManager.recordRequest(false);
       return {
         content: [
           {
@@ -1204,7 +1194,6 @@ export class GooglePhotosMCPCore {
 
   private async handleUploadMedia(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, uploadMediaSchema);
-    quotaManager.checkQuota(false);
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await uploadMedia(
@@ -1215,7 +1204,6 @@ export class GooglePhotosMCPCore {
         args.albumId,
         args.description,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -1229,7 +1217,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, addMediaToAlbumSchema);
-    quotaManager.checkQuota(false);
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       await batchAddMediaItemsToAlbum(
@@ -1237,7 +1224,6 @@ export class GooglePhotosMCPCore {
         args.albumId,
         args.mediaItemIds,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [
           {
@@ -1264,8 +1250,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, searchPhotosSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByText(
       oauth2Client,
@@ -1274,8 +1258,6 @@ export class GooglePhotosMCPCore {
       args.pageToken,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1306,8 +1288,6 @@ export class GooglePhotosMCPCore {
       request.params.arguments,
       searchPhotosByLocationSchema,
     );
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await searchPhotosByLocation(
       oauth2Client,
@@ -1315,8 +1295,6 @@ export class GooglePhotosMCPCore {
       args.pageSize || 25,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1341,16 +1319,12 @@ export class GooglePhotosMCPCore {
 
   private async handleListAlbums(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, listAlbumsSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { albums, nextPageToken } = await listAlbums(
       oauth2Client,
       args.pageSize || 20,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const albumItems = albums.map((album) => ({
       id: album.id,
@@ -1380,16 +1354,12 @@ export class GooglePhotosMCPCore {
 
   private async handleGetPhoto(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, getPhotoSchema);
-    quotaManager.checkQuota(args.includeBase64 || false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const photo = await getPhoto(
       oauth2Client,
       args.photoId,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(args.includeBase64 || false);
 
     let base64Image: string | undefined;
     if (args.includeBase64 && photo.baseUrl) {
@@ -1413,12 +1383,8 @@ export class GooglePhotosMCPCore {
 
   private async handleGetAlbum(request: CallToolRequest, tokens: TokenData) {
     const args = validateArgs(request.params.arguments, getAlbumSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const album = await getAlbum(oauth2Client, args.albumId);
-
-    quotaManager.recordRequest(false);
 
     const result: FormattedAlbum = {
       id: album.id,
@@ -1443,8 +1409,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, listAlbumPhotosSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await listAlbumPhotos(
       oauth2Client,
@@ -1453,8 +1417,6 @@ export class GooglePhotosMCPCore {
       args.pageToken,
       args.includeLocation !== false,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map(this.formatPhoto);
 
@@ -1483,16 +1445,12 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, listAlbumsSchema);
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
     const { photos, nextPageToken } = await listMediaItems(
       oauth2Client,
       args.pageSize || 25,
       args.pageToken,
     );
-
-    quotaManager.recordRequest(false);
 
     const photoItems = photos.map((p) => this.formatPhoto(p));
 
@@ -1522,8 +1480,6 @@ export class GooglePhotosMCPCore {
       request.params.arguments,
       searchMediaByFilterSchema,
     );
-    quotaManager.checkQuota(false);
-
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     const filters: SearchFilter = {};
@@ -1562,8 +1518,6 @@ export class GooglePhotosMCPCore {
       includeArchivedMedia,
     });
 
-    quotaManager.recordRequest(false);
-
     return {
       content: [
         {
@@ -1587,8 +1541,6 @@ export class GooglePhotosMCPCore {
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, addEnrichmentSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await addEnrichment(
@@ -1603,7 +1555,6 @@ export class GooglePhotosMCPCore {
         },
         args.position,
       );
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
@@ -1628,9 +1579,7 @@ export class GooglePhotosMCPCore {
     const oauth2Client = await this.getAuthenticatedClient(tokens);
 
     // Create the album first
-    quotaManager.checkQuota(false);
     const album = await createAlbum(oauth2Client, args.albumTitle);
-    quotaManager.recordRequest(false);
 
     // Upload each file directly to the album (pass album.id), collecting per-file results
     const uploadResults: Array<{
@@ -1641,7 +1590,6 @@ export class GooglePhotosMCPCore {
     }> = [];
     for (const file of args.files) {
       try {
-        quotaManager.checkQuota(false);
         // Pass album.id so Google adds the item to the album upon creation
         const media = await uploadMedia(
           oauth2Client,
@@ -1651,7 +1599,6 @@ export class GooglePhotosMCPCore {
           album.id,
           file.description,
         );
-        quotaManager.recordRequest(false);
         // uploadMedia returns { mediaItemId, uploadToken } — use the correct property
         uploadResults.push({
           fileName: file.fileName,
@@ -1876,14 +1823,11 @@ Key rules:
     tokens: TokenData,
   ) {
     const args = validateArgs(request.params.arguments, setCoverPhotoSchema);
-    quotaManager.checkQuota(false);
-
     try {
       const oauth2Client = await this.getAuthenticatedClient(tokens);
       const result = await patchAlbum(oauth2Client, args.albumId, {
         coverPhotoMediaItemId: args.mediaItemId,
       });
-      quotaManager.recordRequest(false);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
