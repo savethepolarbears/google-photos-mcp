@@ -85,10 +85,12 @@ CORS middleware has been removed for security (prevents drive-by attacks on loca
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project (or select existing)
-3. Enable **Photos Library API** and **Google Photos Picker API**
-4. Create OAuth 2.0 credentials (Web application)
-5. Add `http://localhost:3000/auth/callback` as an authorized redirect URI
-6. Note your Client ID and Client Secret
+3. In the search box at the top, search for `Enabled APIs`, then click the result
+4. After the page loads, click **+ Enable APIs and services**
+5. Search for **Photos Library API** and **Google Photos Picker API**, then enable both services
+6. Create OAuth 2.0 credentials (Web application)
+7. Add `http://localhost:3000/auth/callback` as an authorized redirect URI
+8. Note your Client ID and Client Secret
 
 ### 2. Installation
 
