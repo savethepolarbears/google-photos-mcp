@@ -11,9 +11,9 @@ services:
     environment:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?required}
-      GOOGLE_REDIRECT_URI: ${MCP_PUBLIC_ORIGIN:-https://photos-mcp.kernelkicks.dev}/auth/callback
-      MCP_PUBLIC_ORIGIN: ${MCP_PUBLIC_ORIGIN:-https://photos-mcp.kernelkicks.dev}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-photos-mcp.kernelkicks.dev,localhost,127.0.0.1}
+      GOOGLE_REDIRECT_URI: ${MCP_PUBLIC_ORIGIN:-https://photos.example.com}/auth/callback
+      MCP_PUBLIC_ORIGIN: ${MCP_PUBLIC_ORIGIN:-https://photos.example.com}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-photos.example.com,localhost,127.0.0.1}
       MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
       MCP_TRUSTED_PROXIES: ${MCP_TRUSTED_PROXIES:?required}
       MCP_COOKIE_KEY: ${MCP_COOKIE_KEY:?required}

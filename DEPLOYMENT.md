@@ -2,7 +2,7 @@
 
 This remote mode is under development and has not yet been validated against a real Google account or a production reverse proxy. Do not expose it publicly until those checks and the remaining security review are complete.
 
-The intended resource URL is `https://photos-mcp.kernelkicks.dev/mcp`. It uses OAuth authorization code with PKCE and dynamic client registration. Google OAuth is a separate account-linking step; the server associates credentials with Google's verified subject. Google Photos Library API access is restricted to app-created items; existing photos require the Picker API.
+Replace `photos.example.com` throughout these examples with your own public hostname. The example resource URL is `https://photos.example.com/mcp`. It uses OAuth authorization code with PKCE and dynamic client registration. Google OAuth is a separate account-linking step; the server associates credentials with Google's verified subject. Google Photos Library API access is restricted to app-created items; existing photos require the Picker API.
 
 ## Configuration
 
@@ -10,10 +10,16 @@ The intended resource URL is `https://photos-mcp.kernelkicks.dev/mcp`. It uses O
 
 1. Create or select a Google Cloud project and enable both the Google Photos Library API and the Google Photos Picker API.
 2. Configure the Google Auth Platform consent screen and audience. If the application is in testing, add the Google account that will sign in as a test user. Google may require verification before broader use of sensitive scopes.
-3. Create an OAuth client of type **Web application**. Add `https://photos-mcp.kernelkicks.dev/auth/callback` as an authorized redirect URI, using the exact public origin configured for this server. Save the client ID and secret in a private deployment configuration; do not commit or share the secret.
+3. Create an OAuth client of type **Web application**. Add `https://photos.example.com/auth/callback` as an authorized redirect URI, using the exact public origin configured for this server. Save the client ID and secret in a private deployment configuration; do not commit or share the secret.
 4. The current server requests `openid` and all four Photos scopes needed by its existing tools: `https://www.googleapis.com/auth/photoslibrary.appendonly`, `https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata`, `https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata`, and `https://www.googleapis.com/auth/photospicker.mediaitems.readonly`. The request is not currently configurable per tool. Review these permissions on the consent screen before approving them.
 
 Google limits Library API access to app-created items. The Picker API is the mechanism for selecting other items. See [Google's Photos API updates](https://developers.google.com/photos/support/updates) and [authorization scope documentation](https://developers.google.com/photos/overview/authorization). A real sign-in also requires the configured callback to reach the server over HTTPS; creating the Google client alone does not deploy it.
+
+### Host and browser origin settings
+
+`MCP_PUBLIC_ORIGIN` is the server's public HTTPS origin, for example `https://photos.example.com`. `ALLOWED_HOSTS` lists the hostnames accepted in incoming Host headers, without schemes (for example, `photos.example.com,localhost,127.0.0.1`).
+
+`MCP_ALLOWED_ORIGINS` is a comma-separated list of exact browser origins allowed to send an Origin header, including the scheme and any non-default port. Leave it empty unless a trusted browser client needs it: with an empty list, requests carrying an Origin header are rejected, while requests without one can proceed through the other security checks. Allowlisting an origin does not by itself configure CORS response headers.
 
 ### Server secrets
 
@@ -43,7 +49,7 @@ Set `MCP_TRUSTED_PROXIES` to the actual proxy address or narrowly scoped network
 For example, point the public DNS record to a host running Caddy 2.10 or later with ports 80 and 443 available for certificate issuance and HTTPS. The `request_body` directive used here requires Caddy 2.10 or later. A host-installed Caddy can use the following configuration; replace the port if `MCP_BIND_PORT` changes:
 
 ```caddyfile
-photos-mcp.kernelkicks.dev {
+photos.example.com {
     request_body {
         max_size 1MB
     }
@@ -68,7 +74,7 @@ Local STDIO remains available with `npm run stdio`. The legacy unauthenticated H
 
 ## Clients and troubleshooting
 
-For an MCP client that supports OAuth dynamic registration, use `https://photos-mcp.kernelkicks.dev/mcp` as the server URL and follow its authorization prompt. In ChatGPT, add the URL through its custom connector settings; in Claude or Cursor, use the relevant remote MCP server configuration. Exact setup screens and availability vary by client and plan, and compatibility has not yet been verified with these clients. If a client does not support DCR, this implementation does not yet offer a manual registration workflow.
+For an MCP client that supports OAuth dynamic registration, use `https://photos.example.com/mcp` as the server URL and follow its authorization prompt. In ChatGPT, add the URL through its custom connector settings; in Claude or Cursor, use the relevant remote MCP server configuration. Exact setup screens and availability vary by client and plan, and compatibility has not yet been verified with these clients. If a client does not support DCR, this implementation does not yet offer a manual registration workflow.
 
 A 403 usually means the Host or Origin does not match the allowlists. A 400 HTTPS error usually means the proxy address is not trusted or `X-Forwarded-Proto` is absent. A 401 from `/mcp` without a token is expected. For Google redirect errors, check that the exact callback URL and Google OAuth client match. For startup failures, check the data directory is owned by the container user and mode 0700 and that the JWKS secret is readable. Do not publish logs containing authorization codes, tokens or other secrets.
 
