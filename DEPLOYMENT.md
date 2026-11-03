@@ -6,7 +6,16 @@ The intended resource URL is `https://photos-mcp.kernelkicks.dev/mcp`. It uses O
 
 ## Configuration
 
-Create a Google Cloud OAuth web client and set its authorized redirect URI to `https://photos-mcp.kernelkicks.dev/auth/callback`. Configure the Google Photos APIs and consent screen for the accounts you intend to use. Some scopes may require Google verification.
+### Google Cloud setup
+
+1. Create or select a Google Cloud project and enable both the Google Photos Library API and the Google Photos Picker API.
+2. Configure the Google Auth Platform consent screen and audience. If the application is in testing, add the Google account that will sign in as a test user. Google may require verification before broader use of sensitive scopes.
+3. Create an OAuth client of type **Web application**. Add `https://photos-mcp.kernelkicks.dev/auth/callback` as an authorized redirect URI, using the exact public origin configured for this server. Save the client ID and secret in a private deployment configuration; do not commit or share the secret.
+4. The current server requests `openid` and all four Photos scopes needed by its existing tools: `https://www.googleapis.com/auth/photoslibrary.appendonly`, `https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata`, `https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata`, and `https://www.googleapis.com/auth/photospicker.mediaitems.readonly`. The request is not currently configurable per tool. Review these permissions on the consent screen before approving them.
+
+Google limits Library API access to app-created items. The Picker API is the mechanism for selecting other items. See [Google's Photos API updates](https://developers.google.com/photos/support/updates) and [authorization scope documentation](https://developers.google.com/photos/overview/authorization). A real sign-in also requires the configured callback to reach the server over HTTPS; creating the Google client alone does not deploy it.
+
+### Server secrets
 
 Generate an RSA signing key once in a protected directory and persist it across restarts. For example, in a secure shell with Node.js installed:
 
@@ -31,7 +40,7 @@ The JWKS file must be readable by the container's non-root user. Protect its hos
 
 Set `MCP_TRUSTED_PROXIES` to the actual proxy address or narrowly scoped network as observed by the container. Do not trust the whole internet. The HTTPS reverse proxy must preserve the public `Host` and set `X-Forwarded-Proto: https` itself, replacing any inbound client-supplied forwarding headers. Publish the container only on loopback or a private network, and restrict who can reach that network. The example binds port 3000 to host loopback; proxy/container networking must be configured so the specified proxy address matches the peer seen by Express.
 
-For example, point the public DNS record to a host running Caddy with ports 80 and 443 available for certificate issuance and HTTPS. A host-installed Caddy can use the following configuration; replace the port if `MCP_BIND_PORT` changes:
+For example, point the public DNS record to a host running Caddy 2.10 or later with ports 80 and 443 available for certificate issuance and HTTPS. The `request_body` directive used here requires Caddy 2.10 or later. A host-installed Caddy can use the following configuration; replace the port if `MCP_BIND_PORT` changes:
 
 ```caddyfile
 photos-mcp.kernelkicks.dev {
