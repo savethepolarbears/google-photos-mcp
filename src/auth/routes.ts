@@ -80,13 +80,15 @@ export function setupAuthRoutes(app: express.Express): AuthRoutesCleanup {
       const { code, state } = req.query;
 
       // Validate state token to prevent CSRF attacks
-      if (!state || !authStates.has(state as string)) {
-        logger.warn(`Invalid state token: ${state}`);
+      if (typeof state !== "string") {
         return res.status(400).send("Invalid state parameter");
       }
-
-      // Delete the used state token
-      authStates.delete(state as string);
+      const stateData = authStates.get(state);
+      // Consume even expired states, and never log authorization material.
+      authStates.delete(state);
+      if (!stateData || stateData.expires <= Date.now()) {
+        return res.status(400).send("Invalid state parameter");
+      }
 
       if (!code) {
         logger.warn("No authorization code received");

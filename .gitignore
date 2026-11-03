@@ -18,6 +18,9 @@ build/
 *.bak
 
 # Tokens and credentials
+secrets/
+data/
+*.db
 tokens.json
 tokens.json.backup-*
 credentials.json

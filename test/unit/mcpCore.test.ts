@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GooglePhotosMCPCore } from "../../src/mcp/core.js";
 import { McpError } from "@modelcontextprotocol/sdk/types.js";
+import { getFirstAvailableTokens } from "../../src/auth/tokens.js";
 
 vi.mock("../../src/auth/tokens.js", () => ({
   getFirstAvailableTokens: vi
@@ -108,6 +109,15 @@ describe("GooglePhotosMCPCore", () => {
   });
 
   describe("resources/read", () => {
+    it("does not fall back to another account when the session has no tokens", async () => {
+      const scoped = new GooglePhotosMCPCore(
+        { name: "remote-test", version: "1" },
+        { tokenResolver: async () => null, allowLocalAuthentication: false },
+      ) as unknown as TestableCore;
+      await expect(scoped.handleReadResource({ params: { uri: "google-photos://albums" } }))
+        .rejects.toThrow("Not authenticated");
+      expect(getFirstAvailableTokens).not.toHaveBeenCalled();
+    });
     it("calls listAlbums and returns JSON content with uri echoed back for google-photos://albums", async () => {
       const result = await instance.handleReadResource({
         params: { uri: "google-photos://albums" },
@@ -139,6 +149,35 @@ describe("GooglePhotosMCPCore", () => {
   });
 
   describe("tools/call", () => {
+    it("blocks remote access to server filesystem paths", async () => {
+      const scoped = new GooglePhotosMCPCore(
+        { name: "remote-test", version: "1" },
+        { tokenResolver: async () => null, allowLocalAuthentication: false, allowLocalFiles: false },
+      ) as unknown as TestableCore;
+      const names = (await scoped.handleListTools()).tools.map((tool) => tool.name);
+      expect(names).not.toContain("start_auth");
+      expect(names).not.toContain("upload_media");
+      expect(names).not.toContain("create_album_with_media");
+      expect(names).toContain("download_picker_media");
+      for (const [name, args] of [
+        ["upload_media", { filePath: "/secret" }],
+        ["create_album_with_media", {}],
+        ["download_picker_media", { savePath: "/secret" }],
+      ] as const) {
+        await expect(scoped.handleCallTool(callToolReq(name, args))).rejects.toThrow("filesystem access");
+      }
+    });
+    it("does not use local credentials for an unauthenticated session", async () => {
+      const scoped = new GooglePhotosMCPCore(
+        { name: "remote-test", version: "1" },
+        { tokenResolver: async () => null, allowLocalAuthentication: false },
+      ) as unknown as TestableCore;
+      const result = await scoped.handleCallTool(callToolReq("list_albums"));
+      expect(result.content[0].text).toContain("Authentication required");
+      expect(getFirstAvailableTokens).not.toHaveBeenCalled();
+      await expect(scoped.handleCallTool(callToolReq("start_auth")))
+        .rejects.toThrow("Local authentication is unavailable");
+    });
     it("calls createAlbum and returns album id in JSON response for create_album", async () => {
       const result = await instance.handleCallTool(
         callToolReq("create_album", { title: "My Album" }),

@@ -110,7 +110,14 @@ export class GooglePhotosMCPCore {
   private _authServer: http.Server | null = null;
   private _authTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(serverInfo: { name: string; version: string }) {
+  constructor(
+    serverInfo: { name: string; version: string },
+    private readonly options: {
+      tokenResolver?: () => Promise<TokenData | null>;
+      allowLocalAuthentication?: boolean;
+      allowLocalFiles?: boolean;
+    } = {},
+  ) {
     this.server = new Server(serverInfo, {
       capabilities: {
         tools: {},
@@ -183,9 +190,15 @@ export class GooglePhotosMCPCore {
     };
   }
 
+  private async resolveTokens(): Promise<TokenData | null> {
+    return this.options.tokenResolver
+      ? this.options.tokenResolver()
+      : getFirstAvailableTokens();
+  }
+
   protected async handleReadResource(request: { params: { uri: string } }) {
     const uri = request.params.uri;
-    const tokens = await getFirstAvailableTokens();
+    const tokens = await this.resolveTokens();
     if (!tokens)
       throw new McpError(ErrorCode.InvalidRequest, "Not authenticated");
     const oauth2Client = await this.getAuthenticatedClient(tokens);
@@ -759,7 +772,11 @@ export class GooglePhotosMCPCore {
             properties: {},
           },
         },
-      ],
+      ].filter((tool) => {
+        if (this.options.allowLocalAuthentication === false && tool.name === "start_auth") return false;
+        if (this.options.allowLocalFiles === false && ["upload_media", "create_album_with_media"].includes(tool.name)) return false;
+        return true;
+      }),
     };
   }
 
@@ -769,14 +786,27 @@ export class GooglePhotosMCPCore {
   protected async handleCallTool(request: CallToolRequest) {
     logger.info(`Handling tool request: ${request.params.name}`);
 
+    if (this.options.allowLocalFiles === false && (
+      ["upload_media", "create_album_with_media"].includes(request.params.name) ||
+      (request.params.name === "download_picker_media" && request.params.arguments?.savePath !== undefined)
+    )) {
+      throw new McpError(ErrorCode.InvalidRequest, "Server filesystem access is unavailable for remote sessions.");
+    }
+
     // Get authentication tokens
-    const tokens = await getFirstAvailableTokens();
+    const tokens = await this.resolveTokens();
 
     if (request.params.name === "auth_status") {
       return this.handleAuthStatus(tokens);
     }
 
     if (request.params.name === "start_auth") {
+      if (this.options.allowLocalAuthentication === false) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "Local authentication is unavailable for remote sessions.",
+        );
+      }
       return await this.handleStartAuth();
     }
 
@@ -1001,11 +1031,16 @@ export class GooglePhotosMCPCore {
         try {
           const { code, state } = req.query;
 
-          if (!state || !authStates.has(state as string)) {
+          if (typeof state !== "string") {
             res.status(400).send("Invalid state parameter");
             return;
           }
-          authStates.delete(state as string);
+          const stateData = authStates.get(state);
+          authStates.delete(state);
+          if (!stateData || stateData.expires <= Date.now()) {
+            res.status(400).send("Invalid state parameter");
+            return;
+          }
 
           if (!code) {
             res.status(400).send("No authorization code received");

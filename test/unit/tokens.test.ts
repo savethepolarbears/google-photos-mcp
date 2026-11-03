@@ -6,7 +6,7 @@
  * These tests will fail until Plan 02 lands the refactored implementation.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
 import { existsSync } from "node:fs";
 
@@ -83,7 +83,10 @@ function makeToken(overrides: Partial<TokenData> = {}): TokenData {
 }
 
 describe("tokens.ts — AUTH-01", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv("USERDOMAIN", "");
+    vi.stubEnv("USER_SID", "");
     store.clear();
     vi.clearAllMocks();
   });
