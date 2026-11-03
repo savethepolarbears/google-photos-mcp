@@ -23,13 +23,16 @@ Google limits Library API access to app-created items. The Picker API is the mec
 
 ### Server secrets
 
-Generate an RSA signing key once in a protected directory and persist it across restarts. For example, in a secure shell with Node.js installed:
+Compose does not create the signing-key JSON file. Before starting Compose, generate the file once in a protected directory on the Docker host. The following example runs from the project directory and uses Docker, so Node.js is not required on the host:
 
 ```sh
 umask 077
 mkdir -p secrets
-node -e 'const c=require("crypto"),f=require("fs"); const {privateKey}=c.generateKeyPairSync("rsa",{modulusLength:2048}); f.writeFileSync("secrets/oidc-jwks.json",JSON.stringify({keys:[{...privateKey.export({format:"jwk"}),kid:c.randomUUID(),use:"sig",alg:"RS256"}]}),{mode:0o600,flag:"wx"})'
+docker run --rm --user 0:0 -v "$PWD/secrets:/keys" node:22.22-bookworm-slim \
+  node -e 'const c=require("crypto"),f=require("fs"); const {privateKey}=c.generateKeyPairSync("rsa",{modulusLength:2048}); f.writeFileSync("/keys/oidc-jwks.json",JSON.stringify({keys:[{...privateKey.export({format:"jwk"}),kid:c.randomUUID(),use:"sig",alg:"RS256"}]}),{mode:0o600,flag:"wx"})'
 ```
+
+The command refuses to overwrite an existing file; preserve and back up existing keys. It creates the file as root. On a standard Linux Docker installation without user-namespace remapping, make it readable by the image's non-root `node` user (UID 1000) with `sudo chown 1000:1000 secrets/oidc-jwks.json` and keep mode `0600`. For rootless Docker or user-namespace remapping, use the mapped host UID instead. Verify permissions against your Docker setup before starting Compose; do not print the key contents. The file must be valid JSON with a top-level `keys` array containing the private signing JWK.
 
 Configure the following in an uncommitted `.env` file or another deployment secret mechanism:
 
