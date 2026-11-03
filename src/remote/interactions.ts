@@ -28,6 +28,7 @@ export function createInteractionRouter(provider: Provider, origin: string) {
   const fail = (res: express.Response) => res.status(400).send("The authorization request is invalid or expired. Please start again.");
   const sameOrigin = (req: Request) => {
     const value = req.get("origin") || req.get("referer");
+    if (value === "null") return true; // An interaction cookie and one-time CSRF token are still required.
     try { return !!value && new URL(value).origin === origin; } catch { return false; }
   };
   router.use((_req, res, next) => { res.set("Cache-Control", "no-store"); res.set("Referrer-Policy", "strict-origin"); res.set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"); next(); });

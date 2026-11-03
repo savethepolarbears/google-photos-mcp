@@ -23,6 +23,7 @@ describe("remote request guards", () => {
     expect((await request(app).get("/").set("Host", "photos.example.com")).status).toBe(204);
     expect((await request(app).get("/").set("Host", "evil.example").set("X-Forwarded-Host", "photos.example.com")).status).toBe(403);
     expect((await request(app).get("/").set("Host", "photos.example.com").set("Origin", "https://evil.example")).status).toBe(403);
+    expect((await request(app).get("/").set("Host", "photos.example.com").set("Origin", "null")).status).toBe(403);
     expect((await request(app).get("/").set("Host", "photos.example.com").set("Origin", "https://photos.example.com")).status).toBe(204);
   });
 });

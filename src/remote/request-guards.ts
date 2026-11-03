@@ -39,7 +39,10 @@ export function requestGuards(allowedHosts: string[], allowedOrigins: string[]):
     const host = normalizeHostname(req.headers.host ?? "");
     if (!host || !hosts.has(host)) return void res.status(403).send("Forbidden");
     const origin = req.headers.origin;
-    if (origin && !origins.has(origin)) return void res.status(403).send("Forbidden");
+    // Opaque browser origins can occur for form submissions. Only the interaction
+    // handler may accept these, after validating its cookie and one-time CSRF token.
+    const opaqueInteraction = origin === "null" && req.method === "POST" && /^\/interaction\/[^/]+\/(?:login|consent)$/.test(req.path);
+    if (origin && !origins.has(origin) && !opaqueInteraction) return void res.status(403).send("Forbidden");
     next();
   };
 }

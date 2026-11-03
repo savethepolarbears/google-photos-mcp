@@ -40,7 +40,10 @@ describe("integrated remote authorization and MCP", () => {
       response = await call("get", interaction.pathname).set("Cookie", cookie()); remember(response.headers);
       let csrf = response.text.match(/name="csrf" value="([^"]+)"/)?.[1];
       expect(csrf).toBeTruthy();
-      response = await call("post", `${interaction.pathname}/login`).set("Cookie", cookie()).set("Origin", origin).type("form").send({ csrf }); remember(response.headers);
+      const missingCookie = await call("post", `${interaction.pathname}/login`).set("Origin", "null").type("form").send({ csrf });
+      expect(missingCookie.status).not.toBe(303);
+      expect((await call("post", `${interaction.pathname}/login`).set("Cookie", cookie()).set("Origin", "https://evil.example").type("form").send({ csrf })).status).toBe(403);
+      response = await call("post", `${interaction.pathname}/login`).set("Cookie", cookie()).set("Origin", "null").type("form").send({ csrf }); remember(response.headers);
       const googleState = new URL(response.headers.location).searchParams.get("state");
       response = await call("get", `/auth/callback?state=${googleState}&code=test`).set("Cookie", cookie()); remember(response.headers);
       response = await call("get", response.headers.location).set("Cookie", cookie()); remember(response.headers);
