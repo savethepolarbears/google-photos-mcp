@@ -30,7 +30,7 @@ export function createInteractionRouter(provider: Provider, origin: string) {
     const value = req.get("origin") || req.get("referer");
     try { return !!value && new URL(value).origin === origin; } catch { return false; }
   };
-  router.use((_req, res, next) => { res.set("Cache-Control", "no-store"); res.set("Referrer-Policy", "no-referrer"); res.set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"); next(); });
+  router.use((_req, res, next) => { res.set("Cache-Control", "no-store"); res.set("Referrer-Policy", "strict-origin"); res.set("Content-Security-Policy", "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"); next(); });
   router.get("/interaction/:uid", async (req, res, next) => {
     try {
       prune();

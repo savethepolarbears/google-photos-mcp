@@ -24,9 +24,12 @@ describe("account linking interactions", () => {
     } as unknown as Provider;
     const app = express().use(createInteractionRouter(provider, "https://example.test"));
     const form = await request(app).get("/interaction/one");
+    expect(form.headers["referrer-policy"]).toBe("strict-origin");
     const csrf = form.text.match(/name="csrf" value="([^"]+)"/)?.[1];
     expect(csrf).toBeTruthy();
     expect((await request(app).post("/interaction/one/login").type("form").send({ csrf })).status).toBe(400);
+    expect((await request(app).post("/interaction/one/login").set("Origin", "null").type("form").send({ csrf })).status).toBe(400);
+    expect((await request(app).post("/interaction/one/login").set("Origin", "https://evil.example").type("form").send({ csrf })).status).toBe(400);
     const start = await request(app).post("/interaction/one/login").set("Origin", "https://example.test").type("form").send({ csrf });
     expect(start.status).toBe(303);
     const state = new URL(start.headers.location).searchParams.get("state");

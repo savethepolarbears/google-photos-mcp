@@ -50,7 +50,7 @@ export function createAuthorizationProvider(options: AuthorizationProviderOption
     },
     issueRefreshToken: (_ctx, client) => client.grantTypeAllowed("refresh_token"),
     rotateRefreshToken: true,
-    ttl: { AccessToken: 3600, AuthorizationCode: 120, RefreshToken: 30 * 24 * 60 * 60 },
+    ttl: { AccessToken: 3600, AuthorizationCode: 120, Interaction: 10 * 60, Session: 14 * 24 * 60 * 60, Grant: 14 * 24 * 60 * 60, RefreshToken: 30 * 24 * 60 * 60 },
     findAccount: async (_ctx, sub) => ({ accountId: sub, claims: async () => ({ sub }) }),
   });
   // The provider derives endpoint URLs from the incoming request. Pin those
