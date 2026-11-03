@@ -3,7 +3,7 @@
  * Tests photo CRUD operations with mocked API client.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock dependencies
 vi.mock("../../src/api/client.js", () => ({
@@ -340,7 +340,10 @@ describe("batchCreateMediaItems", () => {
 });
 
 describe("Picker API repositories", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
+    vi.stubEnv("USERDOMAIN", "");
+    vi.stubEnv("USER_SID", "");
     vi.clearAllMocks();
   });
 

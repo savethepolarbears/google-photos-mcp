@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import path from "path";
+import os from "node:os";
 
 // Mock @keyv/sqlite to prevent loading the native sqlite3 binary
 // (architecture-dependent; security tests don't exercise token storage)
@@ -306,9 +307,9 @@ describe("Security Tests", () => {
   });
 
   describe("File Security (REAL tests replacing stubs)", () => {
-    it("token file permissions should be restrictive (0600)", async () => {
+    it.skipIf(process.platform === "win32")("token file permissions should be restrictive (0600)", async () => {
       const fs = await import("fs/promises");
-      const tmpDir = await fs.mkdtemp("/tmp/sec-test-");
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "sec-test-"));
       const tmpFile = path.join(tmpDir, "test-tokens.json");
 
       // Write file with restrictive permissions
@@ -323,9 +324,9 @@ describe("Security Tests", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it("enforceOwnerOnlyPermissions restricts permissive SQLite database and sidecars to 0600", async () => {
+    it.skipIf(process.platform === "win32")("enforceOwnerOnlyPermissions restricts permissive SQLite database and sidecars to 0600", async () => {
       const fs = await import("fs/promises");
-      const tmpDir = await fs.mkdtemp("/tmp/sec-perms-");
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "sec-perms-"));
       const dbFile = path.join(tmpDir, "tokens.db");
       const walFile = path.join(tmpDir, "tokens.db-wal");
       const shmFile = path.join(tmpDir, "tokens.db-shm");

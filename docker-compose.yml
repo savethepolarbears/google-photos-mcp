@@ -1,0 +1,38 @@
+services:
+  google-photos-mcp:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      - "127.0.0.1:${MCP_BIND_PORT:-3000}:3000"
+    environment:
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?required}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?required}
+      GOOGLE_REDIRECT_URI: ${MCP_PUBLIC_ORIGIN:-https://photos.example.com}/auth/callback
+      MCP_PUBLIC_ORIGIN: ${MCP_PUBLIC_ORIGIN:-https://photos.example.com}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-photos.example.com,localhost,127.0.0.1}
+      MCP_ALLOWED_ORIGINS: ${MCP_ALLOWED_ORIGINS:-}
+      MCP_TRUSTED_PROXIES: ${MCP_TRUSTED_PROXIES:?required}
+      MCP_COOKIE_KEY: ${MCP_COOKIE_KEY:?required}
+      MCP_JWKS_PATH: /run/secrets/oidc_jwks
+      MCP_AUTH_DB_PATH: /app/data/authorization.db
+    secrets:
+      - oidc_jwks
+    volumes:
+      - photos_data:/app/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health',{headers:{host:'localhost'}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+volumes:
+  photos_data:
+secrets:
+  oidc_jwks:
+    file: ${MCP_JWKS_FILE:?required}

@@ -10,6 +10,8 @@ interface GoogleIdTokenPayload {
   email?: string;
   /** Subject identifier (unique user ID) */
   sub?: string;
+  /** Nonce supplied in the original OpenID Connect authentication request. */
+  nonce?: string;
   /** User's full name */
   name?: string;
   /** User's given (first) name */
@@ -64,6 +66,7 @@ export async function parseIdToken(
     return {
       email: payload.email,
       sub: payload.sub,
+      nonce: payload.nonce,
       name: payload.name,
       given_name: payload.given_name,
       family_name: payload.family_name,

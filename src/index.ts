@@ -11,6 +11,8 @@ import logger from "./utils/logger.js";
 import { quotaManager } from "./utils/quotaManager.js";
 import { healthChecker } from "./utils/healthCheck.js";
 import { GooglePhotosMCPCore } from "./mcp/core.js";
+import { readFileSync } from "node:fs";
+import config from "./utils/config.js";
 
 // Load environment variables (quiet: true suppresses stdout messages that break STDIO MCP transport)
 dotenv.config({ quiet: true });
@@ -232,7 +234,7 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
    */
   async start(port: number = 3000): Promise<void> {
     return new Promise((resolve) => {
-      this.app.listen(port, () => {
+      this.app.listen(port, "127.0.0.1", () => {
         logger.info(`HTTP server running on port ${port}`);
         logger.info(`MCP endpoint available at: http://localhost:${port}/mcp`);
         logger.info(`Visit http://localhost:${port} for the home page`);
@@ -265,7 +267,29 @@ class GooglePhotosHTTPServer extends GooglePhotosMCPCore {
 async function main() {
   const useStdio = process.argv.includes("--stdio");
 
-  if (useStdio) {
+  if (process.argv.includes("--remote")) {
+    const origin = process.env.MCP_PUBLIC_ORIGIN || "";
+    const jwksPath = process.env.MCP_JWKS_PATH || "";
+    const dbPath = process.env.MCP_AUTH_DB_PATH || "";
+    const cookieKey = process.env.MCP_COOKIE_KEY || "";
+    const hosts = (process.env.ALLOWED_HOSTS || process.env.MCP_ALLOWED_HOSTS || "").split(",").map((value) => value.trim()).filter(Boolean);
+    const origins = (process.env.MCP_ALLOWED_ORIGINS || "").split(",").filter(Boolean);
+    const trustedProxies = (process.env.MCP_TRUSTED_PROXIES || "").split(",").filter(Boolean);
+    if (!config.google.clientId || !config.google.clientSecret || !jwksPath || !dbPath || !hosts.length || !trustedProxies.length || config.google.redirectUri !== `${origin}/auth/callback`) {
+      throw new Error("Missing remote server configuration or mismatched Google redirect URI");
+    }
+    const { AuthorizationStore } = await import("./remote/authorization-store.js");
+    const { createRemoteServer } = await import("./remote/server.js");
+    const store = new AuthorizationStore(dbPath);
+    const remote = createRemoteServer({ origin, hosts, origins: [origin, ...origins], trustedProxies, jwks: JSON.parse(readFileSync(jwksPath, "utf8")), cookieKeys: [cookieKey], store });
+    const listener = remote.app.listen(parseInt(process.env.PORT || "3000", 10), "0.0.0.0", () => logger.info("Remote MCP server listening"));
+    const shutdown = () => {
+      const stopped = new Promise<void>((resolve) => listener.close(() => resolve()));
+      void Promise.all([stopped, remote.close()]).finally(() => { store.close(); process.exit(0); });
+    };
+    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", shutdown);
+  } else if (useStdio) {
     // Run in STDIO mode (for Claude Desktop)
     // In STDIO mode, all logging must go to stderr to avoid breaking the MCP protocol
     logger.info("Starting Google Photos MCP server in STDIO mode");
